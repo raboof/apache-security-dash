@@ -24,21 +24,44 @@ and sends. The SKILL never sends mail directly.
 
 ## Hard rules (do not skip)
 
-1. **All Glasswing communication must use the requester's `@apache.org`
-   address.** If the question came from a non-`@apache.org` sender (a
-   personal address, a gmail, etc.), the reply must (a) answer the
-   substantive questions and (b) ask the person to continue the
-   conversation from their `@apache.org` address going forward. The
-   reason: PMC-membership verification is anchored to `@apache.org`
-   addresses, and the scan offer is opt-in by PMC vote, not by
-   individual interest.
+1. **All Glasswing communication must come from an apache.org-rooted
+   identity.** That means **either** a personal `@apache.org`
+   address **or** a project-level alias such as
+   `security@<pmc>.apache.org` / `private@<pmc>.apache.org` whose
+   subscriber list is the PMC. Both are acceptable: the personal
+   `@apache.org` ties the message to a named PMC member; the
+   `security@<pmc>` alias ties it to the PMC's collective security
+   identity (and the team behind the alias has already been
+   verified by the PMC). Either form is sufficient to anchor
+   PMC-membership verification.
 
-2. **Always CC `security@apache.org` on the reply.** Even when the
-   inbound message was on a single PMC's private list — the Security
-   team needs the trail. CC is enough; do not move the substantive
-   discussion to security@ unless the requester does. If the original
-   thread was on a project's `private@<pmc>.apache.org` list, keep that
-   list on To/CC (don't quietly drop it).
+   If the question came from **neither** — a personal Gmail, an
+   employer address, a non-Apache forum etc. — the reply must (a)
+   answer the substantive questions and (b) politely ask the
+   person to continue the conversation from either form going
+   forward. Wording: *"either your personal `@apache.org` or your
+   project's `security@<project>.apache.org` alias is fine"* —
+   that preempts the back-and-forth where the person asks which
+   one we want.
+
+2. **Always CC `security@apache.org` on the reply, and CC the
+   project's own `security@<pmc>.apache.org` alias when one
+   exists.** The Foundation-level CC keeps the Security team's
+   audit trail; the per-project CC makes sure the PMC's collective
+   security team sees the thread regardless of which individual
+   reached out. Look up whether a project has a `security@<pmc>`
+   alias via
+   [`security.apache.org/projects/`](https://security.apache.org/projects/)
+   or its source-of-truth JSON at
+   [`apache/security-site/scripts/project-coordinates.json`](https://github.com/apache/security-site/blob/main/scripts/project-coordinates.json) —
+   not every project has one, in which case fall back to the
+   project's `private@<pmc>.apache.org` list.
+
+   If the original thread was on a project's
+   `private@<pmc>.apache.org` list, keep that list on To/CC
+   (don't quietly drop it). CC is enough; do not move the
+   substantive discussion to `security@apache.org` unless the
+   requester does.
 
 3. **Confirm before sending.** Per the user's "draft and show first"
    rule, always render the full draft (subject, To, CC, body, any

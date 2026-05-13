@@ -102,6 +102,21 @@ hypotheses:
   columns), do not silently supersede it — mine it as a *(documented)*
   source for §4.8/§4.9/§4.11 and add a §4.14 meta question proposing how
   the two documents should coexist (replace / merge / sit alongside).
+- **Read the project's website security page(s), not just the repo.**
+  Many projects publish their security policy / threat model as HTML on
+  their project site rather than as a `SECURITY.md` in the repo —
+  for example
+  [`cloudstack.apache.org/security/`](https://cloudstack.apache.org/security/).
+  The fastest way to enumerate the relevant URLs across ASF projects
+  is the cross-Foundation security index at
+  [`security.apache.org/projects/`](https://security.apache.org/projects/),
+  whose source of truth is
+  [`apache/security-site/scripts/project-coordinates.json`](https://github.com/apache/security-site/blob/main/scripts/project-coordinates.json).
+  Pull every URL that page lists for the target project and treat the
+  contents as *(documented)* with the same weight as an in-repo
+  `SECURITY.md` (see §3.1a). When the website and the repo disagree,
+  the more recent one wins, but raise the discrepancy as a §4.14
+  question rather than silently picking one.
 - **Mine for maintainer positions already on the record.** The
   highest-yield sources are places where maintainers have already explained
   a design decision or declined to do something: `FAQ` files, header-file
@@ -127,11 +142,20 @@ hypotheses:
 This pass should take minutes, not hours. The goal is to ask informed
 questions in the next step, not to produce findings.
 
-### Step 3.1a — Mine the existing SECURITY.md (or embedded threat model)
+### Step 3.1a — Mine the existing SECURITY.md or website security page
 
-Many projects ship a `SECURITY.md` that is part disclosure process (how to
-report, embargo policy, team roster — all out of scope per §1) and part
-**embedded threat model** (what the project trusts, what counts as a
+Many projects publish a security policy either as a `SECURITY.md` in
+the repo **or** as a page on the project website (linked from
+[`security.apache.org/projects/`](https://security.apache.org/projects/)
+for ASF projects — see §3.1). Both forms count for the rules below;
+"`SECURITY.md`" in the rest of this section is shorthand for "the
+project's own security-policy artifact, wherever it lives". When a
+project has both a repo file and a website page, treat the union as
+the source-of-truth and raise any contradiction as a §4.14 question.
+
+These artifacts are part disclosure process (how to report, embargo
+policy, team roster — all out of scope per §1) and part **embedded
+threat model** (what the project trusts, what counts as a
 vulnerability, examples of non-vulnerabilities). The second part is the
 single highest-authority *(documented)* source available: it is maintainer
 policy that has already survived public review and, often, dispute with
