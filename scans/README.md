@@ -182,6 +182,24 @@ what got fixed, what stayed."
    section) carries a one-line pointer to `SECURITY.md` so
    scanners and other agents find the model deterministically.
    The PMC merges the PR.
+2a. **Discoverability gate (hard requirement).** Before the
+    scan is queued, the Security team's own agent runs a
+    pre-flight pass against the project's repo at the
+    designated commit and confirms it can locate the threat
+    model via `AGENTS.md` → `SECURITY.md` (or whichever
+    artifact `SECURITY.md` links to). **If the agent cannot
+    find the model, the scan is refused**, and the Security
+    team responds to the PMC asking them to make the model
+    reachable through this discovery path before re-requesting.
+    The reason: without a model the scan produces a high false-
+    positive rate that the PMC cannot reasonably triage, and
+    rejecting a noise-heavy scan after the fact wastes more
+    cycles than refusing upfront. We don't want to put PMCs in
+    that position. This gate is non-negotiable — even for
+    projects the Security team already knows well, the agent
+    must be able to *mechanically* discover the model so that
+    re-scans and future re-runs by other Security-team members
+    don't depend on tribal knowledge.
 3. **Scan runs.** Glasswing scans the repo at HEAD (or at a
    PMC-designated tag), reading the threat model from
    `SECURITY.md` (via `AGENTS.md`'s pointer).
