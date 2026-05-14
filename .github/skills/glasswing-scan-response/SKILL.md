@@ -24,25 +24,41 @@ and sends. The SKILL never sends mail directly.
 
 ## Hard rules (do not skip)
 
-1. **All Glasswing communication must come from an apache.org-rooted
-   identity.** That means **either** a personal `@apache.org`
-   address **or** a project-level alias such as
-   `security@<pmc>.apache.org` / `private@<pmc>.apache.org` whose
-   subscriber list is the PMC. Both are acceptable: the personal
-   `@apache.org` ties the message to a named PMC member; the
-   `security@<pmc>` alias ties it to the PMC's collective security
-   identity (and the team behind the alias has already been
-   verified by the PMC). Either form is sufficient to anchor
-   PMC-membership verification.
+1. **Different identity expectations for discussion vs. submitting
+   a scan request.**
 
-   If the question came from **neither** — a personal Gmail, an
-   employer address, a non-Apache forum etc. — the reply must (a)
-   answer the substantive questions and (b) politely ask the
-   person to continue the conversation from either form going
-   forward. Wording: *"either your personal `@apache.org` or your
-   project's `security@<project>.apache.org` alias is fine"* —
-   that preempts the back-and-forth where the person asks which
-   one we want.
+   - **For general questions and discussion** about the program
+     (what framework is expected, how the scan compares to other
+     tools, scoping back-and-forth, clarifying what we mean by X,
+     etc.): **any email is fine.** Personal Gmail, employer
+     address, a non-Apache forum — all acceptable. Answer the
+     substantive questions normally. Do **not** push the
+     requester to switch to `@apache.org` just to continue
+     talking; making people hop accounts to ask a question is
+     friction we don't need.
+
+   - **For the actual `[GLASSWING]` scan request** (the formal
+     opt-in message that queues a scan): the request itself must
+     anchor to an `@apache.org` identity. Acceptable shapes are
+     **either** the From: header is `@apache.org` (a personal
+     `@apache.org`, or a project alias like
+     `security@<pmc>.apache.org` / `private@<pmc>.apache.org`),
+     **or** the body of the request explicitly states the
+     requester's `@apache.org` address. The reason isn't
+     bureaucracy: **scan results are delivered only to the
+     `@apache.org` personal addresses listed in the request**, so
+     we need at least one concrete `@apache.org` address attached
+     to every request before queuing — that's where the output
+     goes. The hard enforcement of this lives in the
+     **Scan-request verification gates** section (gates 2 and 3);
+     this rule is the policy summary.
+
+   When a general-inquiry exchange starts heading toward an actual
+   request, mention this expectation in passing — *"when you're
+   ready to formally request, the request will need at least one
+   `@apache.org` address listed, since that's where the scan
+   results go"* — as a forward-looking note, not a gate on the
+   current discussion.
 
 2. **Always CC `security@apache.org` on the reply, and CC the
    project's own `security@<pmc>.apache.org` alias when one
@@ -73,6 +89,207 @@ and sends. The SKILL never sends mail directly.
    should not quote excerpts from other PMCs' private discussions, even
    if the requester is also on those lists. Keep references abstract
    ("other PMCs have asked similar questions" — never names).
+
+## Scan-request verification gates
+
+These checks apply to inbound `[GLASSWING]` **scan-request**
+emails (subject pattern `[GLASSWING] <PMC>: request to scan
+repositories`) — not to general inquiries about the program.
+Run all four gates before drafting the reply. Multiple failing
+gates roll up into one reply that addresses all of them; do not
+play whack-a-mole across multiple round-trips.
+
+### Gate 1 — All required fields are present
+
+The announcement asked for:
+
+- PMC name + confirmation of interest (one message per PMC),
+- primary and backup PMC contacts (names + `@apache.org`
+  addresses),
+- `@apache.org` email addresses to send scan results to,
+- links to the GitHub repos to scan.
+
+If any of those are missing or empty, list the missing items
+specifically — don't ask "could you fill in the rest", name them.
+
+Reply fragment:
+
+> Thanks — to queue the scan we still need the following items
+> the original request didn't include:
+>
+> - <missing field 1>
+> - <missing field 2>
+>
+> Once we have those we'll continue with the verification steps.
+
+### Gate 2 — Sender identity is apache.org-rooted
+
+The From: header on the request must be either a personal
+`@apache.org` address **or** a project alias
+(`security@<pmc>.apache.org` / `private@<pmc>.apache.org`).
+
+If the request came from a non-apache.org address (personal
+Gmail, employer address, third-party forum, …) **and** the
+message body does not explicitly state the sender's
+`@apache.org` address, the request cannot be attributed to a
+PMC member. Ask for one of two things — either is acceptable,
+do not require both:
+
+- **Resend from their `@apache.org` address**, via ponymail
+  compose:
+  `https://lists.apache.org/list.html?private@<pmc>.apache.org`
+  → sign in with Apache ID → press `c` → address the new
+  message to `security@apache.org` with
+  `private@<pmc>.apache.org` on CC. (The `c` shortcut in
+  ponymail opens a compose dialog that sends from the signed-in
+  `@apache.org` identity.)
+
+- **State the `@apache.org` address in this thread.** One line
+  ("I'm `jdoe@apache.org`, writing from my personal account")
+  is enough — the team verifies against the PMC roster before
+  queuing.
+
+If the body *already* states the `@apache.org` address, this
+gate passes — proceed to gate 3 with that stated address.
+
+Reply fragment:
+
+> Thanks for the request — before we queue it we need to anchor
+> it to your Apache identity. You wrote from
+> `<non-apache address>`, which isn't an `@apache.org` address,
+> and the message body doesn't say which `@apache.org` address
+> the request should be attributed to.
+>
+> Either of these works:
+>
+> - **Resend from your `@apache.org` address.** Easiest path:
+>   open <https://lists.apache.org/list.html?private@<pmc>.apache.org>
+>   in your browser, sign in with your Apache ID, then press
+>   `c` to open the compose dialog. Address the new message to
+>   `security@apache.org` (with `private@<pmc>.apache.org` on
+>   CC), keep the same subject and body — it'll go out from
+>   your `@apache.org` address.
+>
+> - **State your `@apache.org` address in this thread.** A
+>   one-line "I'm `<handle>@apache.org`" is enough; we'll
+>   verify against the PMC roster.
+
+### Gate 3 — Sender is on the PMC roster
+
+Cross-check the sender's `@apache.org` address (From: header
+or body-stated, whichever gate 2 resolved to) against the PMC
+roster. Sources of truth:
+
+- Apache Whimsy `committee-info.json`:
+  <https://whimsy.apache.org/public/committee-info.json>
+- Roster page:
+  `https://whimsy.apache.org/roster/committee/<pmc>`
+
+If the address is not on the PMC's roster, decline politely.
+Past abuse exists where non-members tried to get scans against
+projects they weren't part of, so this gate is non-negotiable
+— but the phrasing is "we need PMC anchoring", not "we don't
+trust you".
+
+Reply fragment:
+
+> One wrinkle before we queue this: the address
+> `<stated address>` isn't currently on the <PMC name> PMC
+> roster (per
+> <https://whimsy.apache.org/roster/committee/<pmc>>). We
+> require PMC-roster anchoring before queuing a scan. Could a
+> PMC member send the request on your behalf, or could the PMC
+> chair confirm in this thread that the scan is sanctioned by
+> the PMC?
+
+### Gate 4 — Scope completeness check (single repo, more exist)
+
+If the request lists exactly one repository **and** the PMC
+owns more than one public `github.com/apache` repo, do not
+silently accept the narrow scope — ask the requester to confirm
+this is intentional.
+
+Source for "what repos does this PMC own": the Mythos tracker's
+Repositories sheet (use the `glasswing-scan-status` SKILL to
+fetch it — it already has the PMC-slug → repo mapping); or
+query <https://github.com/orgs/apache/repositories?q=<pmc-prefix>>
+directly. Cross-check by `PMC Slug` match on the repos sheet.
+
+This is a confirmation, not a refusal. Keep it light — PMCs
+commonly forget side repos (docs sites, client SDKs, sample
+apps) and would rather be asked than scanned incomplete.
+
+Reply fragment:
+
+> Quick scope check before we queue this: the request lists one
+> repo (`apache/<repo>`). The PMC also owns
+> `apache/<other-1>`, `apache/<other-2>`, `apache/<other-3>` (…
+> N more). Is the single-repo scope intentional — only this one
+> this round — or were the others meant to be in scope too?
+> Either answer is fine; we'd rather ask than guess.
+
+If the PMC confirms "yes, just this one this round", proceed
+without further pressure. If they say "all of them", revise the
+queued scope before kickoff.
+
+## Canned responses (consult first, contribute back)
+
+The Mythos tracker spreadsheet has a `Canned Responses` sheet
+that accumulates reusable answer fragments — see the
+`glasswing-scan-status` SKILL for its column schema. **Before
+drafting any reply, fetch this sheet and check for matches
+against the requester's questions.** If a high-confidence match
+exists, base the reply on the canned `Response` (verbatim or
+lightly adapted for thread register); if no match, draft fresh
+from the standard fragments below.
+
+How to consult:
+
+1. Read the workbook via the `glasswing-scan-status` SKILL's
+   fetch step (`mcp__claude_ai_Google_Drive__read_file_content`
+   on the file ID from the `mythos-tracker` memory entry). The
+   `Canned Responses` sheet is the fourth tab.
+
+2. For each question the requester raised, scan the `Topic` +
+   `Question pattern` columns for semantic matches. Don't do
+   keyword-only matching — `Topic: scope` is the right hit for
+   "can the model swallow the whole monorepo?", even if the
+   words don't overlap.
+
+3. Pull the `Response` column verbatim, then lightly adapt for
+   the specific thread (e.g. substitute the actual repo name).
+   Respect the `Notes` column — it captures *when not* to reuse
+   the answer.
+
+4. If the `Canned Responses` sheet doesn't exist yet (older
+   snapshot of the workbook), fall back to the fragments
+   inlined below. The two sources should converge over time;
+   the spreadsheet wins on conflict.
+
+How to contribute back:
+
+After the user has approved a reply that contained a *novel*
+answer (one not already covered by an existing canned row), ask
+the user whether to save it as a canned entry. If yes, build a
+one-element JSON file at `$TMPDIR/canned-add-<timestamp>.json`
+and route through the `glasswing-scan-update` SKILL's
+`append-canned` flow (same draft-and-confirm gates). The shape
+of an entry is:
+
+```json
+{
+  "topic": "<one-word tag>",
+  "question_pattern": "<one-line description of when this applies>",
+  "response": "<the canned reply text — markdown OK>",
+  "author": "<@apache.org address of the human who signed the reply>",
+  "notes": "<when this applies / when to NOT reuse / what to swap>"
+}
+```
+
+The inlined fragments below are the seed set; once they're
+loaded into the spreadsheet (via the `seed_canned_responses.json`
+bootstrap in the update SKILL), this file's role becomes
+documentary — the spreadsheet is the live source of truth.
 
 ## Standard answer fragments
 
@@ -212,7 +429,11 @@ reply) from a `@apache.org` address to `security@apache.org`, CC
 
 Verify the requester is on the PMC roster before queuing. Past abuse
 exists where non-members tried to get scans against projects they
-weren't part of; we say "no" to those.
+weren't part of; we say "no" to those. The full request-handling
+checks (required fields, identity anchoring, roster check, single-
+repo scope confirmation) live in the **Scan-request verification
+gates** section above — run those four gates on every `[GLASSWING]`
+request before drafting a reply.
 
 ## Procedure for drafting the reply
 
@@ -220,14 +441,43 @@ weren't part of; we say "no" to those.
    (`private@<pmc>.apache.org` on To/CC is the strongest signal). If
    ambiguous, ask the user which PMC.
 
-2. **Identify the sender address.** If it's not `@apache.org`, the
-   reply must include the "please continue from your `@apache.org`
-   address" note at the top, politely but explicitly.
+2. **Decide which path applies.**
+
+   - **General inquiry** (someone asking what the program is, what
+     framework we expect, how it compares to other tools, scoping
+     questions, clarifications, etc.): use the standard answer
+     fragments and continue with step 3 below. **Any sender
+     address is fine** — including non-`@apache.org`. **Do not**
+     push the requester to switch to `@apache.org` just to keep
+     the conversation going; questions are welcome from any
+     address. If the discussion is clearly heading toward "let's
+     request a scan" (the requester says "we want to opt in",
+     starts listing repos, etc.), mention in passing that the
+     formal `[GLASSWING]` request itself will need at least one
+     `@apache.org` address listed in it — because scan results
+     are delivered only to the `@apache.org` personal addresses
+     listed in the request. Frame it as a forward-looking note
+     ("when you're ready to formally request, the request needs
+     an `@apache.org` address listed — that's where the results
+     will be sent"), not as a gate on the current exchange.
+
+   - **`[GLASSWING]` scan-request email** (subject pattern
+     `[GLASSWING] <PMC>: request to scan repositories`): route
+     through the **Scan-request verification gates** above (gates
+     1–4) instead of the soft-ask. The From: identity must be
+     anchored to a PMC member *now*, not "for future messages",
+     before the request can be queued. Build the reply out of the
+     gate fragments for any gates that failed; if all four pass,
+     the reply is a short confirmation that the request meets
+     entry criteria and will be queued.
 
 3. **Pull out their questions.** Quote each one verbatim from their
-   message (use `> ` blockquote). Address each in order with the
-   matching fragment from above, lightly reworded for the thread's
-   register.
+   message (use `> ` blockquote). For each question, **first**
+   check the `Canned Responses` sheet for a semantic match (see
+   the **Canned responses** section above); if a match exists,
+   base the answer on the canned `Response`. If not, address
+   the question with the matching fragment from below, lightly
+   reworded for the thread's register.
 
 4. **Decide whether a threat-model draft is needed in this reply.**
    - If the requester is asking process / framework questions only
@@ -254,6 +504,16 @@ weren't part of; we say "no" to those.
    `oauth-draft-create` is the fallback). Do not call `send`
    directly — the user reviews the draft once more in the Gmail UI
    and presses send.
+
+7. **Offer to save novel answers back to `Canned Responses`.**
+   If the approved reply contained any answer that was *not*
+   pulled from an existing canned row, ask the user one
+   question: *"Want me to save this as a canned response for
+   future similar requests?"* If yes, build an entry and route
+   through `glasswing-scan-update`'s `append-canned` flow.
+   Default to *yes* for answers that took non-trivial drafting;
+   skip the offer for one-line replies that wouldn't benefit
+   from caching.
 
 ## Style notes
 

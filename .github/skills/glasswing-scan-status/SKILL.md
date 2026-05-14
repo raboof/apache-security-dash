@@ -41,7 +41,7 @@ on the same file ID.
 
 ### Sheet layout
 
-The workbook has three sheets, in order:
+The workbook has up to four sheets, in order:
 
 1. **README** — short prose describing the workbook and its data
    sources (Apache Whimsy `committee-info.json` for the PMC list,
@@ -85,6 +85,29 @@ The workbook has three sheets, in order:
    | `GitHub Stars` | Star count, with commas. |
    | `Criticality Score (%)` | OSSF score formatted as percent. 669 of 3,107 repos have a score; the rest blank. |
    | `Primary Language` | GitHub-detected primary language; sometimes blank. |
+
+4. **Canned Responses** (variable rows) — one row per reusable
+   answer fragment. Created lazily on first use by the
+   `glasswing-scan-update` SKILL's `init-canned-tab` helper.
+   Columns:
+
+   | Column | Meaning |
+   | --- | --- |
+   | `Date Added` | `YYYY-MM-DD` the entry was appended. |
+   | `Topic` | One-word tag (e.g. `framework`, `scope`, `tooling`, `roster`, `process`, `discoverability`). Groups entries for human browsing. |
+   | `Question pattern` | One-line description of when this answer applies (e.g. "asks which threat-modeling framework we expect — STRIDE / LINDDUN / PASTA"). |
+   | `Response` | The canned reply text. May be multi-paragraph markdown; reuse verbatim or lightly adapt for register. |
+   | `Author` | Who wrote the entry — `@apache.org` address or "ASF Security team". |
+   | `Notes` | Caveats — when this answer applies, when to NOT reuse it, what to swap in for thread specifics. |
+
+   This sheet is the source of truth for canned answers. The
+   `glasswing-scan-response` SKILL consults it before drafting
+   any reply and appends new entries (via
+   `glasswing-scan-update`) after the user approves a novel
+   response. Older snapshots of the workbook (from before
+   `init-canned-tab` was first run) will not have this sheet —
+   the response SKILL falls back to its in-SKILL fragments in
+   that case.
 
 ## When to invoke
 

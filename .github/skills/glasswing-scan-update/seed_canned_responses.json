@@ -1,0 +1,79 @@
+[
+  {
+    "topic": "framework",
+    "question_pattern": "asks which scanning model / framework Glasswing uses",
+    "response": "The scan uses the latest Glasswing-available security models — the operational profile is whichever model Glasswing has currently designated as production for code-level vulnerability scanning. The Glasswing program announcement is at https://glasswing.openai.com (linked from https://openai.com/index/glasswing-grant-program/).\n\nIf you want the specific model name for the run on your repo, the scan-result markdown header includes it as a field. We don't pin a specific model in advance — the program changes more slowly than the model lineup.",
+    "author": "ASF Security team",
+    "notes": "Cross-check the canonical Glasswing URL at draft time. Don't pin a specific model name unless explicitly instructed."
+  },
+  {
+    "topic": "framework",
+    "question_pattern": "asks which threat-modeling framework we expect — STRIDE / LINDDUN / PASTA",
+    "response": "No specific framework. The scan accepts any human-readable threat model that:\n\n- describes what the project considers a security issue and what it does not,\n- names the user roles and trust boundaries the project assumes,\n- says what's in scope for the scan and what's out (e.g. contrib/, examples/, demo apps),\n- includes the recurring false-positives the project already knows about, so the scan does not re-discover them.\n\nFor projects that don't already have such a model, or want to update the one they have before the scan, the ASF Security team will run a threat-model-producer recipe (Michael Scovetta's gist, imported verbatim at https://gist.github.com/scovetta/2dc9a0695c7cbcc32e23799e00d2ced3) against the project's public artifacts. The output is a draft THREAT-MODEL.md tagged with provenance — *(documented)* if it comes from your own docs, *(inferred)* if the agent guessed, *(maintainer)* if the PMC has explicitly ratified it — collected into an \"Open questions for the maintainers\" section so you can react to a draft rather than fill in a blank form. The Security team submits the draft as a PR to your repo for the PMC to review and merge. The scan is gated on the PR being merged (or the PMC supplying an equivalent).",
+    "author": "ASF Security team",
+    "notes": "For projects that say \"we don't have a SECURITY.md / our model is on the website\" — pair this with the discoverability-gate response (Topic: discoverability)."
+  },
+  {
+    "topic": "discoverability",
+    "question_pattern": "PMC says they don't have a SECURITY.md / their model is elsewhere / they use a different layout",
+    "response": "Great — just make sure the agent can mechanically follow AGENTS.md → SECURITY.md to the model at the designated commit. Before the scan is queued, our pre-flight pass against your repo confirms it can locate the threat model via that chain. If the agent cannot find the model, we'll refuse the scan and ask you to make it reachable through that discovery path before re-requesting.\n\nThis rule is non-negotiable on our side: without the model, the scan produces a false-positive rate that's not reasonably triageable, and refusing upfront beats wasting your reviewer cycles on a noise-heavy output. The PMC can keep the substantive content of the model on the website if you prefer — but AGENTS.md → SECURITY.md needs to lead the agent to it (or to a link to it).",
+    "author": "ASF Security team",
+    "notes": "Use whenever the PMC mentions any non-default location for their security model."
+  },
+  {
+    "topic": "tooling",
+    "question_pattern": "asks how Glasswing compares to GitHub code scanning / Snyk / Dependabot",
+    "response": "Complementary, not a replacement:\n\n- **GitHub code scanning** (CodeQL) does taint-tracking and pattern matching against the source. It's fast, runs per PR, and is great at well-known sink/source patterns.\n- **SCA tools** (Dependabot, Snyk OSS) look at dependency manifests against vulnerability databases.\n- **Glasswing-style agentic scans** read the code with much more semantic understanding — including configuration-driven behaviour, cross-file flows that defy static taint analysis, and project-specific misuse patterns that no signature would catch. They cost more per finding but reach places the cheaper tools miss.\n\nThe scan does not replace any of the above. PMCs that already run CodeQL etc. should keep doing so; the Glasswing run is an additional pass aimed at the long-tail of semantic-flow issues. Overlap with CodeQL findings is fine and expected — those are re-confirmation, not waste.",
+    "author": "ASF Security team",
+    "notes": "For context, see the asfyaml CodeQL discussion at https://github.com/apache/infrastructure-asfyaml/issues/94."
+  },
+  {
+    "topic": "scope",
+    "question_pattern": "asks whether the model can swallow the whole monorepo / large codebase",
+    "response": "Yes for most projects. For monorepo-scale codebases (Lucene + Solr + Tika scale, or Airflow scale) the run is chunked by directory tree or by component; the chunking is invisible to the PMC. If your project has a clean modular layout (top-level dirs are coherent components), the chunking is deterministic. Otherwise, we'll work out the chunking with the PMC contacts before kickoff.",
+    "author": "ASF Security team",
+    "notes": "Swap in the specific project's repo layout if known. For project sets that don't fit cleanly, ask the PMC about their preferred grouping."
+  },
+  {
+    "topic": "process",
+    "question_pattern": "asks what a finding looks like / what we deliver",
+    "response": "A single markdown file with multiple findings, one section per issue, each tagged with: file & line refs, the security property violated (citing the project's threat model when one exists), reproducer sketch where feasible, and a severity hint. The Security team pre-reviews to filter slop before forwarding. The PMC then triages through its normal process — the private@<pmc>.apache.org → security@<project>.apache.org → coordinated disclosure / CVE / release flow.",
+    "author": "ASF Security team",
+    "notes": "Sub <pmc> with the actual project slug before sending."
+  },
+  {
+    "topic": "process",
+    "question_pattern": "asks how to opt in / formally request a scan",
+    "response": "Send a new message (not a reply to this thread) from a @apache.org address to security@apache.org, CC private@<pmc>.apache.org, with the subject `[GLASSWING] <PMC>: request to scan repositories`. Include:\n\n- Confirmation of interest (PMC name, one message per PMC)\n- Primary + backup PMC contacts (names, @apache.org addresses)\n- @apache.org email addresses to send scan results to\n- Links to the GitHub repos to scan\n\nOnce we receive it we'll verify the requester is on the PMC roster and walk through the standard scoping + threat-model questions before queuing the scan.",
+    "author": "ASF Security team",
+    "notes": "Sub <pmc> and <PMC> with the actual project slug/name. If the requester is asking from non-apache.org, the apache.org-required language is fine here — the message is about how to send the formal request."
+  },
+  {
+    "topic": "verification",
+    "question_pattern": "scan request is missing one or more announcement-required fields",
+    "response": "Thanks — to queue the scan we still need the following items the original request didn't include:\n\n- <missing field 1>\n- <missing field 2>\n\nOnce we have those we'll continue with the verification steps.",
+    "author": "ASF Security team",
+    "notes": "Enumerate the actual missing fields specifically — don't say \"the rest of the items\"."
+  },
+  {
+    "topic": "verification",
+    "question_pattern": "scan request came from a non-@apache.org address without stating the requester's @apache.org address",
+    "response": "Thanks for the request — before we queue it we need to anchor it to your Apache identity. You wrote from `<non-apache address>`, which isn't an @apache.org address, and the message body doesn't say which @apache.org address the request should be attributed to.\n\nEither of these works:\n\n- **Resend from your @apache.org address.** Easiest path: open https://lists.apache.org/list.html?private@<pmc>.apache.org in your browser, sign in with your Apache ID, then press `c` to open the compose dialog. Address the new message to security@apache.org (with private@<pmc>.apache.org on CC), keep the same subject and body — it'll go out from your @apache.org address.\n\n- **State your @apache.org address in this thread.** A one-line \"I'm <handle>@apache.org\" is enough; we'll verify against the PMC roster.",
+    "author": "ASF Security team",
+    "notes": "Substitute the actual sending address and project slug before sending. Apply only to formal [GLASSWING] requests; for general inquiries any email is fine."
+  },
+  {
+    "topic": "verification",
+    "question_pattern": "scan request sender is not on the PMC's Whimsy roster",
+    "response": "One wrinkle before we queue this: the address `<stated address>` isn't currently on the <PMC name> PMC roster (per https://whimsy.apache.org/roster/committee/<pmc>). We require PMC-roster anchoring before queuing a scan. Could a PMC member send the request on your behalf, or could the PMC chair confirm in this thread that the scan is sanctioned by the PMC?",
+    "author": "ASF Security team",
+    "notes": "Substitute the address, PMC name, and PMC slug. Past abuse made this gate non-negotiable."
+  },
+  {
+    "topic": "verification",
+    "question_pattern": "scan request lists one repo but the PMC owns more",
+    "response": "Quick scope check before we queue this: the request lists one repo (apache/<repo>). The PMC also owns apache/<other-1>, apache/<other-2>, apache/<other-3> (and N more). Is the single-repo scope intentional — only this one this round — or were the others meant to be in scope too? Either answer is fine; we'd rather ask than guess.",
+    "author": "ASF Security team",
+    "notes": "Pull the actual repo list from the Repositories sheet (filter by the requesting PMC's slug). Keep the tone confirmational, not pushy — PMCs often want phased scans, that's fine."
+  }
+]

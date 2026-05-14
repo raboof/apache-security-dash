@@ -46,6 +46,7 @@ multiple matches rather than guessing.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import sys
 from pathlib import Path
@@ -91,6 +92,22 @@ def load_credentials() -> Credentials:
         "No valid OAuth token. Run 'sheets_writer.py setup' to "
         "authorize this machine."
     )
+
+
+def get_service():
+    creds = load_credentials()
+    return build("sheets", "v4", credentials=creds)
+
+
+CANNED_SHEET = "Canned Responses"
+CANNED_HEADERS = [
+    "Date Added",
+    "Topic",
+    "Question pattern",
+    "Response",
+    "Author",
+    "Notes",
+]
 
 
 def cmd_setup() -> None:
@@ -151,8 +168,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
     updates = json.loads(Path(args.updates).read_text())
     if not isinstance(updates, list):
         sys.exit("Updates JSON must be a list of objects.")
-    creds = load_credentials()
-    service = build("sheets", "v4", credentials=creds)
+    service = get_service()
 
     grid_cache: dict[str, list[list[str]]] = {}
     api_data = []
@@ -211,6 +227,90 @@ def cmd_apply(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_init_canned(args: argparse.Namespace) -> None:
+    service = get_service()
+    meta = service.spreadsheets().get(spreadsheetId=args.spreadsheet_id).execute()
+    existing = {s["properties"]["title"] for s in meta.get("sheets", [])}
+    if CANNED_SHEET in existing:
+        print(f"Sheet '{CANNED_SHEET}' already exists; nothing to do.")
+        return
+    if args.dry_run:
+        print(
+            f"Would create sheet '{CANNED_SHEET}' with header row: "
+            f"{CANNED_HEADERS}"
+        )
+        return
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=args.spreadsheet_id,
+        body={
+            "requests": [
+                {
+                    "addSheet": {
+                        "properties": {
+                            "title": CANNED_SHEET,
+                            "gridProperties": {"frozenRowCount": 1},
+                        }
+                    }
+                }
+            ]
+        },
+    ).execute()
+    service.spreadsheets().values().update(
+        spreadsheetId=args.spreadsheet_id,
+        range=f"{CANNED_SHEET}!A1",
+        valueInputOption="RAW",
+        body={"values": [CANNED_HEADERS]},
+    ).execute()
+    print(f"Created sheet '{CANNED_SHEET}' with header row and frozen header.")
+
+
+def cmd_append_canned(args: argparse.Namespace) -> None:
+    entries = json.loads(Path(args.entries).read_text())
+    if not isinstance(entries, list):
+        sys.exit("Entries JSON must be a list of objects.")
+    today = datetime.date.today().isoformat()
+    required = ("topic", "question_pattern", "response", "author")
+    rows = []
+    for i, entry in enumerate(entries):
+        for k in required:
+            if k not in entry:
+                sys.exit(f"Entry #{i} missing required field: {k!r}")
+        rows.append(
+            [
+                today,
+                entry["topic"],
+                entry["question_pattern"],
+                entry["response"],
+                entry["author"],
+                entry.get("notes", ""),
+            ]
+        )
+    print(f"Planned append to '{CANNED_SHEET}' ({len(rows)} row(s)):")
+    for idx, row in enumerate(rows):
+        print(f"  Entry #{idx}:")
+        for col, val in zip(CANNED_HEADERS, row):
+            display = val if len(val) <= 80 else val[:77] + "..."
+            print(f"    {col}: {display!r}")
+    if args.dry_run:
+        print(f"\nDry run — no changes written.")
+        return
+    service = get_service()
+    resp = (
+        service.spreadsheets()
+        .values()
+        .append(
+            spreadsheetId=args.spreadsheet_id,
+            range=CANNED_SHEET,
+            valueInputOption="USER_ENTERED",
+            insertDataOption="INSERT_ROWS",
+            body={"values": rows},
+        )
+        .execute()
+    )
+    updated_range = resp.get("updates", {}).get("updatedRange", "<unknown>")
+    print(f"\nAppended {len(rows)} row(s). updatedRange={updated_range}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -222,11 +322,35 @@ def main() -> None:
     apply_p.add_argument("--updates", required=True, type=Path)
     apply_p.add_argument("--dry-run", action="store_true")
 
+    init_p = sub.add_parser(
+        "init-canned-tab",
+        help=f"Create the '{CANNED_SHEET}' sheet with its header row (idempotent).",
+    )
+    init_p.add_argument("--spreadsheet-id", required=True)
+    init_p.add_argument("--dry-run", action="store_true")
+
+    appc_p = sub.add_parser(
+        "append-canned",
+        help=f"Append one or more canned-response rows to '{CANNED_SHEET}'.",
+    )
+    appc_p.add_argument("--spreadsheet-id", required=True)
+    appc_p.add_argument(
+        "--entries",
+        required=True,
+        type=Path,
+        help="Path to JSON list of {topic, question_pattern, response, author, notes?}.",
+    )
+    appc_p.add_argument("--dry-run", action="store_true")
+
     args = parser.parse_args()
     if args.cmd == "setup":
         cmd_setup()
     elif args.cmd == "apply":
         cmd_apply(args)
+    elif args.cmd == "init-canned-tab":
+        cmd_init_canned(args)
+    elif args.cmd == "append-canned":
+        cmd_append_canned(args)
 
 
 if __name__ == "__main__":

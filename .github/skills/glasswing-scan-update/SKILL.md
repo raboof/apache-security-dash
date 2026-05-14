@@ -229,6 +229,8 @@ Subcommands:
 | --- | --- |
 | `setup` | One-time OAuth installed-app flow. Reads `~/.config/asf-security/glasswing/oauth_client_secret.json`, opens a browser, writes `token.json` next to it. |
 | `apply --spreadsheet-id ID --updates PATH [--dry-run]` | Apply updates from a JSON file. `--dry-run` prints the diff and exits. |
+| `init-canned-tab --spreadsheet-id ID [--dry-run]` | Idempotently create the `Canned Responses` sheet (header row + frozen first row). Run once per workbook. |
+| `append-canned --spreadsheet-id ID --entries PATH [--dry-run]` | Append one or more canned-response rows. `Date Added` is auto-filled to today; all other fields come from the JSON. |
 
 Safety properties baked into the helper:
 
@@ -240,6 +242,93 @@ Safety properties baked into the helper:
   agent explicitly omitting the flag after user approval.
 - `USER_ENTERED` value-input-option: dates / numbers are parsed
   as if a user typed them. Pass dates as ISO `YYYY-MM-DD`.
+
+## Canned responses (workflow)
+
+The `Canned Responses` sheet accumulates reusable answer
+fragments — every time the `glasswing-scan-response` SKILL
+drafts a *novel* answer that's been approved by the user, it's
+a candidate to save here so the next similar request can reuse
+it verbatim or with light edits.
+
+### One-time bootstrap
+
+1. **Create the sheet** (idempotent — no-op if it already
+   exists):
+
+   ```
+   uv run .github/skills/glasswing-scan-update/sheets_writer.py \
+       init-canned-tab --spreadsheet-id "<id from memory>"
+   ```
+
+2. **Seed with the initial entries** distilled from this repo's
+   SKILL fragments. The seed file ships in this directory:
+
+   ```
+   uv run .github/skills/glasswing-scan-update/sheets_writer.py \
+       append-canned --spreadsheet-id "<id from memory>" \
+       --entries .github/skills/glasswing-scan-update/seed_canned_responses.json \
+       --dry-run
+   ```
+
+   Review the diff, then re-run without `--dry-run` to load.
+
+   The seed file is a bootstrap snapshot — once it's loaded,
+   the spreadsheet becomes the source of truth and the seed
+   file is no longer authoritative. Don't edit the seed file
+   to mutate live canned responses; edit the spreadsheet via
+   the response SKILL or the `apply` subcommand.
+
+### Adding a new canned response
+
+When the `glasswing-scan-response` SKILL has drafted a novel
+answer the user has approved, and the user agrees it's worth
+saving for reuse, build a one-element entries file at
+`$TMPDIR/canned-add-<timestamp>.json`:
+
+```json
+[
+  {
+    "topic": "scope",
+    "question_pattern": "asks whether monorepo can be scanned end-to-end",
+    "response": "<the canned response text — multi-paragraph markdown is fine>",
+    "author": "jarek@apache.org",
+    "notes": "Mention chunking-by-component for Lucene+Solr+Tika-scale repos."
+  }
+]
+```
+
+Then dry-run the append, show the user, and on approval apply:
+
+```
+uv run .github/skills/glasswing-scan-update/sheets_writer.py \
+    append-canned --spreadsheet-id "<id from memory>" \
+    --entries "$TMPDIR/canned-add-<timestamp>.json" \
+    --dry-run
+```
+
+Same draft-and-confirm rule as `apply` — never write without
+explicit user approval of the printed diff.
+
+### Updating an existing canned response
+
+Use `apply` matching by the `Question pattern` column (it's the
+most stable identifier for a canned row). Example updates JSON:
+
+```json
+[
+  {
+    "sheet": "Canned Responses",
+    "match": {"column": "Question pattern", "value": "asks which threat-modeling framework we expect — STRIDE / LINDDUN / PASTA"},
+    "set": {"Response": "<new text>", "Author": "<editor's address>"}
+  }
+]
+```
+
+If multiple rows share the same `Question pattern` (they
+shouldn't, but it can happen if the sheet wasn't curated), the
+helper aborts rather than guessing — manually disambiguate
+first by adjusting the patterns.
 
 ## Style notes
 
