@@ -32,8 +32,7 @@ The updates JSON is a list of objects of the form:
         "match": {"column": "PMC Slug", "value": "apisix"},
         "set": {
           "Scan Requested": "Yes",
-          "Date Requested": "2026-05-14",
-          "Status": "scan queued"
+          "Request date": "2026-05-14"
         }
       },
       ...

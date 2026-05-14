@@ -1,6 +1,6 @@
 ---
 name: glasswing-scan-update
-description: Apply updates to the Glasswing / Mythos scan-outreach tracker (Piotr Karwasz's Google Sheet) on behalf of the ASF Security team — mark a PMC as scan-requested, fill in Date Requested / Date Scan Received / Status, set Security Model, update a repo's PMC mapping, etc. Uses a bundled Python helper that authenticates via OAuth as the running user (Claude Workspace MCP for Google Drive is read-only and cannot do these writes). Always reads the current row, shows a diff, and waits for explicit confirmation before writing. Use whenever Jarek says "mark PMC X as requested", "set the scan date for Y", "update the status field for Z in the tracker", or anything else that mutates a row in the sheet.
+description: Apply updates to the Glasswing / Mythos scan-outreach tracker (Piotr Karwasz's Google Sheet) on behalf of the ASF Security team — mark a PMC as scan-requested, fill in Request date / Date scan requested / Date scan received / Forwarded scan to PMC, set Security Model + Security model verified, update a repo's PMC mapping, etc. Uses a bundled Python helper that authenticates via OAuth as the running user (Claude Workspace MCP for Google Drive is read-only and cannot do these writes). Always reads the current row, shows a diff, and waits for explicit confirmation before writing. Use whenever Jarek says "mark PMC X as requested", "set the scan date for Y", "the scan for Z is back / has been forwarded", or anything else that mutates a row in the sheet.
 ---
 
 # Glasswing scan-update SKILL
@@ -18,11 +18,19 @@ Google Sheets API v4 directly.
 ## When to invoke
 
 - Jarek says "mark PMC X as scan-requested" (or any equivalent
-  mutation of the `Scan Requested`, `Date Requested`,
-  `Date Scan Received`, `Status`, `Contact Person`,
-  `Backup contact`, `Security Model`, or `Notes` columns).
-- A scan completes and the tracker needs the delivery date filled
-  in plus a `Status` change.
+  mutation of the `Scan Requested`, `Request date`,
+  `Date scan requested`, `Date scan received`,
+  `Forwarded scan to PMC`, `Contact Person`, `Backup contact`,
+  `Security Model`, `Security model verified`, or `Notes`
+  columns).
+- The scan for a PMC progresses through one of its workflow
+  stages: request received (`Request date`), submitted to
+  Glasswing (`Date scan requested`), results back
+  (`Date scan received`), or forwarded to the PMC
+  (`Forwarded scan to PMC`). Each transition writes one or more
+  date cells.
+- The pre-flight discoverability check passes — set
+  `Security model verified`.
 - A repo needs its `PMC Slug` / `PMC Agreed` / `Security model`
   column updated (e.g. an `(unmapped)` repo gets mapped to its
   owning PMC after research).
@@ -152,8 +160,7 @@ private mailing-list bouncer creds, etc.). The
        "match": {"column": "PMC Slug", "value": "apisix"},
        "set": {
          "Scan Requested": "Yes",
-         "Date Requested": "2026-05-14",
-         "Status": "scan queued"
+         "Request date": "2026-05-14"
        }
      }
    ]
@@ -176,7 +183,7 @@ private mailing-list bouncer creds, etc.). The
 
    ```
    PMCs row 17 (PMC Slug='apisix') · Scan Requested: '' -> 'Yes'   [PMCs!C17]
-   PMCs row 17 (PMC Slug='apisix') · Date Requested: '' -> '2026-05-14'   [PMCs!D17]
+   PMCs row 17 (PMC Slug='apisix') · Request date: '' -> '2026-05-14'   [PMCs!D17]
    ...
    Dry run — no changes written. (N cells would change.)
    ```
@@ -186,8 +193,7 @@ private mailing-list bouncer creds, etc.). The
    > Proposed updates to the Mythos tracker:
    >
    > - PMC apisix · Scan Requested: empty → `Yes`
-   > - PMC apisix · Date Requested: empty → `2026-05-14`
-   > - PMC apisix · Status: empty → `scan queued`
+   > - PMC apisix · Request date: empty → `2026-05-14`
    >
    > Apply? (yes / no / edits)
 
@@ -340,26 +346,27 @@ first by adjusting the patterns.
   user approval of the combined diff. "While you're in there,
   also set X" is the wrong instinct here — every change goes
   through the same diff-and-confirm gate.
-- The `Status` cell is free-form. If the user is unsure what to
-  put there, suggest 1-2 short labels (e.g. `awaiting threat
-  model`, `scan queued`, `report under PMC review`,
-  `findings triaged`, `closed`) but let the user pick — the
-  skill does not impose a state machine.
-- `Date Requested` and `Date Scan Received` are dates, not
-  datetimes. Use `YYYY-MM-DD`. If a user gives a relative date
-  ("today", "yesterday"), resolve to the absolute date
-  *before* writing it (the same way memory entries resolve
-  relative dates).
+- The PMC sheet has no free-form `Status` cell — workflow stage
+  is implicit from which of the four date columns
+  (`Request date`, `Date scan requested`, `Date scan received`,
+  `Forwarded scan to PMC`) is the last one filled. Don't
+  invent a Status column; write the relevant date instead.
+- All four date columns plus `Security model verified` are
+  dates, not datetimes. Use `YYYY-MM-DD`. If a user gives a
+  relative date ("today", "yesterday"), resolve to the
+  absolute date *before* writing it (the same way memory
+  entries resolve relative dates).
 
 ## Examples of bad updates (avoid)
 
 - Updating the row by `PMC Name` instead of `PMC Slug`. The
   slug is the join key with the repos sheet; updating by name
   invites typos and capitalization mismatches.
-- Filling `Date Scan Received` *before* the scan was actually
-  delivered — the cell exists to track real delivery turnaround,
-  and pre-filling it pollutes the metric. Wait until the scan
-  result markdown has been sent to the PMC.
+- Filling `Date scan received` or `Forwarded scan to PMC`
+  before the underlying event actually happened — those cells
+  exist to track real leg turnaround, and pre-filling them
+  pollutes the metric. Each date column should be written only
+  when its event genuinely occurred.
 - Setting `Scan Requested = Yes` for a PMC that has only
   expressed informal interest (e.g. on a public mailing list).
   The column means "the PMC sent a `[GLASSWING]` request from

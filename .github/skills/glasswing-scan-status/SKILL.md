@@ -49,28 +49,36 @@ The workbook has up to four sheets, in order:
    `criticality_score` 2025-07-25 snapshot for scores). Useful
    for stating provenance in the summary; otherwise informational.
 
-2. **PMCs** (~210 rows) — one row per Apache PMC. Columns:
+2. **PMCs** (~210 rows) — one row per Apache PMC. Columns in
+   sheet order:
 
    | Column | Meaning |
    | --- | --- |
    | `PMC Name` | Full name, e.g. `Apache Logging Services`. |
    | `PMC Slug` | Short identifier used as the join key on the repos sheet, e.g. `logging`. |
    | `Scan Requested` | `Yes` if the PMC has formally opted in via the `[GLASSWING]` request flow; blank otherwise. |
-   | `Date Requested` | Date the PMC sent the `[GLASSWING]` request (or otherwise formally opted in). Blank if not yet requested. Used for measuring backlog age. |
-   | `Date Scan Received` | Date the PMC received the scan-result markdown back from the Security team. Blank if the scan hasn't completed yet. The gap between `Date Requested` and `Date Scan Received` is the turnaround. |
-   | `Status` | Free-form short text describing the current state — e.g. `awaiting threat model`, `scan queued`, `report under PMC review`, `findings triaged`, `closed`. The skill treats this as opaque text in the summary; it doesn't try to parse a state machine out of it. |
+   | `Request date` | Date the PMC's `[GLASSWING]` request arrived at `security@apache.org`. `YYYY-MM-DD`. Blank if not yet requested. |
    | `Contact Person` | Primary PMC contact — name + `@apache.org` address. |
    | `Backup contact` | Backup PMC contact, same shape. |
    | `Security Model` | Free-text name of the threat model the PMC has agreed to be scanned against (e.g. `Logging Services Security Model`). Blank if the PMC has not yet supplied or accepted a model. |
+   | `Security model verified` | Marker (date or `Yes`) for when the Security team's pre-flight pass confirmed the model is mechanically discoverable via `AGENTS.md` → `SECURITY.md` (the discoverability gate). Blank if not yet verified. |
+   | `Date scan requested` | Date the Security team submitted the scan run to Glasswing. `YYYY-MM-DD`. Blank if not yet queued. |
+   | `Date scan received` | Date the scan output came back from Glasswing to the Security team. `YYYY-MM-DD`. Blank if not yet received. |
+   | `Forwarded scan to PMC` | Date (or `Yes`) marking when the Security team forwarded the scan output to the PMC's listed recipients. Blank if not yet forwarded. |
    | `Notes` | Free-text. |
 
-   The three date/status columns (`Date Requested`,
-   `Date Scan Received`, `Status`) are recent additions to the
-   workbook. If they're absent in a fetched copy (older snapshot,
-   or Piotr hasn't merged the column-add yet), the skill should
-   gracefully degrade: skip the turnaround calculation and the
-   status-bucket roll-up, and surface a one-line note that those
-   columns are missing rather than failing.
+   The four date-tracking columns (`Request date`,
+   `Date scan requested`, `Date scan received`,
+   `Forwarded scan to PMC`) and the `Security model verified`
+   marker were added by Jarek by hand after the workbook was
+   first generated — they split the original single-date model
+   into four observable legs (request received → submitted to
+   Glasswing → results back → results forwarded to PMC), so the
+   team can see queue / vendor / forwarding lag separately. If
+   they're absent in an older snapshot, the skill should
+   gracefully degrade: skip the turnaround-leg computation and
+   surface a one-line note that the columns are missing rather
+   than failing.
 
 3. **Repositories** (~3,107 rows) — one row per public repo in
    `github.com/orgs/apache`. Columns:
@@ -152,28 +160,38 @@ output markdown), not the outreach tracker.
 
 4. **Compute the summary.** At minimum:
    - **Top-line counts**: total PMCs, PMCs with `Scan Requested =
-     Yes`, PMCs with a non-empty `Security Model`, PMCs with a
-     primary contact filled in, PMCs whose `Date Scan Received`
-     is non-empty (i.e. scan completed).
+     Yes`, PMCs with a non-empty `Security Model`, PMCs with
+     `Security model verified` set, PMCs with a primary contact
+     filled in, PMCs whose `Date scan received` is non-empty
+     (results back from Glasswing), PMCs whose
+     `Forwarded scan to PMC` is non-empty (fully closed out).
    - **Active engagements**: for every PMC where
      `Scan Requested = Yes`, list `PMC Name`, primary contact,
-     `Security Model` presence, `Date Requested`,
-     `Date Scan Received` (or `—` if blank), and `Status`. Flag
+     `Security Model` + `Security model verified` status,
+     `Request date`, `Date scan requested`, `Date scan received`,
+     and `Forwarded scan to PMC` (use `—` for blank cells). Flag
      rows where the scan is requested but no model is yet
-     documented — that's the work the Security team has next.
-   - **Turnaround**: for PMCs where both `Date Requested` and
-     `Date Scan Received` are filled, compute the gap in days
-     and show the min / median / max across the cohort. Skip
-     this block silently if no row has both dates set.
-   - **Backlog age**: for PMCs with `Date Requested` filled but
-     `Date Scan Received` blank, sort by `Date Requested`
+     documented or verified — that's the work the Security team
+     has next.
+   - **Turnaround legs** (only show legs that have at least one
+     row with both endpoints set; skip the rest silently):
+     - *Queue lag*: `Request date` → `Date scan requested` —
+       how long requests sit in the Security team's queue.
+     - *Vendor lag*: `Date scan requested` → `Date scan received`
+       — how long Glasswing takes per run.
+     - *Forwarding lag*: `Date scan received` →
+       `Forwarded scan to PMC` — how long results sit in
+       pre-review.
+     - *End-to-end*: `Request date` → `Forwarded scan to PMC`.
+
+     For each, report min / median / max in days.
+   - **Backlog age**: for PMCs with `Request date` filled but
+     `Forwarded scan to PMC` blank, sort by `Request date`
      ascending and show the top few — these are the longest-
-     waiting requests. Use this as an internal pressure signal,
-     not as something to paste into a PMC-facing reply.
-   - **Status bucket roll-up**: a small frequency table of the
-     `Status` free-text values (case-insensitive grouping; do
-     not try to normalize). Helps Piotr/Jarek see how many
-     PMCs are at each informal stage at a glance.
+     waiting requests. Tag each by the next unfilled date column
+     (`awaiting submit` / `scan running` / `pending forward`)
+     so the bottleneck is visible at a glance. Internal pressure
+     signal; do not paste into a PMC-facing reply.
    - **Repository coverage**: of the repos owned by
      `Scan Requested = Yes` PMCs, how many have `PMC Agreed =
      Yes` (this is the actual scan-queue size). List the top ~10
@@ -206,29 +224,27 @@ output markdown), not the outreach tracker.
 - PMCs in tracker: <total>
 - PMCs with scan requested: <n> (<%>)
 - PMCs with a documented Security Model: <n>
+- PMCs with Security model verified: <n>
 - PMCs with a primary contact recorded: <n>
-- PMCs whose scan has been delivered: <n>
+- PMCs whose scan has come back from Glasswing: <n>
+- PMCs whose scan has been forwarded to the PMC: <n>
 
 ## Active engagements
-| PMC | Primary contact | Security Model | Date Requested | Date Scan Received | Status |
-|---|---|---|---|---|---|
-| Apache <name> | <contact> | <model or "—"> | YYYY-MM-DD | YYYY-MM-DD or "—" | <free-text status> |
+| PMC | Primary contact | Security Model | Model verified | Request date | Date scan requested | Date scan received | Forwarded |
+|---|---|---|---|---|---|---|---|
+| Apache <name> | <contact> | <model or "—"> | <date or "—"> | YYYY-MM-DD | YYYY-MM-DD or "—" | YYYY-MM-DD or "—" | YYYY-MM-DD or "—" |
 | …
 
-## Turnaround (completed scans only)
-- Scans completed: <n>
-- Days from request to delivery — min: <d>, median: <d>, max: <d>
+## Turnaround legs (where data is present)
+- Queue lag (request → submit): min/median/max days
+- Vendor lag (submit → result): min/median/max days
+- Forwarding lag (result → forward): min/median/max days
+- End-to-end (request → forward): min/median/max days
 
-## Backlog age (requested, not yet delivered)
-| PMC | Date Requested | Days waiting | Status |
+## Backlog age (requested, not yet forwarded)
+| PMC | Request date | Days waiting | Next bottleneck |
 |---|---|---|---|
-| Apache <name> | YYYY-MM-DD | <d> | <free-text status> |
-| …
-
-## Status bucket roll-up
-| Status (verbatim) | PMC count |
-|---|---|
-| <"awaiting threat model" / "scan queued" / …> | <n> |
+| Apache <name> | YYYY-MM-DD | <d> | <"awaiting submit" / "scan running" / "pending forward"> |
 | …
 
 ## Repository coverage (within scan-requested PMCs)
