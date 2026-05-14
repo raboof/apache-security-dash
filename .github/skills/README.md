@@ -54,6 +54,7 @@ duplicate the content.
 | Skill | Purpose |
 | --- | --- |
 | [`glasswing-scan-response/`](glasswing-scan-response/SKILL.md) | Draft replies to PMC inquiries about the Glasswing scan offer — what model is being used, what threat-model framework is expected, how the scan compares to GitHub code scanning / SCA / etc. Captures the operational rules (CC `security@apache.org`, require `@apache.org` from requester, draft-before-send, attach threat-model drafts only on request). |
+| [`glasswing-scan-status/`](glasswing-scan-status/SKILL.md) | Read-only rollup of the Glasswing / Mythos scan-outreach effort. Pulls the shared "Mythos scan" Google Sheet (Piotr Karwasz's tracker) via the Google Drive MCP, then summarizes: PMCs opted in, contacts, security-model status, request → delivery turnaround, backlog age, status-bucket roll-up, repo coverage, unmapped high-criticality repos, prospecting list. The sheet's file ID is kept in user-scope reference memory (`mythos-tracker`), not in this repo. |
 | [`threat-model-producer/`](threat-model-producer/SKILL.md) | Produce a project threat model — the *implicit contract* between the project and downstream users (what is in scope, what is out, what is claimed, what is disclaimed). Imported verbatim from [Michael Scovetta's gist](https://gist.github.com/scovetta/2dc9a0695c7cbcc32e23799e00d2ced3). |
 
 ## Using a SKILL
