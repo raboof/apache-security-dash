@@ -202,35 +202,100 @@ Reply fragment:
 > chair confirm in this thread that the scan is sanctioned by
 > the PMC?
 
-### Gate 4 — Scope completeness check (single repo, more exist)
+### Gate 4 — Scope confirmation against the PMC's active repos
 
-If the request lists exactly one repository **and** the PMC
-owns more than one public `github.com/apache` repo, do not
-silently accept the narrow scope — ask the requester to confirm
-this is intentional.
+**This gate fires on every request, not only on under-specified
+ones.** Even when the request enumerates a clear list of repos,
+the SKILL must cross-check that list against the PMC's *active*
+repo set (defined below) and surface any discrepancy as a
+scope-confirmation question. A common failure mode is the
+PMC naming "the obvious ones" and forgetting an active side
+repo (typically a Maven plugin, a connectors module, a docs
+site, or a benchmarks repo); we'd rather ask once than scan
+incomplete and have to re-queue.
 
-Source for "what repos does this PMC own": the Mythos tracker's
-Repositories sheet (use the `glasswing-scan-status` SKILL to
-fetch it — it already has the PMC-slug → repo mapping); or
-query <https://github.com/orgs/apache/repositories?q=<pmc-prefix>>
-directly. Cross-check by `PMC Slug` match on the repos sheet.
+There are three cases; only case (a) needs no follow-up.
+
+| Case | What the request looks like | Action |
+| --- | --- | --- |
+| (a) Request lists repos AND the PMC has no other *active* repos beyond those | Accept the list as-is; write it to the PMC's `Repositories requested` cell verbatim. |
+| (b) Request lists repos AND the PMC has additional *active* repos not in the list — **including the special sub-case where the request lists only one repo while the PMC has multiple active repos** | Ask the PMC to confirm scope. Send back the full list of their additional active repos and ask, explicitly: *"are you sure you want only the repos you listed, and not these other active ones?"* Wait for confirmation before writing the `Repositories requested` cell. |
+| (c) Request doesn't enumerate any repos (just expresses PMC interest) | Ask the PMC to enumerate. Pre-populate the suggestion with the PMC's active repos as a starting point; let them subset / extend. |
+
+**"Active" definition.** A repo counts as active if it has a
+non-blank `Criticality Score (%)` cell on the Repositories
+sheet of the Mythos tracker. OSSF's criticality_score indexes
+only repos with meaningful recent activity, so a non-blank
+score is a reliable "this repo is alive enough to need scan
+coverage" signal. Repos with a blank score (sandbox / Attic /
+abandoned) don't need to be in scope and shouldn't trigger
+this gate.
+
+**Source for "what repos does the PMC own (active)"**: the
+Mythos tracker's Repositories sheet — use the
+`glasswing-scan-status` SKILL to fetch it. Filter by `PMC
+Slug` matching the requester's PMC; keep only rows where
+`Criticality Score (%)` is non-blank.
+
+**Explain what the scope is *for*.** PMC members often hear
+"scope confirmation" and think it's a procedural step. It
+isn't — it determines which repos are run through the two
+pre-flight checks (model discoverability + completeness) and
+which repos the agentic scan will subsequently look at. The
+reply must say so explicitly so the PMC's confirmation is
+informed.
 
 This is a confirmation, not a refusal. Keep it light — PMCs
 commonly forget side repos (docs sites, client SDKs, sample
 apps) and would rather be asked than scanned incomplete.
 
-Reply fragment:
+Reply fragment (case b — request narrower than active set):
 
-> Quick scope check before we queue this: the request lists one
-> repo (`apache/<repo>`). The PMC also owns
-> `apache/<other-1>`, `apache/<other-2>`, `apache/<other-3>` (…
-> N more). Is the single-repo scope intentional — only this one
-> this round — or were the others meant to be in scope too?
-> Either answer is fine; we'd rather ask than guess.
+> Quick scope check before we queue this. The request lists:
+>
+>   - apache/<repo-1>
+>   - apache/<repo-2>
+>   - ...
+>
+> The PMC also has these additional active repos under
+> github.com/apache (recent commits + meaningful stars or
+> OSSF criticality score in parentheses):
+>
+>   - apache/<other-1> (<score / stars / "active YYYY-MM">)
+>   - apache/<other-2> (...)
+>   - apache/<other-3> (...)
+>   - (... N more)
+>
+> **Are you sure you want only the repos you listed, and not
+> these other active ones?** Either answer is fine; we'd
+> rather ask than guess. The list you confirm here is what
+> we'll run pre-flight (model discoverability +
+> completeness) against for each repo, and what we'll pass to
+> the scan vendor as the actual scope.
 
-If the PMC confirms "yes, just this one this round", proceed
-without further pressure. If they say "all of them", revise the
-queued scope before kickoff.
+Reply fragment (case c — no repos enumerated):
+
+> Quick scope check before we queue this — the request didn't
+> enumerate which repos to scan, just PMC interest. The PMC
+> owns these active repos under github.com/apache (OSSF
+> criticality score in parentheses):
+>
+>   - apache/<repo-1> (<score>%)
+>   - apache/<repo-2> (<score>%)
+>   - ...
+>
+> Which of these should be in scope? The list you confirm
+> here determines which repos we run pre-flight against
+> (model discoverability + completeness) and what we pass to
+> the scan vendor as the actual scope. Subset or include all
+> — either is fine.
+
+**After scope is confirmed**, write the confirmed list to the
+PMC's `Repositories requested` cell (newline-separated full URLs) via
+`glasswing-scan-update`'s `apply` flow. That cell becomes the
+canonical scope: `glasswing-model-verify` reads it,
+`glasswing-scan-submit` reads it, no one re-derives scope from
+elsewhere.
 
 ## Canned responses (consult first, contribute back)
 
@@ -476,13 +541,34 @@ request before drafting a reply.
      the reply is a short confirmation that the request meets
      entry criteria and will be queued.
 
-3. **Pull out their questions.** Quote each one verbatim from their
-   message (use `> ` blockquote). For each question, **first**
-   check the `Canned Responses` sheet for a semantic match (see
-   the **Canned responses** section above); if a match exists,
+3. **Pull out their questions and propose answers — always.**
+   Scan the request body for any sentence that ends in `?` or
+   that is phrased as a question even without punctuation
+   ("What is the minimum we need to do", "We do not want to
+   have to ... — is there a way", "Can the scan ...", "How
+   should we ..."). Quote each one verbatim from their message
+   (use `> ` blockquote). For each question, **first** check
+   the `Canned Responses` sheet for a semantic match (see the
+   **Canned responses** section above); if a match exists,
    base the answer on the canned `Response`. If not, address
    the question with the matching fragment from below, lightly
    reworded for the thread's register.
+
+   If the request *embeds* a question inside a larger
+   logistical email (which is common — Mark Thomas's Tomcat
+   request, for example, listed contacts + repos + model URL
+   and slipped in a single "what is the minimum we need to do"
+   line in the middle), it's especially important not to miss
+   the question. The reply that addresses logistics but
+   silently ignores the embedded question reads as inattentive
+   and forces the requester to re-ask. Pull every question out
+   explicitly even if there's just one.
+
+   A reply that quotes the requester's questions back as
+   blockquotes with answers underneath is the canonical shape;
+   resist the urge to "address them inline in the prose" — the
+   blockquote-and-answer pattern makes it easy for the
+   requester to scan and confirm we got their question right.
 
 4. **Decide whether a threat-model draft is needed in this reply.**
    - If the requester is asking process / framework questions only

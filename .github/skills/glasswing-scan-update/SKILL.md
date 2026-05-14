@@ -18,7 +18,8 @@ Google Sheets API v4 directly.
 ## When to invoke
 
 - Jarek says "mark PMC X as scan-requested" (or any equivalent
-  mutation of the `Scan Requested`, `Request date`,
+  mutation of the `Scan Requested`, `Repositories requested`,
+  `Repositories submitted`, `Request date`,
   `Date scan requested`, `Date scan received`,
   `Forwarded scan to PMC`, `Contact Person`, `Backup contact`,
   `Security Model`, `Security model verified`, or `Notes`

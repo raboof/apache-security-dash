@@ -57,6 +57,8 @@ The workbook has up to four sheets, in order:
    | `PMC Name` | Full name, e.g. `Apache Logging Services`. |
    | `PMC Slug` | Short identifier used as the join key on the repos sheet, e.g. `logging`. |
    | `Scan Requested` | `Yes` if the PMC has formally opted in via the `[GLASSWING]` request flow; blank otherwise. |
+   | `Repositories requested` | The repos the PMC asked for / confirmed as in-scope for the scan — what they *want* scanned. One URL per line (newline-separated). Populated by `glasswing-scan-response` gate 4 after the PMC confirms scope. Empty when scope hasn't been confirmed yet. This is the *input* scope; model-verify reads it. |
+   | `Repositories submitted` | The repos actually submitted to the scan vendor (Mirko) — typically the subset of `Repositories requested` that passed pre-flight discoverability + completeness. Written by `glasswing-scan-update` after the human sends the Mirko request email from `glasswing-scan-submit`. May be smaller than `Repositories requested` when some repos couldn't be verified before the first submit (their AGENTS.md / SECURITY.md was missing and the fix is still in flight); those land in a later batch. |
    | `Request date` | Date the PMC's `[GLASSWING]` request arrived at `security@apache.org`. `YYYY-MM-DD`. Blank if not yet requested. |
    | `Contact Person` | Primary PMC contact — name + `@apache.org` address. |
    | `Backup contact` | Backup PMC contact, same shape. |

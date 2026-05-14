@@ -310,6 +310,124 @@ def cmd_append_canned(args: argparse.Namespace) -> None:
     print(f"\nAppended {len(rows)} row(s). updatedRange={updated_range}")
 
 
+def cmd_rename_column(args: argparse.Namespace) -> None:
+    service = get_service()
+    grid = fetch_sheet_grid(service, args.spreadsheet_id, args.sheet)
+    if not grid:
+        sys.exit(f"Sheet '{args.sheet}' has no header row.")
+    header = grid[0]
+    if args.new in header:
+        sys.exit(f"Header '{args.new}' already exists; refusing to overwrite.")
+    if args.old not in header:
+        sys.exit(
+            f"Header '{args.old}' not found in sheet '{args.sheet}'. "
+            f"Available: {header}"
+        )
+    col_idx = header.index(args.old)
+    a1 = f"{args.sheet}!{col_letter(col_idx)}1"
+    print(f"Planned rename: {a1}  '{args.old}' -> '{args.new}'")
+    if args.dry_run:
+        print("Dry run — no changes written.")
+        return
+    service.spreadsheets().values().update(
+        spreadsheetId=args.spreadsheet_id,
+        range=a1,
+        valueInputOption="RAW",
+        body={"values": [[args.new]]},
+    ).execute()
+    print(f"Renamed column at {a1}.")
+
+
+def cmd_insert_column(args: argparse.Namespace) -> None:
+    service = get_service()
+    meta = service.spreadsheets().get(spreadsheetId=args.spreadsheet_id).execute()
+    sheet_meta = next(
+        (s for s in meta.get("sheets", []) if s["properties"]["title"] == args.sheet),
+        None,
+    )
+    if sheet_meta is None:
+        sys.exit(f"Sheet '{args.sheet}' not found.")
+    sheet_id = sheet_meta["properties"]["sheetId"]
+    grid = fetch_sheet_grid(service, args.spreadsheet_id, args.sheet)
+    if not grid:
+        sys.exit(f"Sheet '{args.sheet}' has no header row; cannot insert.")
+    header = grid[0]
+    if args.header in header:
+        print(
+            f"Header '{args.header}' already exists at column "
+            f"{col_letter(header.index(args.header))}; skipping."
+        )
+        return
+    if args.after not in header:
+        sys.exit(
+            f"Anchor column '{args.after}' not found in header. Available: {header}"
+        )
+    insert_idx = header.index(args.after) + 1
+    a1_new = f"{args.sheet}!{col_letter(insert_idx)}1"
+    print(
+        f"Planned: insert new column at index {insert_idx} (after "
+        f"'{args.after}'); write header '{args.header}' to {a1_new}."
+    )
+    if args.dry_run:
+        print("Dry run — no changes written.")
+        return
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=args.spreadsheet_id,
+        body={
+            "requests": [
+                {
+                    "insertDimension": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "dimension": "COLUMNS",
+                            "startIndex": insert_idx,
+                            "endIndex": insert_idx + 1,
+                        },
+                        "inheritFromBefore": True,
+                    }
+                }
+            ]
+        },
+    ).execute()
+    service.spreadsheets().values().update(
+        spreadsheetId=args.spreadsheet_id,
+        range=a1_new,
+        valueInputOption="RAW",
+        body={"values": [[args.header]]},
+    ).execute()
+    print(f"Inserted column '{args.header}' at {a1_new}.")
+
+
+def cmd_add_columns(args: argparse.Namespace) -> None:
+    service = get_service()
+    grid = fetch_sheet_grid(service, args.spreadsheet_id, args.sheet)
+    if not grid:
+        sys.exit(f"Sheet '{args.sheet}' is empty; cannot extend header.")
+    header = list(grid[0])
+    additions = []
+    for h in args.headers:
+        if h in header:
+            print(f"Header '{h}' already exists at column {col_letter(header.index(h))}; skipping.")
+            continue
+        additions.append(h)
+    if not additions:
+        print("No new columns to add.")
+        return
+    start_idx = len(header)
+    a1 = f"{args.sheet}!{col_letter(start_idx)}1:{col_letter(start_idx + len(additions) - 1)}1"
+    print(f"Planned header writes to {a1}: {additions}")
+    if args.dry_run:
+        print("Dry run — no changes written.")
+        return
+    service.spreadsheets().values().update(
+        spreadsheetId=args.spreadsheet_id,
+        range=a1,
+        valueInputOption="RAW",
+        body={"values": [additions]},
+    ).execute()
+    print(f"Added {len(additions)} column(s) at {a1}.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -341,6 +459,44 @@ def main() -> None:
     )
     appc_p.add_argument("--dry-run", action="store_true")
 
+    rencol_p = sub.add_parser(
+        "rename-column",
+        help="Rename a column header (cell at row 1 of the named column).",
+    )
+    rencol_p.add_argument("--spreadsheet-id", required=True)
+    rencol_p.add_argument("--sheet", required=True, help="Sheet name (e.g. 'PMCs').")
+    rencol_p.add_argument("--old", required=True, help="Current header text.")
+    rencol_p.add_argument("--new", required=True, help="New header text.")
+    rencol_p.add_argument("--dry-run", action="store_true")
+
+    inscol_p = sub.add_parser(
+        "insert-column",
+        help="Insert a new column at a specific position in a sheet (idempotent).",
+    )
+    inscol_p.add_argument("--spreadsheet-id", required=True)
+    inscol_p.add_argument("--sheet", required=True, help="Sheet name (e.g. 'PMCs').")
+    inscol_p.add_argument(
+        "--after",
+        required=True,
+        help="Header of the column the new one should be inserted directly after.",
+    )
+    inscol_p.add_argument("--header", required=True, help="Header for the new column.")
+    inscol_p.add_argument("--dry-run", action="store_true")
+
+    addcol_p = sub.add_parser(
+        "add-columns",
+        help="Append new column headers to an existing sheet (idempotent per header).",
+    )
+    addcol_p.add_argument("--spreadsheet-id", required=True)
+    addcol_p.add_argument("--sheet", required=True, help="Sheet name (e.g. 'PMCs').")
+    addcol_p.add_argument(
+        "--headers",
+        required=True,
+        nargs="+",
+        help="One or more header strings to append (in order).",
+    )
+    addcol_p.add_argument("--dry-run", action="store_true")
+
     args = parser.parse_args()
     if args.cmd == "setup":
         cmd_setup()
@@ -350,6 +506,12 @@ def main() -> None:
         cmd_init_canned(args)
     elif args.cmd == "append-canned":
         cmd_append_canned(args)
+    elif args.cmd == "add-columns":
+        cmd_add_columns(args)
+    elif args.cmd == "insert-column":
+        cmd_insert_column(args)
+    elif args.cmd == "rename-column":
+        cmd_rename_column(args)
 
 
 if __name__ == "__main__":

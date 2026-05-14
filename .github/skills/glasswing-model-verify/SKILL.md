@@ -1,6 +1,6 @@
 ---
 name: glasswing-model-verify
-description: Pre-flight verification step in the Glasswing scan pipeline. Given a PMC's nominated security model (file path or URL in their repo), check two things — (1) discoverability via AGENTS.md -> SECURITY.md so the scan agent can mechanically find it, and (2) completeness against the threat-model-producer rubric (the SKILL bound in this same repo). Produce a concrete remediation: either open a GitHub issue listing the gaps, or — when the gap is mechanical (e.g. AGENTS.md missing the link line, or a small set of missing sections) — generate the additions via threat-model-producer and open a PR with the diff. After verification passes, hand off to glasswing-scan-update to flip the `Security model verified` cell for that PMC. Use whenever a PMC nominates a security model (in their [GLASSWING] request, in a reply, or in their repo) and the Security team needs to confirm it before queuing the scan. Read-only assessment by default; external writes (issue / PR / spreadsheet) are gated on explicit user approval.
+description: Pre-flight verification step in the Glasswing scan pipeline. Given a PMC's nominated security model (file path or URL in their repo), check two things — (1) discoverability via AGENTS.md -> SECURITY.md so the scan agent can mechanically find it, and (2) completeness against the threat-model-producer rubric (the SKILL bound in this same repo). Produce a concrete remediation: either draft an email reply to the original PMC thread describing where verification stands and proposing improvements, or — when the gap is mechanical (e.g. AGENTS.md missing the link line, or a small set of missing sections) — generate the additions via threat-model-producer and open a PR with the diff. After verification passes, hand off to glasswing-scan-update to flip the `Security model verified` cell for that PMC. Use whenever a PMC nominates a security model (in their [GLASSWING] request, in a reply, or in their repo) and the Security team needs to confirm it before queuing the scan. Read-only assessment by default; external writes (PR / email / spreadsheet) are gated on explicit user approval.
 ---
 
 # Glasswing model-verify SKILL
@@ -32,15 +32,22 @@ no model, no scan).
 
 - **PMC slug** (e.g. `logging`, `apisix`) — used to locate the
   PMC's row in the tracker afterwards.
-- **Repo** (e.g. `apache/logging-log4j2`) — the GitHub repo to
-  assess.
-- **Commit / branch** (default `HEAD` of the default branch) —
-  the scan binds to a specific commit, and the model is read at
-  that commit; pin if the PMC named one.
-- **Nominated model path or URL** (optional) — if the PMC said
-  "our model is at `docs/security/threat-model.md`" or pointed
-  at a project-site page, start there; otherwise the SKILL
-  derives the path from `AGENTS.md` (or its absence).
+- **Repo list** — read from the PMC's `Repositories requested` cell in
+  the tracker (newline-separated URLs). If that cell is empty,
+  the SKILL refuses: scope must be confirmed by
+  `glasswing-scan-response` (gate 4) *before* verification
+  runs. Every repo in the list gets the same two checks (A and
+  B) independently — they can have different `AGENTS.md` /
+  `SECURITY.md` shapes and different completeness profiles, and
+  the scan agent will run against each one separately.
+- **Commit / branch** (per-repo, default `HEAD` of each repo's
+  default branch) — the scan binds to a specific commit, and
+  the model is read at that commit; pin if the PMC named one.
+- **Nominated model path or URL** (optional, per-repo) — if the
+  PMC said "our model is at `docs/security/threat-model.md`"
+  or pointed at a project-site page, start there; otherwise
+  the SKILL derives the path from each repo's `AGENTS.md` (or
+  its absence).
 
 ## Hard rules (do not skip)
 
@@ -53,9 +60,38 @@ no model, no scan).
 2. **One remediation per failing check, not a grab bag.** If
    discoverability fails *and* completeness fails, produce two
    separate artefacts (e.g. one PR adding the `AGENTS.md` link,
-   one issue listing the missing model sections) rather than one
-   omnibus PR that the PMC has to negotiate as a unit. Small,
+   one email listing the missing model sections) rather than
+   one omnibus thing the PMC has to negotiate as a unit. Small,
    targeted asks land faster.
+
+   **Why email instead of a GitHub issue.** Three reasons,
+   any one of which would be enough:
+
+   - **Many Apache projects have issues disabled** on their
+     GitHub repository (`apache/tomcat` is the textbook
+     example) — the PMC tracks work elsewhere (JIRA, mailing
+     list, project Bugzilla). A GitHub issue against such a
+     repo cannot be filed at all.
+
+   - **GitHub issues are public**; the scan-readiness
+     conversation often isn't. A list of gaps in a project's
+     threat model is exactly the kind of inventory a hostile
+     researcher would mine for "the maintainers admit they
+     don't check X". The PMC's `private@<pmc>` list (which the
+     email replies thread through) keeps the same content
+     contained to people the PMC has already vetted. Public
+     issue trackers are wrong by default for this conversation.
+
+   - **Even where issues exist, PMC members rarely watch them.**
+     The original `[GLASSWING]` request came in as email; the
+     PMC is already monitoring that thread. Continuing in the
+     same thread reaches every PMC member, including ones who
+     never see GitHub notifications.
+
+   So: PRs for mechanical fixes (they need a repo write
+   anyway, the diff is what the PMC is asked to ratify, and
+   public attention is fine on "add one link line"), email
+   replies for everything else.
 
 3. **Use the project's own voice for proposed model content.**
    When generating threat-model section drafts via
@@ -66,12 +102,15 @@ no model, no scan).
    positions. The PR is a *starting point* for the PMC to react
    to, not a finished model.
 
-4. **Default to *issue* for substantive gaps; default to *PR*
-   for mechanical fixes.** A missing `AGENTS.md` link is
-   mechanical (one-line add). A missing §4.8 "Properties
+4. **Default to *email reply* for substantive gaps; default to
+   *PR* for mechanical fixes.** A missing `AGENTS.md` link is
+   mechanical (one-line repo add). A missing §4.8 "Properties
    provided" section is substantive (needs maintainer input).
    Borderline cases (e.g. missing §4.11a known-non-findings
-   list) lean toward issue with an offer to draft on request.
+   list) lean toward email with an offer to draft a PR on
+   request. The email always replies to the original
+   `[GLASSWING]` thread so the PMC sees it in the same
+   conversation they started.
 
 5. **Pre-flight is a check, not a re-write.** Never propose
    changes to *existing* model content unless the PMC asked. The
@@ -85,6 +124,73 @@ no model, no scan).
    ready to flip `Security model verified` to `<today>`"); the
    user then invokes `glasswing-scan-update` to apply that
    change.
+
+7. **Verification is not all-or-nothing, and the artefacts are
+   proposals — not requirements.** The only hard gate is
+   **discoverability** (without it the scan literally cannot
+   find the model and cannot run). Everything else is advisory.
+   When the existing model is substantive on the core rubric
+   (scope, out-of-scope, inputs, adversary, properties), the
+   scan can proceed against it and the remaining gaps become
+   *improvement proposals* rather than blockers. Partial
+   coverage of the minimum bar is fine — we surface the gaps
+   so the maintainer can decide, not so we can refuse.
+
+   Every PR or issue this SKILL produces is a **proposal**.
+   The maintainer is the decision-maker, not the Security team.
+   The body must phrase this unambiguously: lead with
+   "**this is a proposal for the PMC to review — please
+   correct, reject, or discuss as needed**" (or similar). Do
+   not phrase suggestions as obligations ("you need to do X" /
+   "the scan requires Y"). The scan does not require any of
+   the §4.7 / §4.8 / §4.11a / §4.13 gaps to be filled before
+   it runs; it just runs better when they are. Say so plainly.
+
+8. **Do not mention "Glasswing" (or the OpenAI program name)
+   in any public artefact.** Public artefacts are: PR titles,
+   PR bodies, commit messages on PMC repos, branch names, and
+   anything else that lands on `github.com/apache/<repo>` or
+   any other public-visible surface. The PMC-facing rationale
+   for the change in a public PR is "improving the project's
+   security model discoverability for automated scanners" —
+   the specific scan program / vendor / model identity stays
+   off-record there. The name *is* fine in email replies to
+   the `[GLASSWING]` thread, because those go to
+   `private@<pmc>.apache.org` and `security@apache.org` — both
+   private lists. It's also fine inside this repo
+   (`apache/security`) and in user-scope memory, because those
+   surfaces are already inside the Security team's trust
+   boundary.
+
+   Why: the program / vendor identity is information the
+   Security team controls disclosure of. Putting it on public
+   issue trackers or in commit messages forecloses choices
+   later (rebranding, switching vendor, running multiple
+   scans in parallel) and gives hostile researchers a single
+   string to grep for. Neutral phrasing — "an automated
+   agentic security scan being piloted by the ASF Security
+   team" — is precise enough for the maintainer to act on the
+   PR without naming the program.
+
+9. **Always use `gh pr create --web` for the final PR submit
+   step.** The `--web` flag opens a browser to a pre-filled
+   GitHub form rather than silently submitting from the CLI.
+   The user reviews the rendered title + body + diff in the
+   browser and clicks Submit themselves. This gives a final
+   read-through pass on top of the in-conversation
+   draft-and-confirm — the conversation guards against the
+   wrong *intent*; `--web` guards against rendering surprises
+   (escaping, markdown, autolink expansion, the wrong base
+   branch) that the conversation can't see.
+
+   The branch push still happens via `git push` before
+   `gh pr create --web` — that part is local-to-remote and not
+   user-facing. Only the final PR submission is gated through
+   the browser.
+
+   The SKILL does **not** use `gh issue create` at all — every
+   PMC-side ask that isn't a repo write goes via email reply
+   to the original `[GLASSWING]` thread (see hard rule 2).
 
 ## The rubric — what "verified" means
 
@@ -148,15 +254,34 @@ If a section is `Not applicable — <reason>`, verification passes
 for that section (the maintainer has thought about it and ruled
 it out). Empty headings with no commentary count as missing.
 
+**Important — completeness is graded, not pass/fail.** A model
+with substantive coverage of the core rubric (scope,
+out-of-scope, inputs, adversary, properties) but gaps in
+§4.11a or §4.13 is still good enough for the scan to run.
+The gaps are recorded as *improvement proposals* (per hard
+rule 7), not as blockers. The only hard-fail under this SKILL
+is **discoverability** — without it the scan agent literally
+cannot reach the model and cannot start. Every other failure
+mode produces a proposal that the PMC decides what to do
+with.
+
 ## Procedure
 
-1. **Resolve the inputs.** Confirm PMC slug, repo, and commit
-   (default to the repo's default-branch HEAD if the request
-   didn't pin one). If the PMC named a specific model path, use
-   it; otherwise start from `AGENTS.md`.
+1. **Resolve the inputs.** Read the PMC's `Repositories requested` cell
+   from the tracker. If the cell is empty, refuse and point the
+   user at `glasswing-scan-response` to confirm scope first.
+   Parse the cell into a list of repo URLs (newline-separated).
+   For each repo: default the commit to the repo's
+   default-branch HEAD unless the PMC named one explicitly.
 
-2. **Run discoverability (Check A).** Use `gh api` to fetch the
-   relevant files; do not clone unless preparing a PR. Example:
+2. **Run Checks A and B for *every* repo in the list,
+   independently.** Each repo gets its own discoverability
+   chain (an `AGENTS.md` in one repo says nothing about whether
+   another repo has one) and its own completeness assessment
+   (the model might be different per repo, or the same model
+   linked from different `AGENTS.md` files).
+
+   For Check A on each repo, use `gh api`:
 
    ```
    gh api repos/<owner>/<repo>/contents/AGENTS.md?ref=<sha>
@@ -166,28 +291,71 @@ it out). Empty headings with no commentary count as missing.
    URLs, use `curl --head` (or the `WebFetch` tool) to confirm
    the URL resolves to a 200 with a document body.
 
-3. **Run completeness (Check B).** Read the model. Walk the
-   rubric table above; for each minimum-bar section, mark
-   **present** / **partial** / **missing** / **explicit N/A**.
-   "Partial" means the section heading exists but the content
-   is one-line / placeholder / clearly under-specified relative
-   to the rubric.
+   For Check B, read the model and walk the rubric. If multiple
+   repos share the same model URL, you only need to read the
+   model once — the assessment is per-model, not per-repo. The
+   discoverability check is still per-repo even when the model
+   is shared (each repo must independently get the agent to
+   that model).
 
-4. **Summarize the assessment.** Format:
+3. **Mark per-repo status** in a small grid:
 
    ```
-   Discoverability: PASS / FAIL — <one-line reason>
-   Completeness:
-     §4.2 Scope                  present / partial / missing
-     §4.3 Out of scope           ...
-     §4.6 Inputs                 ...
-     §4.7 Adversary              ...
-     §4.8 Properties provided    ...
-     §4.9 Properties not         ...
-     §4.10 Downstream resp.      ...
-     §4.11a Known non-findings   ...
-     §4.13 Triage dispositions   ...
+   Repo                             Discoverability   Completeness
+   ----                             ---------------   ------------
+   apache/logging-log4j2            PASS              PASS (1 soft gap)
+   apache/logging-log4net           FAIL              <not run yet — fix discoverability first>
+   apache/logging-log4cxx           FAIL              <not run yet>
+   ...
    ```
+
+   For each minimum-bar section in the completeness check,
+   mark **present** / **partial** / **missing** / **explicit
+   N/A**. "Partial" means the section heading exists but the
+   content is one-line / placeholder / clearly under-specified
+   relative to the rubric.
+
+4. **Summarize the assessment**, per-repo. Be explicit in the
+   summary about *which repos were checked* — the user (and
+   later, Mirko) needs to know that "the Logging Services
+   model is good" actually means "we verified all 4 listed
+   repos: logging-log4j2 (PASS/PASS), logging-log4net
+   (FAIL/N/A), …". Don't elide which repos in the cell got
+   which verdict; the cell is the authoritative scope.
+
+   Format:
+
+   ```
+   Repos verified (from PMCs!D<row> Repositories cell):
+     - apache/logging-log4j2
+     - apache/logging-log4net
+     - apache/logging-log4cxx
+     - apache/logging-flume
+
+   Per-repo discoverability:
+     apache/logging-log4j2     PASS    <chain summary>
+     apache/logging-log4net    FAIL    <reason>
+     ...
+
+   Per-repo / per-model completeness (group by model URL when
+   multiple repos share one):
+     Model: <URL>
+       Repos sharing this model: <list>
+       §4.2 Scope                  present / partial / missing
+       §4.3 Out of scope           ...
+       §4.6 Inputs                 ...
+       §4.7 Adversary              ...
+       §4.8 Properties provided    ...
+       §4.9 Properties not         ...
+       §4.10 Downstream resp.      ...
+       §4.11a Known non-findings   ...
+       §4.13 Triage dispositions   ...
+   ```
+
+   When the verification message goes to the PMC (or to
+   Mirko), the same per-repo breakdown should appear — implicit
+   summary ("the model is good") hides which repos were
+   actually checked.
 
 5. **Decide remediation per failing check** using the decision
    table below. Show the user the assessment plus the proposed
@@ -235,16 +403,20 @@ it out). Empty headings with no commentary count as missing.
 | `AGENTS.md` missing entirely | PR creating the file with a single Security line | Mechanical, one-file add. PMC reviews + merges in a minute. |
 | `AGENTS.md` present, no link to `SECURITY.md` / model | PR adding one line | Mechanical, no maintainer input needed. |
 | `SECURITY.md` missing but model file exists | PR creating `SECURITY.md` stub linking to it | Mechanical, PMC just needs to ratify the canonical pointer. |
-| `SECURITY.md` exists but doesn't link to a model and has no embedded model content | Issue | PMC needs to decide where the model lives. |
-| Project-site URL 404 / redirects | Issue | PMC owns the destination, not us. |
+| `SECURITY.md` exists but doesn't link to a model and has no embedded model content | Email reply | PMC needs to decide where the model lives. |
+| Project-site URL 404 / redirects | Email reply | PMC owns the destination, not us. |
 | 1–2 model sections missing, project public artefacts are rich enough to draft from | PR with draft additions via `threat-model-producer` | Maintainer reacts to a concrete starting point. |
-| ≥ 3 model sections missing, OR §4.7 adversary / §4.8 properties absent | Issue listing all gaps with rubric citations | Substantive work that the PMC has to drive. Drafting it all unsolicited is too much. |
-| Sections present but tagged with hedge-words (`(implicit)`, `(generally known)`) | Issue with a one-line note about provenance tagging discipline | Not blocking the scan per se, but worth flagging. |
-| §4.11a (known non-findings) missing on a project that's been scanned before | Issue with offer to draft from prior scan findings on request | Highest-leverage section but only the maintainer knows which findings were false positives. |
+| ≥ 3 model sections missing, OR §4.7 adversary / §4.8 properties absent | Email reply listing all gaps with rubric citations | Substantive work that the PMC has to drive. Drafting it all unsolicited is too much. |
+| Sections present but tagged with hedge-words (`(implicit)`, `(generally known)`) | Email reply with a one-line note about provenance tagging discipline | Not blocking the scan per se, but worth flagging. |
+| §4.11a (known non-findings) missing on a project that's been scanned before | Email reply with offer to draft from prior scan findings on request | Highest-leverage section but only the maintainer knows which findings were false positives. |
 
-When in doubt, lean toward **issue** with the explicit offer to
-draft a PR if the PMC prefers. PRs that the PMC has to triage
-unsolicited can land worse than issues that ask them to choose.
+When in doubt, lean toward **email reply** with the explicit
+offer to draft a PR if the PMC prefers. PRs that the PMC has
+to triage unsolicited can land worse than emails that ask them
+to choose. **Never** open a GitHub issue against the PMC's repo
+— many Apache projects do not have issues enabled (Tomcat is
+the textbook example), and even where issues exist they are
+not the channel PMC members watch.
 
 ## Templates
 
@@ -271,19 +443,26 @@ declarations, and known non-findings before reporting issues.
 **PR body**:
 
 ```markdown
+**This is a proposal for the PMC to review — please correct,
+reject, or discuss as needed.** Nothing here is a requirement;
+the maintainer is the decision-maker.
+
 This adds a Security section to `AGENTS.md` so an automated
 scan agent can mechanically discover the project's security
 model via the conventional `AGENTS.md → SECURITY.md` chain.
 
-The ASF Security team is preparing the project for a Glasswing
-agentic security scan; the scan refuses to run if the model
-isn't discoverable by that path (refusing upfront beats wasting
-PMC reviewer cycles on a noise-heavy run against an unknown
-model).
+Context: the ASF Security team is preparing the project for an
+automated agentic security scan we're piloting. Such scans
+refuse to run if the model isn't discoverable by that path
+(refusing upfront beats wasting PMC reviewer cycles on a
+noise-heavy run against an unknown model). Discoverability is
+the one hard gate; everything else is suggestion. The Security
+team has reached out separately on the PMC's private list with
+the program details; this PR is the public-facing repo piece.
 
 The Security team uses
 [`threat-model-producer`](https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md)
-as the rubric for what counts as a complete model — but this
+as the rubric for what a complete model looks like — but this
 PR is just the *link*; nothing about the model content itself
 changes.
 
@@ -316,8 +495,9 @@ for the project's threat model, in-scope / out-of-scope
 declarations, and known non-findings before reporting issues.
 ```
 
-**PR body**: same as Template 1, framed as the file-creation
-case.
+**PR body**: same shape as Template 1 (no "Glasswing" mention;
+generic "an automated agentic security scan we're piloting"
+phrasing), framed as the file-creation case.
 
 ### Template 3 — PR: add draft sections via `threat-model-producer`
 
@@ -333,12 +513,17 @@ questions block at the end (or merge into the existing one).
 **PR body skeleton**:
 
 ```markdown
-The ASF Security team is preparing this project for a
-Glasswing agentic security scan. Per the scan's discoverability
-gate, the project's security model needs to cover the rubric
-in
+**This is a proposal for the PMC to review — please correct,
+reject, or discuss as needed.** Every claim in the diff is
+tagged with provenance (*(documented)* / *(inferred)*); the
+*(inferred)* tags are the agent's guesses for you to confirm
+or strike. The scan does not require these sections to be
+filled in before it runs — it just runs better when they are.
+
+Context: the ASF Security team is preparing this project for
+an automated agentic security scan we're piloting. Per the
 [`threat-model-producer`](https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md)
-— this PR proposes **draft** content for the following
+rubric — this PR proposes **draft** content for the following
 currently-empty sections, written from the project's own
 public artefacts (README, docs, header comments, FAQ):
 
@@ -368,73 +553,128 @@ sections themselves, close the PR and open a tracking issue —
 we'll wait.
 ```
 
-### Template 4 — Issue: gaps in model, PMC drives
+### Template 4 — Email reply: gaps in model, PMC drives
 
-**Title**: `Threat model gaps to address before Glasswing scan (<PMC name>)`
+The email replies to the original `[GLASSWING] <PMC>: request
+to scan repositories` thread. To/CC follow the
+`glasswing-scan-response` rules (reply to the requester; CC
+`security@apache.org`; CC `private@<pmc>.apache.org`; keep
+anyone already on the thread). **Always go through the
+`glasswing-scan-response` flow for the final draft + Gmail
+draft creation** — this SKILL drafts the body and hands it
+off; it does not call the Gmail tools directly.
+
+**Subject** (verbatim with `Re:` if replying):
+`Re: [GLASSWING] <PMC>: request to scan repositories`
 
 **Body skeleton**:
 
-```markdown
-The ASF Security team is preparing this project for a Glasswing
-agentic security scan. The scan reads the project's threat
-model to suppress known non-findings and route findings to the
-correct triage disposition — without a model that covers the
-minimum rubric, the scan output's false-positive rate is high
-enough to be unfair to PMC reviewers.
+```text
+Hi <primary contact first name>,
 
-We ran a pre-flight check against the current model at
-`<path-to-model>@<sha>` using the rubric from
-[`threat-model-producer`](https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md).
-Discoverability passes; the minimum-bar completeness check
-flags the following gaps:
+Status update on the pre-flight for the Glasswing scan against
+<PMC name>:
 
-- [ ] **§<NN> <Section name>** — <one-line description of
-  what's missing and why the scan needs it>
-- [ ] **§<NN> <Section name>** — ...
-- [ ] **§<NN> <Section name>** — ...
+[If a PR was opened:]
+- **Discoverability**: addressed in <PR URL> — adds AGENTS.md
+  + SECURITY.md so the scan agent can mechanically follow the
+  conventional chain to your existing model at
+  <model URL or path>. Feel free to adjust wording / file
+  placement before merging; close it and we'll regroup if you
+  prefer a different shape.
 
-Two paths forward — either is fine; let us know which you
-prefer:
+[If discoverability passed already:]
+- **Discoverability**: passes. <one-line note on how — e.g.
+  "your AGENTS.md already points the scan agent at the model
+  + VDR + FAQ; no repo changes needed".>
 
-1. **You draft.** Walk through the producer rubric section by
-   section. We'll re-run the pre-flight when you ping us.
-2. **We draft via the producer SKILL.** We can open a PR with
-   `*(inferred)*`-tagged drafts for each missing section, with
-   the open questions collected at the end for you to react to
-   rather than compose from scratch. This is usually faster.
+- **Completeness against the minimum bar**: your current
+  model is substantive on <list the sections that landed
+  well — e.g. "scope, out-of-scope, inputs, downstream
+  responsibilities">. We ran it against the rubric in
+  https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md
+  and flagged a few gaps as suggestions (nothing here blocks
+  the scan; closing them reduces noise in the output):
+
+    * §<NN> <Section name> — <one-line description of what's
+      missing and why the scan benefits from it. Be specific;
+      cite the rubric subsection.>
+    * §<NN> <Section name> — ...
+    * §<NN> <Section name> — ...
+
+Two paths forward, either works for us:
+
+1. You drive — walk the gaps section by section, ping us when
+   you'd like a re-check.
+2. We draft. We can run the threat-model-producer recipe
+   (https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md)
+   against your repo's public artefacts, open a PR with
+   *(inferred)*-tagged drafts for each gap, and collect the
+   open questions at the end so you react to a concrete
+   starting point rather than compose from scratch. Usually
+   faster.
 
 No timeline pressure — the scan is queued behind verification,
-not behind a date.
+not a date. Reply when convenient.
+
+[Sign off in the human's voice — the SKILL doesn't sign for
+them.]
 ```
 
-### Template 5 — Issue: model not discoverable, PMC chooses path
+The email is from the ASF Security team's voice, signed by
+the human who reviews and sends it (Jarek or another team
+member). Plain text; no marketing flourish; lengths
+proportional to the size of the assessment.
 
-**Title**: `Security model not discoverable via AGENTS.md → SECURITY.md (<PMC name>)`
+### Template 5 — Email reply: model not discoverable, PMC chooses path
+
+Reply to the original `[GLASSWING]` thread; same recipient
+conventions as Template 4.
+
+**Subject**: `Re: [GLASSWING] <PMC>: request to scan repositories`
 
 **Body skeleton**:
 
-```markdown
-The Glasswing scan needs to mechanically locate the project's
-threat model via the chain `AGENTS.md → SECURITY.md → <model>`.
-Right now <description of the broken link — e.g. "SECURITY.md
-exists but has no link to a model, and we can't find an
-embedded model in it" / "the link in SECURITY.md to
-`https://<...>` returns 404">.
+```text
+Hi <primary contact first name>,
 
-If the model is already written somewhere we just haven't
-found, point us at it and we'll close this. Otherwise the PMC
-needs to decide:
+Status update on the pre-flight for <PMC name>:
 
-- (a) put the model in `SECURITY.md` (or link it from there to
-  an in-repo path);
-- (b) host the model on the project website and link from
-  `SECURITY.md`; or
-- (c) something else — open to suggestions, this is your
-  project.
+- **Discoverability**: fails right now. The scan agent needs
+  to mechanically locate the project's threat model via the
+  chain AGENTS.md -> SECURITY.md -> <model>. Currently
+  <one-line description of the broken link — e.g. "SECURITY.md
+  exists but has no link to a model, and we couldn't find an
+  embedded model in it" / "the link in SECURITY.md to
+  https://... returns 404" / "no AGENTS.md / SECURITY.md in
+  the repo, and we couldn't find a security model anywhere
+  obvious on your project website">.
 
-We can help with the mechanics in any of those (PR opening the
-links once we know where to point) — happy to drive once
-direction's clear.
+  Discoverability is the one hard gate for the scan — without
+  the chain resolving, the scan agent refuses to run. (Refusing
+  upfront beats wasting your reviewers on a noise-heavy run
+  against a model the agent never found.) But the PMC decides
+  where the model lives:
+
+    (a) put the model in SECURITY.md (or link from there to an
+        in-repo path);
+    (b) host the model on the project website and link from
+        SECURITY.md;
+    (c) something else — this is your project.
+
+  Once we know where you'd like the model to live, we can open
+  a small PR wiring the AGENTS.md -> SECURITY.md -> model
+  chain. We'll wait on direction before doing anything in your
+  repo.
+
+[If completeness was *also* assessable: add the same gap-list
+block from Template 4 here, framed as "for after the discovery
+chain is wired".]
+
+No timeline pressure — the scan is queued behind verification,
+not a date.
+
+[Sign off in the human's voice.]
 ```
 
 ## GitHub mechanics
@@ -446,16 +686,26 @@ opened on third-party `apache/<repo>` repos too.
 
 ### Opening an issue
 
+Use `--web` so the user reviews the rendered form in the
+browser before clicking Submit. The `--title` and `--body-file`
+flags pre-fill the issue form; nothing is created until the
+user submits in-browser.
+
 ```
 gh issue create \
   --repo apache/<repo> \
   --title "<title>" \
-  --body-file "$TMPDIR/glasswing-issue-<timestamp>.md"
+  --body-file "$TMPDIR/glasswing-issue-<timestamp>.md" \
+  --web
 ```
 
 ### Opening a PR (small structural fix)
 
-Use a worktree to keep the local state clean:
+Use a worktree to keep the local state clean. The branch push
+happens via `git push` (local-to-remote, no user review
+surface); the PR creation goes through `--web` so the user
+reviews the rendered diff + title + body in the browser before
+clicking Submit.
 
 ```
 git -C /tmp/clones clone --depth 1 \
@@ -476,7 +726,8 @@ git push -u origin asf-security/<purpose>-<YYYY-MM-DD>
 gh pr create \
   --repo apache/<repo> \
   --title "<title>" \
-  --body-file "$TMPDIR/glasswing-pr-<timestamp>.md"
+  --body-file "$TMPDIR/glasswing-pr-<timestamp>.md" \
+  --web
 ```
 
 If the Security-team account doesn't have push access to
@@ -489,35 +740,67 @@ gh repo fork apache/<repo> --remote=false --clone=false
 gh pr create \
   --repo apache/<repo> \
   --head <your-handle>:asf-security/<purpose>-<YYYY-MM-DD> \
-  ...
+  --title "<title>" \
+  --body-file "$TMPDIR/glasswing-pr-<timestamp>.md" \
+  --web
 ```
 
 ### Always dry-run the PR diff first
 
 Run `git diff main` (or against the appropriate base branch)
-and show the user before pushing. The push + `gh pr create`
-combo is the actual write — everything before it is local and
-revertible.
+and show the user before pushing. The push + `gh pr create
+--web` combo is what surfaces the artefact to GitHub — every
+step before it is local and revertible. The `--web` step is
+the *second* gate (the first being the in-conversation
+draft-and-confirm); nothing is submitted to GitHub until the
+user clicks Submit in the browser.
 
-## Hand-off to `glasswing-scan-update`
+## Hand-off after verification
 
-After verification passes, surface a single line that the user
-pastes into the next turn:
+Verification has three possible exit shapes; each hands off to
+a different downstream SKILL.
 
-> Ready to mark `<pmc-slug>` as model-verified at `<YYYY-MM-DD>`.
-> Want me to invoke `glasswing-scan-update` to set
-> `Security model verified` on that row?
+### A. Verification passes (or passes with soft gaps)
 
-After an issue or PR opens, surface:
+Surface two follow-up offers:
 
-> Opened <type> #<n> at `<url>`. Want me to log this in the
-> tracker's `Notes` column for `<pmc-slug>` via
-> `glasswing-scan-update`?
+> Ready to mark `<pmc-slug>` as model-verified at
+> `<YYYY-MM-DD>`. Want me to:
+>
+> 1. invoke `glasswing-scan-update` to set
+>    `Security model verified` on that row, **and**
+> 2. invoke `glasswing-scan-submit` to draft the scan-request
+>    email to Mirko Svilus at Alpha-Omega?
+>
+> Either / both / neither.
 
-In both cases, the user issues the next instruction and the
-update SKILL does the spreadsheet write through its own diff-
-and-confirm flow. This SKILL does not write to the spreadsheet
-directly.
+The two SKILLs run in order: first the sheet write, then the
+Mirko email. The user controls timing; this SKILL does not
+chain them automatically.
+
+### B. PR opened (discoverability fix) but pre-flight not yet complete
+
+Surface:
+
+> Opened PR #<n> at `<url>`. Want me to log this in the
+> tracker's `PR/Issues` column for `<pmc-slug>` via
+> `glasswing-scan-update`? Verification will be re-run once
+> the PR is merged; submission to Mirko waits on that.
+
+### C. Email reply drafted (substantive gaps)
+
+After the user sends the email, surface:
+
+> Email reply drafted to <recipient>. After you send, want me
+> to log "Email reply sent <YYYY-MM-DD>" in the tracker's
+> `PR/Issues` column for `<pmc-slug>` via
+> `glasswing-scan-update`? Submission to Mirko waits on the
+> PMC's response.
+
+In all three shapes, the user issues the next instruction and
+the downstream SKILL takes over with its own draft-and-confirm
+flow. This SKILL does not write to the spreadsheet or call
+Gmail tools directly.
 
 ## Style notes
 
