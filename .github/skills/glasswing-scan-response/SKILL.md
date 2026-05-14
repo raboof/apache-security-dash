@@ -351,11 +351,16 @@ the PMC to review and merge. The scan is gated on the PR being merged
 (or the PMC supplying their own equivalent). The PMC owns the
 document; the Security team just bootstraps it.
 
-**Hard pre-flight: the model must be discoverable.** Before the
-scan is queued, the Security team's own agent runs a pre-flight
-pass against the project's repo at the designated commit and
-confirms it can locate the threat model via `AGENTS.md` →
-`SECURITY.md`. **If the agent cannot find the model, the scan
+**Hard pre-flight: the model must be discoverable and complete
+enough.** Before the scan is queued, the Security team's own
+agent runs a pre-flight pass against the project's repo at the
+designated commit and confirms it can locate the threat model
+via `AGENTS.md` → `SECURITY.md`. The mechanics of that
+pre-flight — both the discoverability check and the
+minimum-bar completeness check against the
+`threat-model-producer` rubric — live in the companion
+`glasswing-model-verify` SKILL; invoke it once a model has
+been nominated. **If the agent cannot find the model, the scan
 is refused** and the PMC is asked to make the model reachable
 through that discovery path before re-requesting. This rule is
 non-negotiable: without the model, the scan produces a
