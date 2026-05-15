@@ -41,7 +41,7 @@ on the same file ID.
 
 ### Sheet layout
 
-The workbook has up to four sheets, in order:
+The workbook has up to five sheets:
 
 1. **README** — short prose describing the workbook and its data
    sources (Apache Whimsy `committee-info.json` for the PMC list,
@@ -63,11 +63,15 @@ The workbook has up to four sheets, in order:
    | `Contact Person` | Primary PMC contact — name + `@apache.org` address. |
    | `Backup contact` | Backup PMC contact, same shape. |
    | `Security Model` | Free-text name of the threat model the PMC has agreed to be scanned against (e.g. `Logging Services Security Model`). Blank if the PMC has not yet supplied or accepted a model. |
-   | `Security model verified` | Marker (date or `Yes`) for when the Security team's pre-flight pass confirmed the model is mechanically discoverable via `AGENTS.md` → `SECURITY.md` (the discoverability gate). Blank if not yet verified. |
+   | `Security model verified` | Marker (date or `Yes`) for when the Security team's pre-flight has **fully** passed for this PMC. Two conditions must both hold: (a) the threat model itself passes the minimum-bar completeness rubric, and (b) **every repo in `Repositories requested` independently passes discoverability** (`AGENTS.md` → `SECURITY.md` → model URL chain resolves at the designated commit). Setting this flag too early (e.g. when only the model is good but some repos still lack `AGENTS.md`) leads to the PMC appearing as `Ready` in status views while in reality the team is still waiting on PMC follow-up — keep it blank until both conditions hold. |
    | `Date scan requested` | Date the Security team submitted the scan run to Glasswing. `YYYY-MM-DD`. Blank if not yet queued. |
    | `Date scan received` | Date the scan output came back from Glasswing to the Security team. `YYYY-MM-DD`. Blank if not yet received. |
    | `Forwarded scan to PMC` | Date (or `Yes`) marking when the Security team forwarded the scan output to the PMC's listed recipients. Blank if not yet forwarded. |
    | `Notes` | Free-text. |
+   | `Initial Model assessment` | Free-text snapshot of the pre-flight findings for this PMC — per-repo discoverability status, model completeness verdict, open questions. Set by `glasswing-model-verify`. |
+   | `PR/Issues` | URLs of PRs the Security team has opened on the PMC's repo (e.g. AGENTS.md / SECURITY.md / model-additions PRs), separated by `+ Email reply <date>` notes when an out-of-band email reply went out. Populated by `glasswing-scan-response` / `glasswing-model-verify`. |
+   | `PMC thread (ponymail)` | **Direct** lists-apache.org thread permalink (`https://lists.apache.org/thread/<tid>`) to the PMC-side correspondence — the original `[GLASSWING]` request + all replies between Security team and the PMC. Resolved by `glasswing-scan-run` via ponymail search on `private@<pmc>.apache.org` filtered by `subject:GLASSWING`. Requires `mcp__ponymail__login` to have been run first (private lists need auth). Left blank when ponymail-auth isn't set up — never populated with a non-direct fallback URL, since those would mislead readers expecting a single click into the thread. |
+   | `Mirko thread (ponymail)` | Same shape, for the Mirko/Alpha-Omega correspondence thread — the scan-submission email + scan-results delivery. Blank until `glasswing-scan-submit` has produced a first message to Mirko AND `glasswing-scan-run` has resolved the thread via the relevant CC'd list (typically `private@<pmc>.apache.org`, since `security@apache.org` is blocked by the ponymail MCP's restricted-list policy). |
 
    The four date-tracking columns (`Request date`,
    `Date scan requested`, `Date scan received`,
@@ -118,6 +122,103 @@ The workbook has up to four sheets, in order:
    `init-canned-tab` was first run) will not have this sheet —
    the response SKILL falls back to its in-SKILL fragments in
    that case.
+
+5. **Status** (auto-generated, refreshable) — a derived view
+   of the scan-pipeline state, regenerated on demand by
+   `glasswing-scan-update`'s `build-status-tab` subcommand.
+   This sheet is **not** human-edited; every refresh
+   overwrites it from the PMCs sheet. Three blocks:
+
+   - **IN FLIGHT** table — one row per PMC where the scan
+     is still moving through the pipeline (not yet
+     `Delivered`). Columns: `PMC`, `Slug`, `Status`,
+     `Repos requested` (count), `Model` status,
+     `Request date`, `Last touch` (model-verified date if
+     filled), `Notes / PR / Issues`. Each row is
+     background-colored by its pipeline state.
+
+   - **COMPLETED** table — one row per PMC where
+     `Forwarded scan to PMC` is set. Columns: `PMC`,
+     `Slug`, `Repos submitted` (count), `Submitted`,
+     `Received`, `Forwarded`, `Days end-to-end` (the
+     turnaround in days from Request date to Forwarded).
+     Rows colored dark green.
+
+   - **TIMELINE DATA** block — wide-format table
+     (`PMC` | `Requested` | `Ready` | `Submitted` |
+     `Received` | `Forwarded`), one row per PMC with the
+     filled milestone dates and blanks for the
+     unreached ones. Chart-ready: select the block
+     in Sheets and `Insert > Chart` produces a usable
+     timeline (a scatter chart with PMC on Y and dates
+     on X; one series per milestone column reads as
+     differently-colored markers per milestone).
+
+### Pipeline-state taxonomy
+
+The `Status` column on the in-flight table comes from the
+following state machine (latest applicable state wins):
+
+| State | Condition | Color |
+| --- | --- | --- |
+| Pre-flight | Scan requested, model not yet verified | light red |
+| Ready | `Security model verified` set, not yet submitted to vendor | yellow |
+| Submitted | `Date scan requested` set, results not yet back | light green |
+| Triaging | `Date scan received` set, not yet forwarded | medium green |
+| Delivered | `Forwarded scan to PMC` set | dark green (appears in the COMPLETED table, not in-flight) |
+
+The `Model` column is independent of the pipeline state and
+indicates how far the threat-model verification has
+progressed:
+
+| Model status | Condition |
+| --- | --- |
+| Verified | `Security model verified` cell is set |
+| Nominated | `Security Model` cell set, `Security model verified` blank |
+| Missing | `Security Model` cell blank |
+
+### Refreshing the Status tab
+
+Run from the project root:
+
+```
+uv run .github/skills/glasswing-scan-update/sheets_writer.py \
+    build-status-tab --spreadsheet-id "<id from memory>"
+```
+
+The subcommand is idempotent: it creates the `Status` sheet
+if absent, clears it if present, then writes the three blocks
+plus per-row background colors. Run before any status-report
+moment (PMC-facing rollup, weekly check-in, before sending a
+foundation-level update). It is safe to run as often as
+you like — the underlying PMCs sheet is the source of truth;
+this is just a refreshed view.
+
+### Why the chart is not embedded programmatically
+
+The Status tab leaves the `TIMELINE DATA` block as a
+chart-ready table rather than embedding a chart object via
+the Sheets API. Reasons:
+
+- Sheets' API chart objects don't natively render the
+  "timeline" intuition (X = continuous date, Y =
+  categorical PMC, colored markers per milestone) — the
+  closest match (basic SCATTER with per-column series)
+  needs careful range plumbing that's brittle across
+  refreshes.
+- A user-built chart from the block survives sheet
+  rebuilds (since the block's range stays at the same
+  cells); embedded charts would have to be deleted and
+  recreated on every refresh.
+- A one-time manual chart insert from the block (Insert
+  > Chart > Scatter, or Chart Type > Timeline if the
+  Sheets UI offers it for the data shape) takes ~30
+  seconds and gives a better-looking result than the
+  API can produce.
+
+If a future Sheets API change makes API-embedded timeline
+charts cleaner, this SKILL should be updated to do the
+embed.
 
 ## When to invoke
 

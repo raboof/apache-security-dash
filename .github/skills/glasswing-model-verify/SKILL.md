@@ -119,11 +119,26 @@ no model, no scan).
    to existing claims are the PMC's call.
 
 6. **After verification passes, hand off — don't write the
-   spreadsheet directly.** The SKILL produces a short
-   handoff line ("Verified for `<pmc-slug>` at `<sha>` —
+   spreadsheet directly.** "Verification passes" means both:
+   (a) the threat model itself passes the minimum-bar
+   completeness rubric, AND (b) **every** repo in
+   `Repositories requested` independently passes Check A
+   (discoverability). One or two repos passing while others
+   lack `AGENTS.md` is *not* PMC-level verified — that's a
+   partial state where the next step is to either (i) get
+   the missing repos fixed (PMC sweep or our PRs) and then
+   re-run verification across the full set, or (ii) the PMC
+   chooses to phase the scan and narrows `Repositories
+   requested` down to the subset that does pass.
+
+   Only when (a) AND (b) hold across the full
+   `Repositories requested` set should the SKILL produce
+   the handoff line ("Verified for `<pmc-slug>` at `<sha>` —
    ready to flip `Security model verified` to `<today>`"); the
    user then invokes `glasswing-scan-update` to apply that
-   change.
+   change. Setting the flag too early causes the PMC to
+   appear `Ready` in status views while the team is in fact
+   still waiting on PMC follow-up.
 
 7. **Verification is not all-or-nothing, and the artefacts are
    proposals — not requirements.** The only hard gate is

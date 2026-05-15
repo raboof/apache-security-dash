@@ -297,6 +297,13 @@ canonical scope: `glasswing-model-verify` reads it,
 `glasswing-scan-submit` reads it, no one re-derives scope from
 elsewhere.
 
+The PMC's `PMC thread (ponymail)` cell is **not** written by
+this SKILL — only `glasswing-scan-run` populates it, with a
+**direct thread permalink** (`https://lists.apache.org/thread/<tid>`)
+resolved via the ponymail API. The cell stays blank until
+ponymail-auth is set up and a sync has run; never write a
+non-direct fallback URL there.
+
 ## Canned responses (consult first, contribute back)
 
 The Mythos tracker spreadsheet has a `Canned Responses` sheet

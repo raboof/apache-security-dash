@@ -310,6 +310,323 @@ def cmd_append_canned(args: argparse.Namespace) -> None:
     print(f"\nAppended {len(rows)} row(s). updatedRange={updated_range}")
 
 
+STATUS_SHEET = "Status"
+
+# Pipeline states in progression order. Order matters: the state-detection
+# function picks the latest applicable state, and the colors render
+# red->green by state index.
+PIPELINE_STATES = [
+    "Pre-flight",
+    "Ready",
+    "Submitted",
+    "Triaging",
+    "Delivered",
+]
+
+STATE_COLOR = {
+    "Pre-flight": {"red": 0.96, "green": 0.78, "blue": 0.78},  # light red
+    "Ready":      {"red": 1.00, "green": 0.93, "blue": 0.70},  # yellow
+    "Submitted":  {"red": 0.84, "green": 0.95, "blue": 0.74},  # light green
+    "Triaging":   {"red": 0.62, "green": 0.86, "blue": 0.62},  # medium green
+    "Delivered":  {"red": 0.40, "green": 0.74, "blue": 0.42},  # dark green
+}
+
+MODEL_COLOR = {
+    "Verified":    {"red": 0.70, "green": 0.90, "blue": 0.70},
+    "Nominated":   {"red": 1.00, "green": 0.93, "blue": 0.70},
+    "Missing":     {"red": 0.96, "green": 0.78, "blue": 0.78},
+}
+
+
+def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
+    """Derive the pipeline state of a single PMC row."""
+    def cell(name: str) -> str:
+        idx = col_idx.get(name)
+        if idx is None or idx >= len(row):
+            return ""
+        return (row[idx] or "").strip()
+
+    pmc = cell("PMC Name")
+    slug = cell("PMC Slug")
+    requested_date = cell("Request date")
+    repos_requested = cell("Repositories requested")
+    repos_submitted = cell("Repositories submitted")
+    contact = cell("Contact Person")
+    backup = cell("Backup contact")
+    model = cell("Security Model")
+    model_verified = cell("Security model verified")
+    submitted_date = cell("Date scan requested")
+    received_date = cell("Date scan received")
+    forwarded_date = cell("Forwarded scan to PMC")
+    pr_issues = cell("PR/Issues")
+    notes = cell("Notes")
+
+    # State machine.
+    if forwarded_date:
+        state = "Delivered"
+    elif received_date:
+        state = "Triaging"
+    elif submitted_date:
+        state = "Submitted"
+    elif model_verified:
+        state = "Ready"
+    else:
+        state = "Pre-flight"
+
+    if model_verified:
+        model_status = "Verified"
+    elif model:
+        model_status = "Nominated"
+    else:
+        model_status = "Missing"
+
+    repo_count = len([r for r in repos_requested.splitlines() if r.strip()])
+
+    return {
+        "pmc": pmc,
+        "slug": slug,
+        "state": state,
+        "model_status": model_status,
+        "repos_requested_count": repo_count,
+        "repos_requested": repos_requested,
+        "repos_submitted": repos_submitted,
+        "request_date": requested_date,
+        "model_verified_date": model_verified,
+        "submitted_date": submitted_date,
+        "received_date": received_date,
+        "forwarded_date": forwarded_date,
+        "contact": contact,
+        "backup": backup,
+        "model": model,
+        "pr_issues": pr_issues,
+        "notes": notes,
+    }
+
+
+def cmd_build_status_tab(args: argparse.Namespace) -> None:
+    service = get_service()
+    today = datetime.date.today().isoformat()
+
+    # 1. Read source data.
+    grid = fetch_sheet_grid(service, args.spreadsheet_id, "PMCs")
+    if not grid or len(grid) < 2:
+        sys.exit("PMCs sheet has no data rows.")
+    header = grid[0]
+    col_idx = {h: i for i, h in enumerate(header)}
+    rows = grid[1:]
+
+    entries = []
+    for row in rows:
+        if (row[col_idx.get("Scan Requested", -1)].strip() if col_idx.get("Scan Requested", -1) < len(row) else "") != "Yes":
+            continue
+        entries.append(compute_pmc_status(row, col_idx))
+
+    # Sort in-flight by state index (most progressed first), then by request_date.
+    state_order = {s: i for i, s in enumerate(PIPELINE_STATES)}
+    in_flight = sorted(
+        [e for e in entries if e["state"] != "Delivered"],
+        key=lambda e: (-state_order.get(e["state"], 0), e["request_date"]),
+    )
+    completed = sorted(
+        [e for e in entries if e["state"] == "Delivered"],
+        key=lambda e: e["forwarded_date"],
+    )
+
+    # 2. Get or create Status sheet.
+    meta = service.spreadsheets().get(spreadsheetId=args.spreadsheet_id).execute()
+    sheet_meta = next(
+        (s for s in meta.get("sheets", []) if s["properties"]["title"] == STATUS_SHEET),
+        None,
+    )
+    if sheet_meta is None:
+        if args.dry_run:
+            print(f"Would create sheet '{STATUS_SHEET}'.")
+            sheet_id = 0  # placeholder; no API calls in dry-run
+        else:
+            resp = service.spreadsheets().batchUpdate(
+                spreadsheetId=args.spreadsheet_id,
+                body={
+                    "requests": [
+                        {
+                            "addSheet": {
+                                "properties": {
+                                    "title": STATUS_SHEET,
+                                    "gridProperties": {"frozenRowCount": 1},
+                                }
+                            }
+                        }
+                    ]
+                },
+            ).execute()
+            sheet_id = resp["replies"][0]["addSheet"]["properties"]["sheetId"]
+    else:
+        sheet_id = sheet_meta["properties"]["sheetId"]
+
+    # 3. Clear existing content (unless dry-run).
+    if not args.dry_run and sheet_meta is not None:
+        service.spreadsheets().values().clear(
+            spreadsheetId=args.spreadsheet_id,
+            range=STATUS_SHEET,
+        ).execute()
+
+    # 4. Build the values payload and the per-row color requests.
+    values: list[list] = []
+    color_requests: list[dict] = []
+
+    def append_row(row: list, color: dict | None = None):
+        row_index = len(values)
+        values.append(row)
+        if color is not None:
+            color_requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": row_index,
+                            "endRowIndex": row_index + 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 8,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {"backgroundColor": color}
+                        },
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
+
+    # Header section.
+    append_row([f"Glasswing scan pipeline — status as of {today}"])
+    append_row([f"Source: PMCs sheet · regenerated by sheets_writer.py build-status-tab"])
+    append_row([""])
+
+    # In-flight table.
+    append_row(["IN FLIGHT"])
+    append_row(["PMC", "Slug", "Status", "Repos requested", "Model", "Request date", "Last touch (model verified)", "Notes / PR / Issues"])
+    if not in_flight:
+        append_row(["(none in flight)"])
+    for e in in_flight:
+        append_row(
+            [
+                e["pmc"],
+                e["slug"],
+                e["state"],
+                e["repos_requested_count"],
+                e["model_status"],
+                e["request_date"],
+                e["model_verified_date"] or "—",
+                (e["pr_issues"] or "") + (("  ·  " + e["notes"]) if e["notes"] else ""),
+            ],
+            color=STATE_COLOR[e["state"]],
+        )
+
+    append_row([""])
+
+    # Completed table.
+    append_row(["COMPLETED"])
+    append_row(["PMC", "Slug", "Repos submitted", "Submitted", "Received", "Forwarded", "Days end-to-end"])
+    if not completed:
+        append_row(["(none yet)"])
+    for e in completed:
+        try:
+            d1 = datetime.date.fromisoformat(e["request_date"])
+            d2 = datetime.date.fromisoformat(e["forwarded_date"])
+            e2e = (d2 - d1).days
+        except Exception:
+            e2e = ""
+        append_row(
+            [
+                e["pmc"],
+                e["slug"],
+                len([r for r in e["repos_submitted"].splitlines() if r.strip()]),
+                e["submitted_date"] or "—",
+                e["received_date"] or "—",
+                e["forwarded_date"] or "—",
+                e2e,
+            ],
+            color=STATE_COLOR["Delivered"],
+        )
+
+    append_row([""])
+
+    # Timeline data — wide format so a scatter chart can plot:
+    # X = date (any column 2..6), Y = PMC (column 1), series-color by
+    # milestone column. Missing milestones are blank cells (chart
+    # doesn't plot blanks).
+    append_row(["TIMELINE DATA (wide format — chart-ready: X=date columns, Y=PMC)"])
+    append_row(["PMC", "Requested", "Ready", "Submitted", "Received", "Forwarded"])
+    timeline_start = len(values)
+    timeline_data_first_row = timeline_start  # for chart range
+    for e in sorted(entries, key=lambda x: x["request_date"]):
+        append_row(
+            [
+                e["pmc"],
+                e["request_date"] or "",
+                e["model_verified_date"] or "",
+                e["submitted_date"] or "",
+                e["received_date"] or "",
+                e["forwarded_date"] or "",
+            ]
+        )
+    timeline_end = len(values)
+    timeline_data_last_row = timeline_end - 1
+
+    # 5. Write values + apply colors.
+    if args.dry_run:
+        print(f"Would write {len(values)} rows to '{STATUS_SHEET}'; "
+              f"in-flight={len(in_flight)}, completed={len(completed)}, "
+              f"timeline-events={timeline_end - timeline_start}.")
+        return
+
+    a1_end_col = col_letter(max(len(r) for r in values) - 1)
+    a1_range = f"{STATUS_SHEET}!A1:{a1_end_col}{len(values)}"
+    service.spreadsheets().values().update(
+        spreadsheetId=args.spreadsheet_id,
+        range=a1_range,
+        valueInputOption="RAW",
+        body={"values": values},
+    ).execute()
+
+    # Bold header rows (line 1, "IN FLIGHT", "COMPLETED", "TIMELINE DATA"
+    # banner rows + the two table header rows).
+    bold_request = lambda row_idx, cols=8: {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row_idx,
+                "endRowIndex": row_idx + 1,
+                "startColumnIndex": 0,
+                "endColumnIndex": cols,
+            },
+            "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+            "fields": "userEnteredFormat.textFormat.bold",
+        }
+    }
+    bold_rows = [0, 3, 4]  # Title + IN FLIGHT banner + IN FLIGHT header.
+    # Find COMPLETED + TIMELINE DATA banners by scanning values.
+    for i, row in enumerate(values):
+        if row and row[0] in ("COMPLETED", "TIMELINE DATA (one row per milestone reached)"):
+            bold_rows.append(i)
+            bold_rows.append(i + 1)  # The table header right below.
+
+    requests = [bold_request(i) for i in sorted(set(bold_rows))]
+    requests.extend(color_requests)
+
+    if requests:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=args.spreadsheet_id,
+            body={"requests": requests},
+        ).execute()
+
+    print(
+        f"Status tab refreshed: {len(in_flight)} in flight, "
+        f"{len(completed)} completed, "
+        f"{timeline_end - timeline_start} timeline events. "
+        f"Chart: not embedded (create from the TIMELINE DATA block manually "
+        f"— scatter chart with X=Date, Y=PMC, series-color by Milestone)."
+    )
+
+
 def cmd_rename_column(args: argparse.Namespace) -> None:
     service = get_service()
     grid = fetch_sheet_grid(service, args.spreadsheet_id, args.sheet)
@@ -459,6 +776,13 @@ def main() -> None:
     )
     appc_p.add_argument("--dry-run", action="store_true")
 
+    status_p = sub.add_parser(
+        "build-status-tab",
+        help="Create or refresh the 'Status' tab with in-flight + completed tables and timeline data, color-coded by pipeline state.",
+    )
+    status_p.add_argument("--spreadsheet-id", required=True)
+    status_p.add_argument("--dry-run", action="store_true")
+
     rencol_p = sub.add_parser(
         "rename-column",
         help="Rename a column header (cell at row 1 of the named column).",
@@ -512,6 +836,8 @@ def main() -> None:
         cmd_insert_column(args)
     elif args.cmd == "rename-column":
         cmd_rename_column(args)
+    elif args.cmd == "build-status-tab":
+        cmd_build_status_tab(args)
 
 
 if __name__ == "__main__":

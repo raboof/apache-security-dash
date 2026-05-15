@@ -71,10 +71,10 @@ Mirko's queue.
    them on the queue request keeps everyone synced.
 
 5. **After the user sends, hand off to
-   `glasswing-scan-update`** to write two cells on the PMC's
-   row to the date the email went out (the date the user
-   actually clicked Send in Gmail, not the date this SKILL
-   drafted):
+   `glasswing-scan-update`** to write three cells on the
+   PMC's row to the date the email went out (the date the
+   user actually clicked Send in Gmail, not the date this
+   SKILL drafted):
 
    - `Date scan requested` — the submission date.
    - `Repositories submitted` — the exact list of repo URLs
@@ -82,9 +82,21 @@ Mirko's queue.
      of `Repositories requested` when only some repos passed
      pre-flight). Newline-separated, same format as
      `Repositories requested`.
+   This SKILL does **not** populate `Mirko thread (ponymail)`
+   itself — that cell only ever holds a direct thread
+   permalink (`https://lists.apache.org/thread/<tid>`), which
+   `glasswing-scan-run` resolves via ponymail-API search on
+   the relevant `private@<pmc>.apache.org` list (the Mirko
+   thread is CC'd there per CC rule 4 above; the
+   `security@apache.org` list is blocked by the ponymail
+   MCP's restricted-list policy, so the PMC's private list
+   is the resolution path). The cell stays blank until that
+   sync has run.
 
    This SKILL does not write to the spreadsheet directly; it
-   produces the two values and hands off to the update SKILL.
+   produces the two values (`Date scan requested`,
+   `Repositories submitted`) and hands off to the update
+   SKILL.
 
 6. **Glasswing name is allowed here** because every recipient
    is either inside the program's trust boundary (Mirko;

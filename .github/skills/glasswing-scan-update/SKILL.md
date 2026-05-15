@@ -22,7 +22,9 @@ Google Sheets API v4 directly.
   `Repositories submitted`, `Request date`,
   `Date scan requested`, `Date scan received`,
   `Forwarded scan to PMC`, `Contact Person`, `Backup contact`,
-  `Security Model`, `Security model verified`, or `Notes`
+  `Security Model`, `Security model verified`, `Notes`,
+  `Initial Model assessment`, `PR/Issues`,
+  `PMC thread (ponymail)`, or `Mirko thread (ponymail)`
   columns).
 - The scan for a PMC progresses through one of its workflow
   stages: request received (`Request date`), submitted to
@@ -238,6 +240,10 @@ Subcommands:
 | `apply --spreadsheet-id ID --updates PATH [--dry-run]` | Apply updates from a JSON file. `--dry-run` prints the diff and exits. |
 | `init-canned-tab --spreadsheet-id ID [--dry-run]` | Idempotently create the `Canned Responses` sheet (header row + frozen first row). Run once per workbook. |
 | `append-canned --spreadsheet-id ID --entries PATH [--dry-run]` | Append one or more canned-response rows. `Date Added` is auto-filled to today; all other fields come from the JSON. |
+| `insert-column --spreadsheet-id ID --sheet S --after H --header NEW [--dry-run]` | Insert a new column at a specific position in a sheet (right after the column with header `H`). Idempotent. |
+| `add-columns --spreadsheet-id ID --sheet S --headers H1 H2 ... [--dry-run]` | Append new column headers to the end of a sheet. Idempotent per header. |
+| `rename-column --spreadsheet-id ID --sheet S --old H --new NEW [--dry-run]` | Rename the header text at row 1 of a sheet's column. |
+| `build-status-tab --spreadsheet-id ID [--dry-run]` | Create or refresh the `Status` derived view: an in-flight table (color-coded by pipeline state), a completed table (with end-to-end days), and a wide-format timeline block ready for a Sheets chart. See `glasswing-scan-status` SKILL for the state taxonomy + color scheme. Idempotent; overwrites existing Status sheet contents. |
 
 Safety properties baked into the helper:
 

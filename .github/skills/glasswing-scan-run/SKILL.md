@@ -1,0 +1,370 @@
+---
+name: glasswing-scan-run
+description: Umbrella orchestration SKILL for the Glasswing scan pipeline — the periodic "run a full sweep across the program" entrypoint. Performs a read-only sweep across all four input surfaces (Gmail [GLASSWING] threads, the Mythos tracker spreadsheet's PMCs sheet, GitHub PRs the Security team has opened on PMC repos, incoming Mirko/Alpha-Omega scan-result mail) and produces a single action list — per-PMC, classified by where each engagement sits in the pipeline (new request, awaiting PMC reply, model-verify pending, ready to submit, submitted to vendor, results back, forwarded, etc.). The user picks what to act on; this SKILL never writes — it hands off to glasswing-scan-response, glasswing-model-verify, glasswing-scan-update, glasswing-scan-submit, glasswing-scan-forward, or glasswing-scan-status for actual work. Use this at the start of a work session, when picking back up after time away, or whenever Jarek says "where do we stand on Glasswing", "run a full scan sweep", or "what's pending across the program".
+---
+
+# glasswing-scan-run SKILL
+
+The umbrella orchestration for the Glasswing scan-outreach
+pipeline. This SKILL's only job is to **survey**: it scans
+every input surface, cross-references state, classifies every
+in-flight engagement, and surfaces a per-PMC action list that
+the user can triage. All writes happen via the per-task SKILLs
+that this one hands off to.
+
+The pipeline this SKILL covers has seven observable stages:
+
+```
+                                     +-------------------+
+                                     | Mirko / vendor    |
+                                     +---------+---------+
+                                               | scan results
+                                               v
++-----------+   +-----------+   +-----------+   +-----------+   +-----------+
+| [GLASS-   |-->| Pre-flight|-->| Submitted |-->| Triaging  |-->| Forwarded |
+| WING]     |   | (model    |   | to vendor |   | (slop     |   | to PMC    |
+| request   |   |  verify)  |   |           |   |  filter)  |   |           |
++-----------+   +-----------+   +-----------+   +-----------+   +-----------+
+       ^                                                              |
+       |                                                              v
+   PMC inbox                                                    PMC's normal
+                                                              triage process
+```
+
+Each stage has its own SKILL responsible for the work that
+moves an engagement through it. This SKILL doesn't replicate
+that logic — it just figures out which stage each engagement
+is *in* and surfaces what to do next.
+
+## When to invoke
+
+- **Start of a work session.** "Where do we stand on
+  Glasswing?" — run a full sweep first so the rest of the
+  session is grounded in current state, not in what was true
+  last time we worked.
+- **After time away.** Multiple days of accumulated email +
+  spreadsheet edits + open PRs need cross-referencing before
+  any per-PMC work makes sense.
+- **Before sending a status update.** Foundation-level or
+  Security-team rollup emails should be sourced from the
+  Status sheet that this SKILL refreshes.
+- Whenever Jarek says explicit triggers: "sync up the scan
+  tracker", "what's pending across the program", "do a full
+  Glasswing sweep", "are there new requests?", or anything
+  similarly broad.
+
+Skip when the user is already mid-task on a specific PMC
+(don't sweep when they say "draft a reply to Mark" — go
+straight to `glasswing-scan-response`).
+
+## Hard rules (do not skip)
+
+1. **Read-only at the umbrella level.** This SKILL never
+   writes to Gmail, the spreadsheet, or GitHub. It surveys,
+   classifies, and surfaces. When something needs writing,
+   the user invokes the matching per-task SKILL.
+
+2. **Surface, don't auto-decide.** When multiple PMCs are
+   pending the same action, *list them* and let the user
+   pick where to start. Do not silently batch.
+
+3. **Cite the source of every conclusion.** If the sweep
+   says "Tomcat is waiting on Mark to choose a path for
+   the 3 missing repos", cite the Gmail thread id (or
+   subject) and the spreadsheet row that supports that
+   conclusion. Stale reads happen; the user verifies.
+
+4. **Don't replicate per-task SKILL logic.** Don't decide
+   what reply to draft — that's `glasswing-scan-response`'s
+   job. Don't decide model remediation — that's
+   `glasswing-model-verify`. This SKILL's output is a list
+   of "needs X; SKILL Y handles it"; the per-task SKILL
+   does the actual decision-making.
+
+5. **Refresh the Status sheet at the end** by invoking
+   `glasswing-scan-update`'s `build-status-tab` subcommand.
+   That makes the sweep's findings durable for anyone else
+   on the team to read.
+
+## Procedure
+
+### Step 1 — Email sweep
+
+Search Gmail for `subject:GLASSWING OR subject:Glasswing`,
+limit 50 most recent threads. For each thread, classify into
+one of these buckets:
+
+| Bucket | Signal |
+| --- | --- |
+| **New `[GLASSWING]` request** | Subject matches `[GLASSWING] <PMC>:` and the PMC isn't yet in the spreadsheet as `Scan Requested = Yes`. |
+| **Reply on existing request thread** | We've already replied at least once (`SENT` label present in thread); a *newer* message exists from the PMC after our last reply. |
+| **Reply we haven't acted on** | Same as above but our last action (Gmail draft or sheet write) is older than the most recent PMC message. |
+| **Pure announcement-thread chatter** | A reply to the original `[IMPORTANT][SECURITY]` announcement that isn't substantive (just "+1", "interesting", etc.). Log and skip. |
+| **Bot / automated** | Git push notifications, PR review notifications, MAILER-DAEMON, etc. Filter out — don't include in the action list. |
+| **Mirko / Alpha-Omega correspondence** | From `mirko@alpha-omega.dev` or `@alpha-omega.dev`; subject containing scan-request acknowledgement, queue position, or scan result delivery. |
+
+Filter out noise (the announcement-thread `+1`s, the git push
+emails, the GitHub PR-review notifications, MAILER-DAEMON
+bounces). These typically arrive in volume; skipping them
+keeps the action list useful.
+
+### Step 2 — Spreadsheet read
+
+Fetch the `Mythos scan` workbook (file ID in user-scope
+reference memory under `mythos-tracker`). Specifically:
+
+- **PMCs sheet** — full row dump for every row where
+  `Scan Requested = Yes`. Capture every column: scope,
+  contacts, model status, every date, notes, assessment,
+  PR/Issues.
+- **Status sheet** (if present) — the previously-generated
+  in-flight + completed view, as a fast confirmation of
+  what the email sweep should match.
+
+For each PMC row, compute the same pipeline state that
+`build-status-tab` does (Pre-flight / Ready / Submitted /
+Triaging / Delivered).
+
+### Step 3 — GitHub PR sweep
+
+For each PMC with a non-empty `PR/Issues` cell:
+
+- Parse the URL(s).
+- Query `gh pr view <url> --json state,merged,mergeable,
+  reviewDecision,latestReviews` to get the current state.
+- Bucket the PR: `open` / `closed` / `merged`.
+- Note: a merged AGENTS.md PR means we can re-run
+  `glasswing-model-verify`'s discoverability check on that
+  repo; surface it.
+
+### Step 4 — Cross-reference and classify
+
+For each `Scan Requested = Yes` PMC, produce a single
+classification:
+
+| Classification | Definition | Next action |
+| --- | --- | --- |
+| `new-request-untouched` | Inbound `[GLASSWING]` request exists; no row in the sheet for that PMC yet, or the row has no `Request date`. | Run `glasswing-scan-response` gates 1–4. |
+| `pmc-reply-awaiting-action` | PMC has sent a newer message than our last reply / sheet write. | Read the new message; run `glasswing-scan-response` if it raises questions; run `glasswing-model-verify` if they nominated a model; run `glasswing-scan-update` if it confirms scope / dates. |
+| `awaiting-pmc-reply` | We've replied last; nothing new from PMC. | Wait; nothing to do unless time-overdue (see below). |
+| `model-verify-pending` | Model nominated but not yet assessed for completeness + per-repo discoverability. | Run `glasswing-model-verify`. |
+| `ready-to-submit` | `Security model verified` set; `Date scan requested` blank. | Run `glasswing-scan-submit` (draft Mirko email). |
+| `submitted-awaiting-vendor` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
+| `results-back-awaiting-triage` | A scan report has arrived from Mirko but the team hasn't slop-filtered + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `glasswing-scan-forward`. |
+| `forwarded-closed` | `Forwarded scan to PMC` set. | Done. Move to "Completed" section of report. |
+| `blocked-on-discoverability` | Some repos in `Repositories requested` lack `AGENTS.md`; PMC needs to fix or we PR. | Surface; await PMC decision on path. |
+| `blocked-on-gate-2` | Request came from non-`@apache.org` address and no `@apache.org` anchor stated. | Wait for PMC reply confirming Apache identity. |
+| `mirko-correspondence` | Reply from Mirko on a queued / submitted scan. | Read the message; possibly forward to the PMC; update sheet. |
+
+The "time-overdue" rule: any engagement in `awaiting-pmc-reply`
+or `submitted-awaiting-vendor` for more than 14 days gets
+flagged for a nudge. Don't draft the nudge automatically;
+surface it for the user.
+
+### Step 5 — Produce the action list
+
+Output format:
+
+```
+# Glasswing pipeline sweep — <YYYY-MM-DD>
+
+## New since last sweep
+- <new requests / new PMC replies> with thread refs
+
+## Ready to act on (per stage)
+
+### new-request-untouched (N)
+- <PMC> — <thread id> — next: glasswing-scan-response
+
+### pmc-reply-awaiting-action (N)
+- <PMC> — <thread id>, latest from <sender> @ <date>; key
+  content: <one-line summary>. Next: <which SKILL>.
+
+### model-verify-pending (N)
+- <PMC> — model: <URL or "missing">. Repos: <count>.
+  Next: glasswing-model-verify.
+
+### ready-to-submit (N)
+- <PMC> — verified <date>; <repo count> repos in scope.
+  Next: glasswing-scan-submit.
+
+### blocked-on-discoverability (N)
+- <PMC> — <N> of <M> repos have AGENTS.md; awaiting PMC
+  reply on path. Last followed up <date>.
+
+### blocked-on-gate-2 (N)
+- <PMC> — last reply from non-apache.org; we asked for
+  anchor <date>.
+
+### mirko-correspondence (N)
+- <thread> — re: <PMC>; <one-line summary>.
+
+## Awaiting PMC reply (no action needed)
+- <PMC> — we replied <date>; <D days> ago.
+- (overdue >14d): <PMC> — overdue by <D days>; consider nudge.
+
+## Submitted, awaiting vendor (no action needed)
+- <PMC> — submitted <date>; <D days> ago.
+- (overdue >14d): <PMC> — Mirko nudge candidate.
+
+## Completed since last sweep
+- <PMC> — forwarded <date>; end-to-end <D days>.
+
+## Status sheet refresh
+- Status tab refreshed at <time>. <N> in flight, <N>
+  completed, <N> timeline events.
+```
+
+### Step 5.5 — Resolve ponymail thread URLs
+
+The PMCs sheet has two columns dedicated to **direct**
+lists-apache.org thread permalinks:
+
+- `PMC thread (ponymail)` — the `[GLASSWING]` request thread
+  between the Security team and the PMC.
+- `Mirko thread (ponymail)` — the scan-submission +
+  scan-results delivery thread with Mirko / Alpha-Omega.
+
+Both cells should only ever contain
+`https://lists.apache.org/thread/<tid>` URLs — direct
+permalinks to the actual thread. **No fallback or "starter"
+URLs.** If a thread cannot be resolved (because ponymail
+auth isn't set up, or the thread isn't indexed yet), leave
+the cell blank rather than write a substitute.
+
+Procedure:
+
+1. Call `mcp__ponymail__auth_status`. If "Not authenticated",
+   surface a one-line note in the action list ("Ponymail
+   columns require `mcp__ponymail__login` — N rows skipped")
+   and continue with the rest of the sync. Do not attempt to
+   resolve URLs without auth.
+
+2. For each PMC row where `PMC thread (ponymail)` is blank
+   (or where it currently contains a non-permalink URL from
+   an older sync run):
+
+   - Call `mcp__ponymail__search_list` with `list=private`,
+     `domain=<pmc>.apache.org`, `subject=GLASSWING`,
+     `emails_only=true` (and a `timespan` covering the
+     period since the original announcement to bound the
+     search).
+   - From the results, find the thread whose subject
+     matches `[GLASSWING] <PMC>:` (or its forwarded /
+     replied variants — e.g. Fineract has a "Fwd:" subject
+     line) and whose first message's `from` matches the PMC
+     contact recorded in the sheet's `Contact Person` cell.
+   - Read the thread's `tid` from the result. Construct
+     `https://lists.apache.org/thread/<tid>`.
+   - Write back via `glasswing-scan-update` `apply`.
+
+   Note: the ponymail MCP **blocks `security@apache.org`**
+   entirely (restricted-list policy), so we always resolve
+   PMC threads via the PMC's own `private@<pmc>` list —
+   the original `[GLASSWING]` request is CC'd there, so the
+   thread is in that archive too.
+
+3. For each PMC row where `Date scan requested` is filled
+   AND `Mirko thread (ponymail)` is blank:
+
+   - Call `mcp__ponymail__search_list` with `list=private`,
+     `domain=<pmc>.apache.org`, `subject="Scan request for
+     Apache <PMC name>"` (or the Mirko-thread pattern that
+     `glasswing-scan-submit` uses).
+   - Find the thread and write its direct permalink.
+   - Same reason for using `private@<pmc>` rather than
+     `security@apache.org`: the MCP blocks the latter.
+
+4. If a thread can't be found despite ponymail auth being
+   active, leave the cell blank and surface the row in the
+   action list under a "ponymail thread not yet indexed"
+   note. Indexing can lag by a day or two for new threads.
+
+The columns are blank-tolerant. Never substitute a list-view
+URL or a search URL for a direct thread permalink — the
+columns commit to direct permalinks specifically so a click
+lands on the thread itself.
+
+### Step 6 — Refresh the Status sheet
+
+Invoke
+`glasswing-scan-update`'s `build-status-tab` subcommand at the
+end of the sweep. This produces a durable view of the same
+classification for anyone else on the team to read. The
+classification logic in this SKILL and the state machine in
+`build-status-tab` should be kept in sync — if you find them
+diverging, that's a bug to fix.
+
+### Step 7 — Hand off
+
+Surface the action list and stop. The user picks an item and
+invokes the matching SKILL by name. Do not chain into a SKILL
+unbidden.
+
+## Cross-references — which SKILL handles each next action
+
+| Next action | Downstream SKILL |
+| --- | --- |
+| Run gates 1–4 on a new request | `glasswing-scan-response` |
+| Reply to a PMC's follow-up message | `glasswing-scan-response` |
+| Run pre-flight model assessment for a PMC | `glasswing-model-verify` |
+| Draft email response with model gaps | `glasswing-model-verify` (Templates 4 or 5) |
+| Open AGENTS.md/SECURITY.md PR | `glasswing-model-verify` (Templates 1–3) |
+| Write any cell on the PMCs sheet | `glasswing-scan-update` (apply) |
+| Add a new column / rename / insert | `glasswing-scan-update` (add-columns / insert-column / rename-column) |
+| Save a canned response | `glasswing-scan-update` (append-canned) |
+| Refresh the Status sheet | `glasswing-scan-update` (build-status-tab) |
+| Draft a scan-submission email to Mirko | `glasswing-scan-submit` |
+| Slop-filter Mirko's report + forward to PMC | `glasswing-scan-forward` |
+| Generate a status rollup | `glasswing-scan-status` |
+| Produce a fresh threat-model draft for a PMC | `threat-model-producer` |
+
+## Style notes
+
+- **One screen** of action list. If the list is too long
+  to scan in one sitting, group by status and collapse
+  long sections to counts ("12 PMCs awaiting reply — list
+  on request").
+- **Cite sources concretely.** A thread id, a sheet row
+  number, a PR URL. "PMC says X" without citation can be
+  wrong; with citation it's verifiable.
+- **Don't editorialize on PMC priorities.** Surface the
+  state; let the user decide which PMC to attend to. The
+  sweep doesn't know that Logging is the test bed or that
+  Tomcat has more eyes on it.
+- **Use the same color/state taxonomy as `build-status-
+  tab`.** If the action list says "Tomcat: Pre-flight",
+  the Status sheet should also show Tomcat in the
+  Pre-flight bucket. Divergence is a bug.
+
+## Examples of bad sweeps (avoid)
+
+- A sweep that dumps every Gmail thread in the action
+  list. Filter out the noise (`+1`s, git pushes, GitHub
+  notifications, MAILER-DAEMON). The action list is for
+  things the user must act on.
+- A sweep that auto-drafts replies as part of the survey.
+  Per hard rule 1 — this SKILL is read-only. The user
+  picks an item and then invokes the response SKILL.
+- A sweep that omits the GitHub PR check. Discoverability
+  PRs we've opened are real state changes; a sweep that
+  ignores them produces a "Tomcat is blocked on
+  discoverability PR" line when in fact the PR landed
+  three days ago.
+- A sweep that uses stale memory for the spreadsheet.
+  Always read fresh — Piotr may have edited columns or
+  rows between sweeps.
+- A sweep that doesn't refresh the Status sheet at the
+  end. The Status sheet is the team's shared view; a
+  sweep that only reports in chat leaves the rest of the
+  team out of date.
+
+## Provenance
+
+This SKILL was added to formalize the periodic-sweep pattern
+Jarek has been running by hand: re-fetch Gmail, re-fetch the
+sheet, re-check each PR's state, classify per PMC, then drive
+the next batch of work. Codifying it as a SKILL makes the
+classification deterministic, lets other Security-team members
+run the same sweep, and gives the team a shared vocabulary
+for pipeline state across the PMC cohort.
