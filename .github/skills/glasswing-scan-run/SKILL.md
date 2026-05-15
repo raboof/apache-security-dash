@@ -12,7 +12,7 @@ in-flight engagement, and surfaces a per-PMC action list that
 the user can triage. All writes happen via the per-task SKILLs
 that this one hands off to.
 
-The pipeline this SKILL covers has seven observable stages:
+The pipeline this SKILL covers has eight observable stages:
 
 ```
                                      +-------------------+
@@ -20,16 +20,26 @@ The pipeline this SKILL covers has seven observable stages:
                                      +---------+---------+
                                                | scan results
                                                v
-+-----------+   +-----------+   +-----------+   +-----------+   +-----------+
-| [GLASS-   |-->| Pre-flight|-->| Submitted |-->| Triaging  |-->| Forwarded |
-| WING]     |   | (model    |   | to vendor |   | (slop     |   | to PMC    |
-| request   |   |  verify)  |   |           |   |  filter)  |   |           |
-+-----------+   +-----------+   +-----------+   +-----------+   +-----------+
-       ^                                                              |
-       |                                                              v
-   PMC inbox                                                    PMC's normal
-                                                              triage process
++-----------+   +-----------+   +-----------+   +-----------+   +-----------+   +-----------+
+| [GLASS-   |-->| Pre-flight|-->| Submitted |-->| Triaging  |-->| Archived  |-->| Forwarded |
+| WING]     |   | (model    |   | to vendor |   | (slop     |   | (committed|   | to PMC    |
+| request   |   |  verify)  |   |           |   |  filter)  |   |  to scans/|   |  citing   |
+|           |   |           |   |           |   |           |   |  tree)    |   |  filename)|
++-----------+   +-----------+   +-----------+   +-----------+   +-----------+   +-----------+
+       ^                                                                              |
+       |                                                                              v
+   PMC inbox                                                                    PMC's normal
+                                                                              triage process
 ```
+
+The `Archived` step is a synchronous part of `glasswing-scan-forward`:
+the SKILL slop-filters Mirko's report, commits the curated
+markdown + `.json` raw + `.notes.md` decision log to
+[`scans/<project>/<repo>/`](../../../scans/README.md), then
+drafts the forwarding email citing the archive filename. The
+single user-approval gates both the commit and the email; see
+[`scans/README.md`](../../../scans/README.md) for the path /
+metadata / confidentiality spec.
 
 Each stage has its own SKILL responsible for the work that
 moves an engagement through it. This SKILL doesn't replicate
@@ -150,8 +160,9 @@ classification:
 | `model-verify-pending` | Model nominated but not yet assessed for completeness + per-repo discoverability. | Run `glasswing-model-verify`. |
 | `ready-to-submit` | `Security model verified` set; `Date scan requested` blank. | Run `glasswing-scan-submit` (draft Mirko email). |
 | `submitted-awaiting-vendor` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
-| `results-back-awaiting-triage` | A scan report has arrived from Mirko but the team hasn't slop-filtered + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `glasswing-scan-forward`. |
-| `forwarded-closed` | `Forwarded scan to PMC` set. | Done. Move to "Completed" section of report. |
+| `results-back-awaiting-triage` | A scan report has arrived from Mirko but the team hasn't slop-filtered + archived + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `glasswing-scan-forward` (covers slop-filter, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
+| `archived-not-forwarded` | An archive commit exists under `scans/<project>/<repo>/` for this PMC but `Forwarded scan to PMC` is still blank. Process bug (the email should have been drafted at the same time). Detection signal: `git log --grep="^\[scan\] <project>/"` returns a commit newer than the sheet's `Forwarded scan to PMC` date. | Surface for manual intervention; re-run `glasswing-scan-forward` from step 7 (draft email) using the existing archive entry. |
+| `forwarded-closed` | `Forwarded scan to PMC` set **and** the corresponding archive commit exists in `scans/`. | Done. Move to "Completed" section of report. |
 | `blocked-on-discoverability` | Some repos in `Repositories requested` lack `AGENTS.md`; PMC needs to fix or we PR. | Surface; await PMC decision on path. |
 | `blocked-on-gate-2` | Request came from non-`@apache.org` address and no `@apache.org` anchor stated. | Wait for PMC reply confirming Apache identity. |
 | `mirko-correspondence` | Reply from Mirko on a queued / submitted scan. | Read the message; possibly forward to the PMC; update sheet. |

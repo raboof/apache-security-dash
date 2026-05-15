@@ -106,6 +106,18 @@ Skip when:
    decisions, and the next scan (six months later, when the
    suppression list has grown) inherits the rationale.
 
+9. **Always archive the scan into `scans/` before
+   forwarding.** Per the spec in
+   [`scans/README.md`](../../../scans/README.md), every
+   Mirko-delivered scan that the team forwards must first
+   land in `scans/<project>/<repo>/<project>-<repo>-<YYYY-
+   MM-DD>-<short-sha>.md` (plus `.json` raw + `.notes.md`
+   decision-log sidecars) and be committed with a `[scan]`
+   prefixed message. The archive commit happens **before**
+   the Gmail draft is created so the forwarding email can
+   cite the canonical filename. A scan that has been
+   forwarded without an archive entry is a process bug.
+
 ## The slop-filter rubric
 
 For each finding in Mirko's report, classify into exactly one
@@ -189,22 +201,134 @@ If the threat model URL, the recipient list, or the
    and `KNOWN-NON-FINDING` dispositions land in the
    "Filtered" appendix.
 
-6. **Draft the forwarding email.** Template below. Show the
-   full draft + the filter rationale list to the user.
+6. **Archive the scan into the `scans/` tree** — per the
+   [`scans/README.md`](../../../scans/README.md) spec. This
+   step happens **before** the email is drafted so the
+   forwarding email can cite the canonical filename, giving
+   the PMC a stable identifier to refer back to without
+   needing access to this private repo.
 
-7. **Wait for explicit approval** ("yes" / "send it" / "go"
-   / similar). If the user wants edits to filter decisions,
-   revise the decision log first, regenerate the email,
-   re-show.
+   For each repo that Mirko's report covers (a scan may
+   cover multiple repos in one report; treat each as a
+   separate archive entry):
 
-8. **Create the Gmail draft** via
+   1. **Determine the head SHA** — extract from Mirko's
+      report if present; otherwise query
+      `gh api repos/apache/<repo>/commits/HEAD --jq .sha`
+      using the date Mirko ran the scan (typically the
+      `scan_date` Mirko reports, or the report's own
+      received date if Mirko omitted it).
+
+   2. **Compute the path**:
+
+      ```
+      scans/<project>/<repo>/<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md
+      ```
+
+      where `<project>` is the PMC slug, `<repo>` is the
+      `apache/<repo>` name, `<YYYY-MM-DD>` is the UTC scan
+      completion date, and `<short-sha>` is the first 8
+      hex chars of the head SHA. Create the parent
+      directories if missing.
+
+      If a file at this exact path already exists (rare —
+      same repo scanned twice in one UTC day at the same
+      SHA prefix), suffix the filename with `-2`, `-3`, …
+      per the worked-examples table in
+      [`scans/README.md`](../../../scans/README.md).
+
+   3. **Write the canonical markdown file** with the YAML
+      front-matter spelled out in the spec:
+
+      ```yaml
+      ---
+      project:         <pmc-slug>
+      repo:            apache/<repo>
+      head_sha:        <full 40-char SHA>
+      scan_date:       <YYYY-MM-DD>T<HH:MM:SS>Z
+      glasswing_model: <model id Mirko reported>
+      threat_model:    <model URL recorded for the PMC in the tracker>
+      findings_total:  <count from Mirko's report>
+      findings_after_slop_filter: <count after the decision log in step 4>
+      pre_reviewed_by: <agent operator's @apache.org>
+      pre_review_date: <YYYY-MM-DD>
+      ---
+      ```
+
+      followed by the curated findings produced in step 5
+      (each finding under its own `## ` heading, with the
+      affected file/lines, the violated property cited by
+      threat-model `§N`, a short reproducer, severity hint,
+      and the disposition decided in step 4).
+
+   4. **Write the `.json` sidecar** with the same filename
+      prefix and `.json` extension — Mirko's raw report
+      verbatim, so the slop-filter pass is auditable
+      later. Use the exact filename:
+      `<project>-<repo>-<YYYY-MM-DD>-<short-sha>.json`.
+
+   5. **Write the `.notes.md` sidecar** with the per-finding
+      decision log from step 4 (one block per finding:
+      ID, disposition, rationale, action). Same filename
+      prefix, `.notes.md` extension. This is the audit
+      record of *why* each finding was filtered or
+      forwarded.
+
+   6. **Stage and commit** all three files (`<filename>.md`,
+      `.json`, `.notes.md`) in **one** commit. Commit
+      message format (per the spec's checklist):
+
+      ```
+      [scan] <project>/<repo> <YYYY-MM-DD>-<short-sha>
+
+      Glasswing scan against apache/<repo> at <full-sha>.
+      Total findings: <N>; after slop-filter: <M>;
+      forwarded: <K>, filtered: <N-K>.
+
+      Generated-by: Claude Code (Claude Opus 4.7)
+      ```
+
+      Show the user the planned commit (file list + first
+      ~10 lines of each file) and wait for explicit "yes"
+      before running `git commit`. Push only after the
+      forwarding email is also drafted (step 8) so the
+      two artefacts land together.
+
+   7. **Record the archive filename** — the forwarding
+      email (next step) cites the canonical filename
+      (e.g. `lucene-lucene-2026-05-13-a95e678d`) so the
+      PMC has a stable, repo-independent identifier.
+
+7. **Draft the forwarding email.** Template below. Cite
+   the archive filename(s) from step 6 in the email body
+   so the PMC has the canonical identifier. Show the full
+   draft + the filter rationale list + the planned commit
+   to the user.
+
+8. **Wait for explicit approval** ("yes" / "send it" / "go"
+   / similar). The approval covers both the commit (step 6)
+   and the email draft (step 7). If the user wants edits
+   to filter decisions, revise the decision log first,
+   regenerate the email + the archive files, re-show.
+
+9. **Create the Gmail draft** via
    `mcp__claude_ai_Gmail__create_draft`. `replyToMessageId`
    is **omitted** — this is a new thread to the PMC's
    recipients, not a reply to Mirko's thread.
 
-9. **Hand off to `glasswing-scan-update`** to write
-   `Date scan received` (Mirko's send date) and
-   `Forwarded scan to PMC` (today's date) on the PMC's row.
+10. **Push the archive commit** to `origin/main` (or open a
+    PR per local convention — the spec is that the
+    canonical archive lives in `main`). The push happens
+    *after* the Gmail draft is created, so an archive
+    commit without a corresponding draft is rare; surface
+    if it happens.
+
+11. **Hand off to `glasswing-scan-update`** to write
+    `Date scan received` (Mirko's send date) and
+    `Forwarded scan to PMC` (today's date) on the PMC's
+    row. The Gmail draft id and archive filename(s)
+    should also land in the `Notes` cell so the next
+    sweep sees a complete record.
 
 ## Email template
 
@@ -226,6 +350,18 @@ Hi <primary contact first name (and any others)>,
 The Glasswing scan for Apache <PMC name> is back. The Security
 team has done a slop-filter pass against the project's threat
 model at <model URL>; the curated findings follow.
+
+Canonical scan reference(s) (cite these in your tracker —
+each archives the pre-reviewed scan + raw vendor output + our
+decision log against apache/<repo> at the listed commit):
+
+  - <project>-<repo>-<YYYY-MM-DD>-<short-sha>
+  - <project>-<repo2>-<YYYY-MM-DD>-<short-sha>   [if multiple repos]
+
+(Files are in the Security team's private archive at
+scans/<project>/<repo>/; you don't have access to that repo,
+but the filename is the stable identifier and the curated
+findings are in this email.)
 
 Summary:
   Total findings from Glasswing: <N>

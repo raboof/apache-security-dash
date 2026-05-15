@@ -181,6 +181,19 @@ following state machine (latest applicable state wins):
 | Triaging | `Date scan received` set, not yet forwarded | medium green |
 | Delivered | `Forwarded scan to PMC` set | dark green (appears in the COMPLETED table, not in-flight) |
 
+The `Triaging → Delivered` transition includes a side-effect
+that does **not** get its own state column: the
+`glasswing-scan-forward` SKILL commits the curated scan +
+sidecars to the [`scans/`](../../../scans/README.md) tree
+before drafting the forwarding email. The archive commit and
+the email draft are produced together under a single approval
+gate, so a PMC normally moves Triaging → Delivered in one
+operator interaction. If something abnormal interrupts that
+flow (archive committed but email never drafted), the
+`glasswing-scan-run` classifier surfaces it as
+`archived-not-forwarded` rather than letting the row sit in
+`Triaging` indefinitely.
+
 The `Model` column is independent of the pipeline state and
 indicates how far the threat-model verification has
 progressed:
