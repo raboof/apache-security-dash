@@ -264,7 +264,9 @@ Status view.
 - **`PR/Issues` is a running list, not a single-slot field.**
   Each PR URL is on its own line; new ones append.
   `build-status-tab` parses every URL out of the cell to
-  compute open/merged counts.
+  compute per-PMC `PRs opened (not yet merged)` / `PRs merged` /
+  `PRs total` counts, plus a program-wide rollup at the top of
+  the Status sheet.
 
 ## Memory and secrets boundary
 

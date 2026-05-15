@@ -127,13 +127,23 @@ The workbook has up to five sheets:
    of the scan-pipeline state, regenerated on demand by
    `glasswing-scan-update`'s `build-status-tab` subcommand.
    This sheet is **not** human-edited; every refresh
-   overwrites it from the PMCs sheet. Three blocks:
+   overwrites it from the PMCs sheet. Four blocks:
+
+   - **PROGRAM TOTALS** header — one-screen rollup
+     surfaced above the in-flight table: PMCs opted in
+     (count of rows with `Scan Requested = Yes`), PMCs
+     with at least one PR opened, `PRs opened (not yet
+     merged)`, `PRs merged`, `PRs total`. If any PRs were
+     closed without merge, a parenthetical line below the
+     total reports the count so the math reconciles
+     (`total = open + merged + closed-without-merge`).
 
    - **IN FLIGHT** table — one row per PMC where the scan
      is still moving through the pipeline (not yet
      `Delivered`). Columns: `PMC`, `Slug`, `Status`,
      `Repos requested` (count), `Model` status,
-     `PRs (open/merged)` (counts derived from the
+     `PRs opened (not yet merged)`, `PRs merged`,
+     `PRs total` (all three derived from the
      `PR/Issues` cell via `gh pr view`),
      `Request date`, `Last touch` (model-verified date if
      filled), `Notes / PR / Issues`. Each row is
@@ -142,7 +152,8 @@ The workbook has up to five sheets:
    - **COMPLETED** table — one row per PMC where
      `Forwarded scan to PMC` is set. Columns: `PMC`,
      `Slug`, `Repos submitted` (count),
-     `PRs (open/merged)`, `Submitted`, `Received`,
+     `PRs opened (not yet merged)`, `PRs merged`,
+     `PRs total`, `Submitted`, `Received`,
      `Forwarded`, `Days end-to-end` (the turnaround in
      days from Request date to Forwarded). Rows colored
      dark green.

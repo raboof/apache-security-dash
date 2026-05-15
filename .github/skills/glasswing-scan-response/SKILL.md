@@ -128,37 +128,88 @@ The From: header on the request must be either a personal
 `@apache.org` address **or** a project alias
 (`security@<pmc>.apache.org` / `private@<pmc>.apache.org`).
 
-If the request came from a non-apache.org address (personal
-Gmail, employer address, third-party forum, …) **and** the
-message body does not explicitly state the sender's
-`@apache.org` address, the request cannot be attributed to a
-PMC member. Ask for one of two things — either is acceptable,
-do not require both:
-
-- **Resend from their `@apache.org` address**, via ponymail
-  compose:
-  `https://lists.apache.org/list.html?private@<pmc>.apache.org`
-  → sign in with Apache ID → press `c` → address the new
-  message to `security@apache.org` with
-  `private@<pmc>.apache.org` on CC. (The `c` shortcut in
-  ponymail opens a compose dialog that sends from the signed-in
-  `@apache.org` identity.)
-
-- **State the `@apache.org` address in this thread.** One line
-  ("I'm `jdoe@apache.org`, writing from my personal account")
-  is enough — the team verifies against the PMC roster before
-  queuing.
-
 If the body *already* states the `@apache.org` address, this
 gate passes — proceed to gate 3 with that stated address.
 
-Reply fragment:
+If the request came from a non-apache.org address (personal
+Gmail, employer address, third-party forum, …) **and** the
+message body does not explicitly state the sender's
+`@apache.org` address, **do not block immediately** — first try
+to resolve the sender to a candidate Apache ID. Apache emails
+are public and committer rosters are publicly browsable; in
+most cases we can do the lookup work ourselves rather than
+pushing it onto the maintainer.
+
+**Resolution procedure** — start with the canonical source. The
+public LDAP JSON dump is the only source that always gives the
+correct ID; everything else is a hint.
+
+1. **Whimsy public LDAP JSON (canonical, no auth required)** —
+   fetch <https://whimsy.apache.org/public/public_ldap_people.json>.
+   The `people` field maps every Apache ID to `{name, ...}`. Match
+   the sender's *human name* (From: header display name or
+   signature line) against the `name` field; read off the ID. This
+   endpoint is open and authoritative. Use it first.
+
+   Example. Sender wrote from `ancosen@gmail.com`. The local-part
+   heuristic (next step) would propose `ancosen@apache.org`, but
+   the LDAP JSON shows that "Andrea Cosentino" maps to
+   `acosentino`, not `ancosen`. Trust LDAP, not the heuristic.
+
+2. **Local-part heuristic (hint only — confirm against LDAP)** —
+   `<local-part-of-sender>@apache.org`. Often right, sometimes
+   wrong (Andrea Cosentino's gmail local-part is `ancosen` but
+   his Apache ID is `acosentino`). Never propose this as a
+   candidate without confirming against step 1.
+
+3. **Project committers / team page** — fetch
+   `https://<pmc>.apache.org/team.html` (or `/committers.html` /
+   `/community/team-list.html`, naming varies). Useful when LDAP
+   has an ambiguous-name case (two people with similar names),
+   since the team page lists *which PMC* each member is on.
+
+4. **Git history on the project's primary repo** —
+   `gh api search/commits?q=author-name:<First>+<Last>+repo:apache/<repo>`
+   (use the GitHub `search/commits` endpoint, not the
+   per-repo `commits?author=` endpoint, which only accepts
+   GitHub-login authors). Commit emails are sometimes `@apache.org`
+   (definitive) but more often a personal address (a hint at best).
+
+5. **Whimsy interactive roster** —
+   `https://whimsy.apache.org/roster/committee/<pmc>` and
+   `https://whimsy.apache.org/roster/people/<id>`. Requires
+   Apache ID auth; use it for the user-side confirmation step,
+   not the agent's automated resolution.
+
+**If a candidate is found:** reply with the propose-and-confirm
+template below. The candidate is *not* an authentication claim
+— it's a hypothesis the maintainer either confirms (Gate 2
+passes) or corrects (re-resolve against the corrected ID).
+
+**If no candidate is found:** fall through to the explicit
+"please anchor your identity" reply.
+
+Reply fragment — propose-and-confirm (preferred when a
+candidate exists):
+
+> Thanks for the request — to anchor it to your Apache identity:
+> you wrote from `<non-apache address>` and the message body
+> doesn't state which `@apache.org` address the request should
+> be attributed to. I believe your Apache ID is `<candidate>`
+> (so `<candidate>@apache.org`) based on
+> `<source — committers page / git history / local-part match>`.
+> Could you confirm or correct? A one-line reply is enough; we
+> verify against the PMC roster before queuing.
+
+Reply fragment — block (only when no candidate can be inferred):
 
 > Thanks for the request — before we queue it we need to anchor
 > it to your Apache identity. You wrote from
 > `<non-apache address>`, which isn't an `@apache.org` address,
 > and the message body doesn't say which `@apache.org` address
-> the request should be attributed to.
+> the request should be attributed to. We checked the public
+> committer rosters and couldn't infer a candidate Apache ID
+> from your name / sender address.
 >
 > Either of these works:
 >
