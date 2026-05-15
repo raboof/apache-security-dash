@@ -69,7 +69,7 @@ The workbook has up to five sheets:
    | `Forwarded scan to PMC` | Date (or `Yes`) marking when the Security team forwarded the scan output to the PMC's listed recipients. Blank if not yet forwarded. |
    | `Notes` | Free-text. |
    | `Initial Model assessment` | Free-text snapshot of the pre-flight findings for this PMC — per-repo discoverability status, model completeness verdict, open questions. Set by `glasswing-model-verify`. |
-   | `PR/Issues` | URLs of PRs the Security team has opened on the PMC's repo (e.g. AGENTS.md / SECURITY.md / model-additions PRs), separated by `+ Email reply <date>` notes when an out-of-band email reply went out. Populated by `glasswing-scan-response` / `glasswing-model-verify`. |
+   | `PR/Issues` | URLs of PRs the Security team has opened on the PMC's repos (AGENTS.md / SECURITY.md / model-additions PRs), one per line. Multiple PRs for the same PMC (e.g. discoverability fixes across several repos) are kept as separate lines — `glasswing-scan-response` and `glasswing-model-verify` **append** rather than overwrite. Free-text annotations on the same line (`(discoverability PR)`, `+ Email reply 2026-05-14`) are allowed and ignored by parsers that only care about the PR URLs. `build-status-tab` parses every PR URL out of this cell and queries `gh pr view` to count open vs merged for the Status tab. |
    | `PMC thread (ponymail)` | **Direct** lists-apache.org thread permalink (`https://lists.apache.org/thread/<tid>`) to the PMC-side correspondence — the original `[GLASSWING]` request + all replies between Security team and the PMC. Resolved by `glasswing-scan-run` via ponymail search on `private@<pmc>.apache.org` filtered by `subject:GLASSWING`. Requires `mcp__ponymail__login` to have been run first (private lists need auth). Left blank when ponymail-auth isn't set up — never populated with a non-direct fallback URL, since those would mislead readers expecting a single click into the thread. |
    | `Mirko thread (ponymail)` | Same shape, for the Mirko/Alpha-Omega correspondence thread — the scan-submission email + scan-results delivery. Blank until `glasswing-scan-submit` has produced a first message to Mirko AND `glasswing-scan-run` has resolved the thread via the relevant CC'd list (typically `private@<pmc>.apache.org`, since `security@apache.org` is blocked by the ponymail MCP's restricted-list policy). |
 
@@ -133,16 +133,19 @@ The workbook has up to five sheets:
      is still moving through the pipeline (not yet
      `Delivered`). Columns: `PMC`, `Slug`, `Status`,
      `Repos requested` (count), `Model` status,
+     `PRs (open/merged)` (counts derived from the
+     `PR/Issues` cell via `gh pr view`),
      `Request date`, `Last touch` (model-verified date if
      filled), `Notes / PR / Issues`. Each row is
      background-colored by its pipeline state.
 
    - **COMPLETED** table — one row per PMC where
      `Forwarded scan to PMC` is set. Columns: `PMC`,
-     `Slug`, `Repos submitted` (count), `Submitted`,
-     `Received`, `Forwarded`, `Days end-to-end` (the
-     turnaround in days from Request date to Forwarded).
-     Rows colored dark green.
+     `Slug`, `Repos submitted` (count),
+     `PRs (open/merged)`, `Submitted`, `Received`,
+     `Forwarded`, `Days end-to-end` (the turnaround in
+     days from Request date to Forwarded). Rows colored
+     dark green.
 
    - **TIMELINE DATA** block — wide-format table
      (`PMC` | `Requested` | `Ready` | `Submitted` |

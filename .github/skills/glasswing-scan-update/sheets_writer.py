@@ -47,6 +47,8 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -338,6 +340,64 @@ MODEL_COLOR = {
 }
 
 
+_PR_URL_RE = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/pull/\d+")
+
+
+def parse_pr_urls(cell_text: str) -> list[str]:
+    """Extract every github.com/<owner>/<repo>/pull/<n> URL from a cell.
+
+    The PR/Issues cell is a newline-separated list of references; each
+    line typically has the URL followed by free-text description
+    ('discoverability PR', 'Email reply sent 2026-05-14', etc.). We
+    extract every PR URL we find via regex; non-PR lines (email
+    references) are ignored.
+    """
+    if not cell_text:
+        return []
+    urls = []
+    for match in _PR_URL_RE.finditer(cell_text):
+        url = match.group(0)
+        if url not in urls:
+            urls.append(url)
+    return urls
+
+
+def query_pr_states(urls: list[str]) -> dict:
+    """Return {'open': n, 'merged': n, 'closed': n, 'errors': [...]}.
+
+    Uses `gh pr view --json state` per URL. The state values are
+    OPEN, MERGED, or CLOSED (gh treats merged PRs as a distinct
+    state from closed-but-not-merged). Best-effort: a failure on
+    one URL (auth, network, deleted PR) is recorded as an error
+    but doesn't block the rest.
+    """
+    result = {"open": 0, "merged": 0, "closed": 0, "errors": []}
+    for url in urls:
+        try:
+            p = subprocess.run(
+                ["gh", "pr", "view", url, "--json", "state"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if p.returncode != 0:
+                result["errors"].append(f"{url}: gh exit {p.returncode}: {p.stderr.strip()[:80]}")
+                continue
+            data = json.loads(p.stdout)
+            state = data.get("state", "").upper()
+            if state == "MERGED":
+                result["merged"] += 1
+            elif state == "OPEN":
+                result["open"] += 1
+            elif state == "CLOSED":
+                result["closed"] += 1
+            else:
+                result["errors"].append(f"{url}: unknown state {state!r}")
+        except Exception as e:
+            result["errors"].append(f"{url}: {e}")
+    return result
+
+
 def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
     """Derive the pipeline state of a single PMC row."""
     def cell(name: str) -> str:
@@ -382,6 +442,9 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
 
     repo_count = len([r for r in repos_requested.splitlines() if r.strip()])
 
+    pr_urls = parse_pr_urls(pr_issues)
+    pr_state = query_pr_states(pr_urls) if pr_urls else {"open": 0, "merged": 0, "closed": 0, "errors": []}
+
     return {
         "pmc": pmc,
         "slug": slug,
@@ -399,6 +462,11 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
         "backup": backup,
         "model": model,
         "pr_issues": pr_issues,
+        "pr_urls": pr_urls,
+        "pr_open": pr_state["open"],
+        "pr_merged": pr_state["merged"],
+        "pr_closed": pr_state["closed"],
+        "pr_errors": pr_state["errors"],
         "notes": notes,
     }
 
@@ -473,7 +541,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     values: list[list] = []
     color_requests: list[dict] = []
 
-    def append_row(row: list, color: dict | None = None):
+    def append_row(row: list, color: dict | None = None, col_span: int = 9):
         row_index = len(values)
         values.append(row)
         if color is not None:
@@ -485,7 +553,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
                             "startRowIndex": row_index,
                             "endRowIndex": row_index + 1,
                             "startColumnIndex": 0,
-                            "endColumnIndex": 8,
+                            "endColumnIndex": col_span,
                         },
                         "cell": {
                             "userEnteredFormat": {"backgroundColor": color}
@@ -502,10 +570,27 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
 
     # In-flight table.
     append_row(["IN FLIGHT"])
-    append_row(["PMC", "Slug", "Status", "Repos requested", "Model", "Request date", "Last touch (model verified)", "Notes / PR / Issues"])
+    append_row(
+        [
+            "PMC",
+            "Slug",
+            "Status",
+            "Repos requested",
+            "Model",
+            "PRs (open/merged)",
+            "Request date",
+            "Last touch (model verified)",
+            "Notes / PR / Issues",
+        ]
+    )
     if not in_flight:
         append_row(["(none in flight)"])
     for e in in_flight:
+        prs_cell = (
+            f"{e['pr_open']}/{e['pr_merged']}"
+            if e["pr_urls"]
+            else "—"
+        )
         append_row(
             [
                 e["pmc"],
@@ -513,6 +598,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
                 e["state"],
                 e["repos_requested_count"],
                 e["model_status"],
+                prs_cell,
                 e["request_date"],
                 e["model_verified_date"] or "—",
                 (e["pr_issues"] or "") + (("  ·  " + e["notes"]) if e["notes"] else ""),
@@ -524,7 +610,18 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
 
     # Completed table.
     append_row(["COMPLETED"])
-    append_row(["PMC", "Slug", "Repos submitted", "Submitted", "Received", "Forwarded", "Days end-to-end"])
+    append_row(
+        [
+            "PMC",
+            "Slug",
+            "Repos submitted",
+            "PRs (open/merged)",
+            "Submitted",
+            "Received",
+            "Forwarded",
+            "Days end-to-end",
+        ]
+    )
     if not completed:
         append_row(["(none yet)"])
     for e in completed:
@@ -534,11 +631,17 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             e2e = (d2 - d1).days
         except Exception:
             e2e = ""
+        prs_cell = (
+            f"{e['pr_open']}/{e['pr_merged']}"
+            if e["pr_urls"]
+            else "—"
+        )
         append_row(
             [
                 e["pmc"],
                 e["slug"],
                 len([r for r in e["repos_submitted"].splitlines() if r.strip()]),
+                prs_cell,
                 e["submitted_date"] or "—",
                 e["received_date"] or "—",
                 e["forwarded_date"] or "—",

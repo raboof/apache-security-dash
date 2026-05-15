@@ -304,6 +304,15 @@ resolved via the ponymail API. The cell stays blank until
 ponymail-auth is set up and a sync has run; never write a
 non-direct fallback URL there.
 
+If this SKILL ever opens a PR on a PMC repo (the response
+SKILL doesn't normally — that's `glasswing-model-verify`'s
+job — but the helper subcommand path goes through it), the
+URL goes into the PMC's `PR/Issues` cell as a **new line**
+appended to whatever's there. Never overwrite an existing
+PR URL when adding a new one — the cell is a running list,
+not a single-slot field, and `build-status-tab` relies on
+every URL being present to compute open/merged counts.
+
 ## Canned responses (consult first, contribute back)
 
 The Mythos tracker spreadsheet has a `Canned Responses` sheet

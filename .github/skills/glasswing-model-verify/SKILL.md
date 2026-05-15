@@ -64,6 +64,15 @@ no model, no scan).
    one omnibus thing the PMC has to negotiate as a unit. Small,
    targeted asks land faster.
 
+   **One PR per repo, never one PR spanning multiple repos.**
+   A PR can only touch one repo (GitHub mechanics), and a PMC
+   that owns N repos in scope therefore gets up to N PRs. Each
+   PR's URL is **appended** to the PMC's `PR/Issues` cell on a
+   new line — never overwrite an existing URL. The Status tab
+   (`build-status-tab`) reads every PR URL out of the cell and
+   tallies open / merged counts; an overwrite loses one PR
+   from the tally and from the team's audit trail.
+
    **Why email instead of a GitHub issue.** Three reasons,
    any one of which would be enough:
 
