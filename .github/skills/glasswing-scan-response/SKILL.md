@@ -1,0 +1,710 @@
+---
+name: glasswing-scan-response
+description: Draft a reply to a PMC member or contributor asking about the ASF Security team's Glasswing scan offer — what model it uses, what threat-model framework is expected, how it compares to other scanners, how to get scanned. Use whenever someone replies to (or directly asks about) Jarek's "[IMPORTANT][SECURITY] Possibility of running your project through Glasswing security scan" announcement, or otherwise asks for the scan. Output is an email draft for human review — never sends. Bundles a companion threat-model producer to attach to the response when one is needed.
+---
+
+# Glasswing scan-response SKILL
+
+This SKILL answers inquiries about the ASF Security team's Glasswing
+scan offer — *not* the scan itself. The deliverable is a draft email
+reply that the human (Jarek, or another Security-team member) reviews
+and sends. The SKILL never sends mail directly.
+
+## When to invoke
+
+- A PMC member or contributor replies to the "[IMPORTANT][SECURITY]
+  Possibility of running your project through Glasswing security scan"
+  announcement (or its descendants) with questions, concerns, or
+  scoping discussion.
+- A PMC member writes in (e.g. to `security@apache.org` or directly to
+  a Security-team member) asking about the scan.
+- A reviewer asks "what threat-model framework do you expect?" or "how
+  does this compare to GitHub code scanning / Snyk / Dependabot / …"
+  in any related thread.
+
+## Hard rules (do not skip)
+
+1. **Different identity expectations for discussion vs. submitting
+   a scan request.**
+
+   - **For general questions and discussion** about the program
+     (what framework is expected, how the scan compares to other
+     tools, scoping back-and-forth, clarifying what we mean by X,
+     etc.): **any email is fine.** Personal Gmail, employer
+     address, a non-Apache forum — all acceptable. Answer the
+     substantive questions normally. Do **not** push the
+     requester to switch to `@apache.org` just to continue
+     talking; making people hop accounts to ask a question is
+     friction we don't need.
+
+   - **For the actual `[GLASSWING]` scan request** (the formal
+     opt-in message that queues a scan): the request itself must
+     anchor to an `@apache.org` identity. Acceptable shapes are
+     **either** the From: header is `@apache.org` (a personal
+     `@apache.org`, or a project alias like
+     `security@<pmc>.apache.org` / `private@<pmc>.apache.org`),
+     **or** the body of the request explicitly states the
+     requester's `@apache.org` address. The reason isn't
+     bureaucracy: **scan results are delivered only to the
+     `@apache.org` personal addresses listed in the request**, so
+     we need at least one concrete `@apache.org` address attached
+     to every request before queuing — that's where the output
+     goes. The hard enforcement of this lives in the
+     **Scan-request verification gates** section (gates 2 and 3);
+     this rule is the policy summary.
+
+   When a general-inquiry exchange starts heading toward an actual
+   request, mention this expectation in passing — *"when you're
+   ready to formally request, the request will need at least one
+   `@apache.org` address listed, since that's where the scan
+   results go"* — as a forward-looking note, not a gate on the
+   current discussion.
+
+2. **Always CC `security@apache.org` on the reply, and CC the
+   project's own `security@<pmc>.apache.org` alias when one
+   exists.** The Foundation-level CC keeps the Security team's
+   audit trail; the per-project CC makes sure the PMC's collective
+   security team sees the thread regardless of which individual
+   reached out. Look up whether a project has a `security@<pmc>`
+   alias via
+   [`security.apache.org/projects/`](https://security.apache.org/projects/)
+   or its source-of-truth JSON at
+   [`apache/security-site/scripts/project-coordinates.json`](https://github.com/apache/security-site/blob/main/scripts/project-coordinates.json) —
+   not every project has one, in which case fall back to the
+   project's `private@<pmc>.apache.org` list.
+
+   If the original thread was on a project's
+   `private@<pmc>.apache.org` list, keep that list on To/CC
+   (don't quietly drop it). CC is enough; do not move the
+   substantive discussion to `security@apache.org` unless the
+   requester does.
+
+3. **Confirm before sending.** Per the user's "draft and show first"
+   rule, always render the full draft (subject, To, CC, body, any
+   attachments) and wait for explicit approval. The user invokes the
+   send.
+
+4. **Never reveal contents of `private@<pmc>` or `security@`
+   correspondence to anyone outside the trust boundary** — the reply
+   should not quote excerpts from other PMCs' private discussions, even
+   if the requester is also on those lists. Keep references abstract
+   ("other PMCs have asked similar questions" — never names).
+
+## Scan-request verification gates
+
+These checks apply to inbound `[GLASSWING]` **scan-request**
+emails (subject pattern `[GLASSWING] <PMC>: request to scan
+repositories`) — not to general inquiries about the program.
+Run all four gates before drafting the reply. Multiple failing
+gates roll up into one reply that addresses all of them; do not
+play whack-a-mole across multiple round-trips.
+
+### Gate 1 — All required fields are present
+
+The announcement asked for:
+
+- PMC name + confirmation of interest (one message per PMC),
+- primary and backup PMC contacts (names + `@apache.org`
+  addresses),
+- `@apache.org` email addresses to send scan results to,
+- links to the GitHub repos to scan.
+
+If any of those are missing or empty, list the missing items
+specifically — don't ask "could you fill in the rest", name them.
+
+Reply fragment:
+
+> Thanks — to queue the scan we still need the following items
+> the original request didn't include:
+>
+> - <missing field 1>
+> - <missing field 2>
+>
+> Once we have those we'll continue with the verification steps.
+
+### Gate 2 — Sender identity is apache.org-rooted
+
+The From: header on the request must be either a personal
+`@apache.org` address **or** a project alias
+(`security@<pmc>.apache.org` / `private@<pmc>.apache.org`).
+
+If the body *already* states the `@apache.org` address, this
+gate passes — proceed to gate 3 with that stated address.
+
+If the request came from a non-apache.org address (personal
+Gmail, employer address, third-party forum, …) **and** the
+message body does not explicitly state the sender's
+`@apache.org` address, **do not block immediately** — first try
+to resolve the sender to a candidate Apache ID. Apache emails
+are public and committer rosters are publicly browsable; in
+most cases we can do the lookup work ourselves rather than
+pushing it onto the maintainer.
+
+**Resolution procedure** — start with the canonical source. The
+public LDAP JSON dump is the only source that always gives the
+correct ID; everything else is a hint.
+
+1. **Whimsy public LDAP JSON (canonical, no auth required)** —
+   fetch <https://whimsy.apache.org/public/public_ldap_people.json>.
+   The `people` field maps every Apache ID to `{name, ...}`. Match
+   the sender's *human name* (From: header display name or
+   signature line) against the `name` field; read off the ID. This
+   endpoint is open and authoritative. Use it first.
+
+   Example. Sender wrote from `ancosen@gmail.com`. The local-part
+   heuristic (next step) would propose `ancosen@apache.org`, but
+   the LDAP JSON shows that "Andrea Cosentino" maps to
+   `acosentino`, not `ancosen`. Trust LDAP, not the heuristic.
+
+2. **Local-part heuristic (hint only — confirm against LDAP)** —
+   `<local-part-of-sender>@apache.org`. Often right, sometimes
+   wrong (Andrea Cosentino's gmail local-part is `ancosen` but
+   his Apache ID is `acosentino`). Never propose this as a
+   candidate without confirming against step 1.
+
+3. **Project committers / team page** — fetch
+   `https://<pmc>.apache.org/team.html` (or `/committers.html` /
+   `/community/team-list.html`, naming varies). Useful when LDAP
+   has an ambiguous-name case (two people with similar names),
+   since the team page lists *which PMC* each member is on.
+
+4. **Git history on the project's primary repo** —
+   `gh api search/commits?q=author-name:<First>+<Last>+repo:apache/<repo>`
+   (use the GitHub `search/commits` endpoint, not the
+   per-repo `commits?author=` endpoint, which only accepts
+   GitHub-login authors). Commit emails are sometimes `@apache.org`
+   (definitive) but more often a personal address (a hint at best).
+
+5. **Whimsy interactive roster** —
+   `https://whimsy.apache.org/roster/committee/<pmc>` and
+   `https://whimsy.apache.org/roster/people/<id>`. Requires
+   Apache ID auth; use it for the user-side confirmation step,
+   not the agent's automated resolution.
+
+**If a candidate is found:** reply with the propose-and-confirm
+template below. The candidate is *not* an authentication claim
+— it's a hypothesis the maintainer either confirms (Gate 2
+passes) or corrects (re-resolve against the corrected ID).
+
+**If no candidate is found:** fall through to the explicit
+"please anchor your identity" reply.
+
+Reply fragment — propose-and-confirm (preferred when a
+candidate exists):
+
+> Thanks for the request — to anchor it to your Apache identity:
+> you wrote from `<non-apache address>` and the message body
+> doesn't state which `@apache.org` address the request should
+> be attributed to. I believe your Apache ID is `<candidate>`
+> (so `<candidate>@apache.org`) based on
+> `<source — committers page / git history / local-part match>`.
+> Could you confirm or correct? A one-line reply is enough; we
+> verify against the PMC roster before queuing.
+
+Reply fragment — block (only when no candidate can be inferred):
+
+> Thanks for the request — before we queue it we need to anchor
+> it to your Apache identity. You wrote from
+> `<non-apache address>`, which isn't an `@apache.org` address,
+> and the message body doesn't say which `@apache.org` address
+> the request should be attributed to. We checked the public
+> committer rosters and couldn't infer a candidate Apache ID
+> from your name / sender address.
+>
+> Either of these works:
+>
+> - **Resend from your `@apache.org` address.** Easiest path:
+>   open <https://lists.apache.org/list.html?private@<pmc>.apache.org>
+>   in your browser, sign in with your Apache ID, then press
+>   `c` to open the compose dialog. Address the new message to
+>   `security@apache.org` (with `private@<pmc>.apache.org` on
+>   CC), keep the same subject and body — it'll go out from
+>   your `@apache.org` address.
+>
+> - **State your `@apache.org` address in this thread.** A
+>   one-line "I'm `<handle>@apache.org`" is enough; we'll
+>   verify against the PMC roster.
+
+### Gate 3 — Sender is on the PMC roster
+
+Cross-check the sender's `@apache.org` address (From: header
+or body-stated, whichever gate 2 resolved to) against the PMC
+roster. Sources of truth:
+
+- Apache Whimsy `committee-info.json`:
+  <https://whimsy.apache.org/public/committee-info.json>
+- Roster page:
+  `https://whimsy.apache.org/roster/committee/<pmc>`
+
+If the address is not on the PMC's roster, decline politely.
+Past abuse exists where non-members tried to get scans against
+projects they weren't part of, so this gate is non-negotiable
+— but the phrasing is "we need PMC anchoring", not "we don't
+trust you".
+
+Reply fragment:
+
+> One wrinkle before we queue this: the address
+> `<stated address>` isn't currently on the <PMC name> PMC
+> roster (per
+> <https://whimsy.apache.org/roster/committee/<pmc>>). We
+> require PMC-roster anchoring before queuing a scan. Could a
+> PMC member send the request on your behalf, or could the PMC
+> chair confirm in this thread that the scan is sanctioned by
+> the PMC?
+
+### Gate 4 — Scope confirmation against the PMC's active repos
+
+**This gate fires on every request, not only on under-specified
+ones.** Even when the request enumerates a clear list of repos,
+the SKILL must cross-check that list against the PMC's *active*
+repo set (defined below) and surface any discrepancy as a
+scope-confirmation question. A common failure mode is the
+PMC naming "the obvious ones" and forgetting an active side
+repo (typically a Maven plugin, a connectors module, a docs
+site, or a benchmarks repo); we'd rather ask once than scan
+incomplete and have to re-queue.
+
+There are three cases; only case (a) needs no follow-up.
+
+| Case | What the request looks like | Action |
+| --- | --- | --- |
+| (a) Request lists repos AND the PMC has no other *active* repos beyond those | Accept the list as-is; write it to the PMC's `Repositories requested` cell verbatim. |
+| (b) Request lists repos AND the PMC has additional *active* repos not in the list — **including the special sub-case where the request lists only one repo while the PMC has multiple active repos** | Ask the PMC to confirm scope. Send back the full list of their additional active repos and ask, explicitly: *"are you sure you want only the repos you listed, and not these other active ones?"* Wait for confirmation before writing the `Repositories requested` cell. |
+| (c) Request doesn't enumerate any repos (just expresses PMC interest) | Ask the PMC to enumerate. Pre-populate the suggestion with the PMC's active repos as a starting point; let them subset / extend. |
+
+**"Active" definition.** A repo counts as active if it has a
+non-blank `Criticality Score (%)` cell on the Repositories
+sheet of the Mythos tracker. OSSF's criticality_score indexes
+only repos with meaningful recent activity, so a non-blank
+score is a reliable "this repo is alive enough to need scan
+coverage" signal. Repos with a blank score (sandbox / Attic /
+abandoned) don't need to be in scope and shouldn't trigger
+this gate.
+
+**Source for "what repos does the PMC own (active)"**: the
+Mythos tracker's Repositories sheet — use the
+`glasswing-scan-status` SKILL to fetch it. Filter by `PMC
+Slug` matching the requester's PMC; keep only rows where
+`Criticality Score (%)` is non-blank.
+
+**Explain what the scope is *for*.** PMC members often hear
+"scope confirmation" and think it's a procedural step. It
+isn't — it determines which repos are run through the two
+pre-flight checks (model discoverability + completeness) and
+which repos the agentic scan will subsequently look at. The
+reply must say so explicitly so the PMC's confirmation is
+informed.
+
+This is a confirmation, not a refusal. Keep it light — PMCs
+commonly forget side repos (docs sites, client SDKs, sample
+apps) and would rather be asked than scanned incomplete.
+
+Reply fragment (case b — request narrower than active set):
+
+> Quick scope check before we queue this. The request lists:
+>
+>   - apache/<repo-1>
+>   - apache/<repo-2>
+>   - ...
+>
+> The PMC also has these additional active repos under
+> github.com/apache (recent commits + meaningful stars or
+> OSSF criticality score in parentheses):
+>
+>   - apache/<other-1> (<score / stars / "active YYYY-MM">)
+>   - apache/<other-2> (...)
+>   - apache/<other-3> (...)
+>   - (... N more)
+>
+> **Are you sure you want only the repos you listed, and not
+> these other active ones?** Either answer is fine; we'd
+> rather ask than guess. The list you confirm here is what
+> we'll run pre-flight (model discoverability +
+> completeness) against for each repo, and what we'll pass to
+> the scan vendor as the actual scope.
+
+Reply fragment (case c — no repos enumerated):
+
+> Quick scope check before we queue this — the request didn't
+> enumerate which repos to scan, just PMC interest. The PMC
+> owns these active repos under github.com/apache (OSSF
+> criticality score in parentheses):
+>
+>   - apache/<repo-1> (<score>%)
+>   - apache/<repo-2> (<score>%)
+>   - ...
+>
+> Which of these should be in scope? The list you confirm
+> here determines which repos we run pre-flight against
+> (model discoverability + completeness) and what we pass to
+> the scan vendor as the actual scope. Subset or include all
+> — either is fine.
+
+**After scope is confirmed**, write the confirmed list to the
+PMC's `Repositories requested` cell (newline-separated full URLs) via
+`glasswing-scan-update`'s `apply` flow. That cell becomes the
+canonical scope: `glasswing-model-verify` reads it,
+`glasswing-scan-submit` reads it, no one re-derives scope from
+elsewhere.
+
+The PMC's `PMC thread (ponymail)` cell is **not** written by
+this SKILL — only `glasswing-scan-run` populates it, with a
+**direct thread permalink** (`https://lists.apache.org/thread/<tid>`)
+resolved via the ponymail API. The cell stays blank until
+ponymail-auth is set up and a sync has run; never write a
+non-direct fallback URL there.
+
+If this SKILL ever opens a PR on a PMC repo (the response
+SKILL doesn't normally — that's `glasswing-model-verify`'s
+job — but the helper subcommand path goes through it), the
+URL goes into the PMC's `PR/Issues` cell as a **new line**
+appended to whatever's there. Never overwrite an existing
+PR URL when adding a new one — the cell is a running list,
+not a single-slot field, and `build-status-tab` relies on
+every URL being present to compute open/merged counts.
+
+## Canned responses (consult first, contribute back)
+
+The Mythos tracker spreadsheet has a `Canned Responses` sheet
+that accumulates reusable answer fragments — see the
+`glasswing-scan-status` SKILL for its column schema. **Before
+drafting any reply, fetch this sheet and check for matches
+against the requester's questions.** If a high-confidence match
+exists, base the reply on the canned `Response` (verbatim or
+lightly adapted for thread register); if no match, draft fresh
+from the standard fragments below.
+
+How to consult:
+
+1. Read the workbook via the `glasswing-scan-status` SKILL's
+   fetch step (`mcp__claude_ai_Google_Drive__read_file_content`
+   on the file ID from the `mythos-tracker` memory entry). The
+   `Canned Responses` sheet is the fourth tab.
+
+2. For each question the requester raised, scan the `Topic` +
+   `Question pattern` columns for semantic matches. Don't do
+   keyword-only matching — `Topic: scope` is the right hit for
+   "can the model swallow the whole monorepo?", even if the
+   words don't overlap.
+
+3. Pull the `Response` column verbatim, then lightly adapt for
+   the specific thread (e.g. substitute the actual repo name).
+   Respect the `Notes` column — it captures *when not* to reuse
+   the answer.
+
+4. If the `Canned Responses` sheet doesn't exist yet (older
+   snapshot of the workbook), fall back to the fragments
+   inlined below. The two sources should converge over time;
+   the spreadsheet wins on conflict.
+
+How to contribute back:
+
+After the user has approved a reply that contained a *novel*
+answer (one not already covered by an existing canned row), ask
+the user whether to save it as a canned entry. If yes, build a
+one-element JSON file at `$TMPDIR/canned-add-<timestamp>.json`
+and route through the `glasswing-scan-update` SKILL's
+`append-canned` flow (same draft-and-confirm gates). The shape
+of an entry is:
+
+```json
+{
+  "topic": "<one-word tag>",
+  "question_pattern": "<one-line description of when this applies>",
+  "response": "<the canned reply text — markdown OK>",
+  "author": "<@apache.org address of the human who signed the reply>",
+  "notes": "<when this applies / when to NOT reuse / what to swap>"
+}
+```
+
+The inlined fragments below are the seed set; once they're
+loaded into the spreadsheet (via the `seed_canned_responses.json`
+bootstrap in the update SKILL), this file's role becomes
+documentary — the spreadsheet is the live source of truth.
+
+## Standard answer fragments
+
+These are the canonical answers to the recurring questions. Pull from
+them; reword for the specific thread.
+
+### "What scanning model / framework are you using?"
+
+The scan uses the latest Glasswing-available security models — the
+operational profile is whichever model Glasswing has currently
+designated as production for code-level vulnerability scanning. The
+Glasswing project announcement is here:
+<https://glasswing.openai.com> (linked from
+<https://openai.com/index/glasswing-grant-program/>; cross-check the
+canonical URL for the announcement at draft time — the gist of the
+program changes more slowly than the model lineup).
+
+If the requester wants the specific model name for the run on *their*
+repo, point at the eventual scan-result markdown — it includes the
+model identifier as a header field. Don't pin a specific model in the
+reply unless the user has explicitly told you to.
+
+### "What threat-modeling framework do you expect — STRIDE / LINDDUN /
+PASTA / something else?"
+
+No specific framework. The scan accepts any *human-readable* threat
+model that:
+
+- describes what the project considers a security issue and what it
+  does not,
+- names the user roles and trust boundaries the project assumes,
+- says what's in scope for the scan and what's out (e.g. `contrib/`,
+  `examples/`, demo apps),
+- includes the recurring false-positives the project already knows
+  about, so the scan does not re-discover them.
+
+For projects that **don't** already have such a model, or want to update
+the one they have before the scan, the ASF Security team will run the
+`threat-model-producer` SKILL (Michael Scovetta's recipe, imported
+verbatim at
+<https://gist.github.com/scovetta/2dc9a0695c7cbcc32e23799e00d2ced3>)
+against the project's public artifacts using Claude Opus 4.7. The
+output is a draft `THREAT-MODEL.md` that:
+
+- is itself human-readable (it explains what a "good threat model from
+  the agentic-scan point of view" looks like, and produces a document
+  in that shape),
+- tags every claim with provenance — *(documented)* if it comes from
+  the project's own docs, *(inferred)* if the agent guessed,
+  *(maintainer)* if the PMC has explicitly ratified it,
+- collects every *(inferred)* claim into an "Open questions for the
+  maintainers" section so the PMC can react to a draft rather than
+  fill in a blank form,
+- ships alongside an `AGENTS.md` linking to it (the marker the scan
+  uses to find the model).
+
+The Security team submits the draft as a PR to the project's repo for
+the PMC to review and merge. The scan is gated on the PR being merged
+(or the PMC supplying their own equivalent). The PMC owns the
+document; the Security team just bootstraps it.
+
+**Hard pre-flight: the model must be discoverable and complete
+enough.** Before the scan is queued, the Security team's own
+agent runs a pre-flight pass against the project's repo at the
+designated commit and confirms it can locate the threat model
+via `AGENTS.md` → `SECURITY.md`. The mechanics of that
+pre-flight — both the discoverability check and the
+minimum-bar completeness check against the
+`threat-model-producer` rubric — live in the companion
+`glasswing-model-verify` SKILL; invoke it once a model has
+been nominated. **If the agent cannot find the model, the scan
+is refused** and the PMC is asked to make the model reachable
+through that discovery path before re-requesting. This rule is
+non-negotiable: without the model, the scan produces a
+false-positive rate the PMC cannot reasonably triage, and
+refusing upfront beats wasting reviewer cycles on a noise-heavy
+output. State this requirement explicitly in any reply to a
+PMC that mentions "we don't have a SECURITY.md / we use X
+instead / our model is on the website" — the answer is "great,
+just make sure the agent can mechanically follow `AGENTS.md` →
+`SECURITY.md` to it, otherwise we'll refuse the scan." Saying
+this preempts the most common pre-scan back-and-forth.
+
+### "How does this compare to GitHub code scanning / Snyk / Dependabot
+/ other tools?"
+
+Complementary, not a replacement:
+
+- **GitHub code scanning** (CodeQL) does taint-tracking and pattern
+  matching against the source. It's fast, runs per PR, and is great
+  at well-known sink/source patterns.
+- **SCA tools** (Dependabot, Snyk OSS) look at dependency manifests
+  against vulnerability databases.
+- **Glasswing-style agentic scans** read the code with much more
+  semantic understanding — including configuration-driven behaviour,
+  cross-file flows that defy static taint analysis, and project-
+  specific misuse patterns that no signature would catch. They cost
+  more per finding but reach places the cheaper tools miss.
+
+The scan does not replace any of the above. PMCs that already run
+CodeQL etc. should keep doing so; the Glasswing run is an *additional*
+pass aimed at the long-tail of semantic-flow issues. If the requester
+is asking because they're worried about duplicating effort: it is
+fine and expected to see overlap with CodeQL findings — those are
+re-confirmation, not waste.
+
+(Refs that may come up: the asfyaml CodeQL discussion at
+<https://github.com/apache/infrastructure-asfyaml/issues/94>.)
+
+### "Can the model swallow the whole monorepo?"
+
+Yes for most projects. For monorepo-scale codebases (Lucene + Solr +
+Tika scale, or Airflow scale) the run is chunked by directory tree or
+by component; the chunking is invisible to the PMC. If the project
+has a clean modular layout (top-level dirs are coherent components),
+mention that the modular layout makes chunking deterministic. If it
+doesn't, mention that we'll work out the chunking with the PMC
+contacts before kickoff.
+
+### "What does a finding look like?"
+
+A single markdown file with multiple findings, one section per issue,
+each tagged with: file & line refs, the security property violated
+(citing the project's threat model when one exists), reproducer
+sketch where feasible, and a severity hint. The Security team
+pre-reviews to filter slop before forwarding. The PMC then triages
+through its normal process — the `private@<pmc>.apache.org` →
+`security@<project>.apache.org` → coordinated disclosure / CVE /
+release flow.
+
+### "We'd like to opt in — what do we do?"
+
+Point at the announcement's instructions: send a new message (not a
+reply) from a `@apache.org` address to `security@apache.org`, CC
+`private@<pmc>.apache.org`, with the subject
+`[GLASSWING] <PMC>: request to scan repositories`, and include:
+
+- confirmation of interest (PMC name, one message per PMC),
+- primary + backup PMC contacts (names, `@apache.org` addresses),
+- `@apache.org` email addresses to send scan results to,
+- links to the GitHub repos to scan.
+
+Verify the requester is on the PMC roster before queuing. Past abuse
+exists where non-members tried to get scans against projects they
+weren't part of; we say "no" to those. The full request-handling
+checks (required fields, identity anchoring, roster check, single-
+repo scope confirmation) live in the **Scan-request verification
+gates** section above — run those four gates on every `[GLASSWING]`
+request before drafting a reply.
+
+## Procedure for drafting the reply
+
+1. **Identify the requester's PMC.** Look at where their reply landed
+   (`private@<pmc>.apache.org` on To/CC is the strongest signal). If
+   ambiguous, ask the user which PMC.
+
+2. **Decide which path applies.**
+
+   - **General inquiry** (someone asking what the program is, what
+     framework we expect, how it compares to other tools, scoping
+     questions, clarifications, etc.): use the standard answer
+     fragments and continue with step 3 below. **Any sender
+     address is fine** — including non-`@apache.org`. **Do not**
+     push the requester to switch to `@apache.org` just to keep
+     the conversation going; questions are welcome from any
+     address. If the discussion is clearly heading toward "let's
+     request a scan" (the requester says "we want to opt in",
+     starts listing repos, etc.), mention in passing that the
+     formal `[GLASSWING]` request itself will need at least one
+     `@apache.org` address listed in it — because scan results
+     are delivered only to the `@apache.org` personal addresses
+     listed in the request. Frame it as a forward-looking note
+     ("when you're ready to formally request, the request needs
+     an `@apache.org` address listed — that's where the results
+     will be sent"), not as a gate on the current exchange.
+
+   - **`[GLASSWING]` scan-request email** (subject pattern
+     `[GLASSWING] <PMC>: request to scan repositories`): route
+     through the **Scan-request verification gates** above (gates
+     1–4) instead of the soft-ask. The From: identity must be
+     anchored to a PMC member *now*, not "for future messages",
+     before the request can be queued. Build the reply out of the
+     gate fragments for any gates that failed; if all four pass,
+     the reply is a short confirmation that the request meets
+     entry criteria and will be queued.
+
+3. **Pull out their questions and propose answers — always.**
+   Scan the request body for any sentence that ends in `?` or
+   that is phrased as a question even without punctuation
+   ("What is the minimum we need to do", "We do not want to
+   have to ... — is there a way", "Can the scan ...", "How
+   should we ..."). Quote each one verbatim from their message
+   (use `> ` blockquote). For each question, **first** check
+   the `Canned Responses` sheet for a semantic match (see the
+   **Canned responses** section above); if a match exists,
+   base the answer on the canned `Response`. If not, address
+   the question with the matching fragment from below, lightly
+   reworded for the thread's register.
+
+   If the request *embeds* a question inside a larger
+   logistical email (which is common — Mark Thomas's Tomcat
+   request, for example, listed contacts + repos + model URL
+   and slipped in a single "what is the minimum we need to do"
+   line in the middle), it's especially important not to miss
+   the question. The reply that addresses logistics but
+   silently ignores the embedded question reads as inattentive
+   and forces the requester to re-ask. Pull every question out
+   explicitly even if there's just one.
+
+   A reply that quotes the requester's questions back as
+   blockquotes with answers underneath is the canonical shape;
+   resist the urge to "address them inline in the prose" — the
+   blockquote-and-answer pattern makes it easy for the
+   requester to scan and confirm we got their question right.
+
+4. **Decide whether a threat-model draft is needed in this reply.**
+   - If the requester is asking process / framework questions only
+     (the typical first round), the reply contains *no* attached
+     model — answer in prose and offer the threat-model-producer
+     SKILL as the next step if they want it.
+   - If the user explicitly says "attach the draft", run
+     `threat-model-producer` against the relevant repository and
+     attach the generated markdown (inline, fenced, or as a follow-up
+     PR link). The draft is **what** the reply attaches; the SKILL
+     itself is not attached.
+
+5. **Render the full draft for review.** Show:
+   - To / CC / Subject (with `[GLASSWING]` or `Re:` as appropriate),
+   - body in plain text (no markdown rendering quirks),
+   - any attachments by path or inline content,
+   - reply-to message id (so Gmail threading lands correctly).
+
+   Wait for the user to say "send" / "post" / "go ahead" / similar.
+   Do not invoke `mcp__claude_ai_Gmail__create_draft` before approval.
+
+6. **On approval**, create a Gmail draft via
+   `mcp__claude_ai_Gmail__create_draft` (per user preference —
+   `oauth-draft-create` is the fallback). Do not call `send`
+   directly — the user reviews the draft once more in the Gmail UI
+   and presses send.
+
+7. **Offer to save novel answers back to `Canned Responses`.**
+   If the approved reply contained any answer that was *not*
+   pulled from an existing canned row, ask the user one
+   question: *"Want me to save this as a canned response for
+   future similar requests?"* If yes, build an entry and route
+   through `glasswing-scan-update`'s `append-canned` flow.
+   Default to *yes* for answers that took non-trivial drafting;
+   skip the offer for one-line replies that wouldn't benefit
+   from caching.
+
+## Style notes
+
+- Plain prose. No marketing language ("cutting-edge AI", "next-
+  generation"). The audience is Apache committers who can smell that
+  from a mile away.
+- Concise. Reply length should be proportional to the question's
+  size; a one-line question gets a paragraph or two, not three pages.
+- Be honest about overlap with other tools (the "complementary, not
+  replacement" framing). PMCs respect that more than over-claiming.
+- When you don't know the answer to a project-specific question
+  (e.g. "will this miss our X-Y-Z framework's flow analysis?"), say
+  so and offer to find out, rather than guessing.
+- The reply is from the ASF Security team's voice, signed by the
+  human; don't sign it as the agent.
+
+## Examples of bad drafts (avoid)
+
+- A reply that quotes the original announcement back at the
+  requester. They sent it; they don't need it back.
+- A reply that drops `private@<pmc>` from the recipient list and
+  silently moves to `security@`. The original list owns the thread.
+- A reply that includes a full threat-model draft when the requester
+  hasn't asked for one yet — overkill on round 1.
+- A reply that promises the scan "in the next two weeks" or similar.
+  Don't commit to a timeline; the Security team coordinates queue.
+- A reply that lists which other PMCs have signed up. PMC-list
+  membership is between each PMC and the Security team.
+
+## Provenance
+
+This SKILL captures the response patterns Jarek has been using in
+replies to the May 2026 Glasswing scan announcement, plus the
+operational rules he's added in subsequent feedback (always CC
+`security@apache.org`, require `@apache.org` addresses, attach
+threat-model drafts on request rather than by default).
