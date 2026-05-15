@@ -99,7 +99,7 @@ Run all four gates before drafting the reply. Multiple failing
 gates roll up into one reply that addresses all of them; do not
 play whack-a-mole across multiple round-trips.
 
-### Gate 1 — All required fields are present
+### Gate 1 — All required fields are present (and result destinations are `@apache.org`-rooted)
 
 The announcement asked for:
 
@@ -112,7 +112,30 @@ The announcement asked for:
 If any of those are missing or empty, list the missing items
 specifically — don't ask "could you fill in the rest", name them.
 
-Reply fragment:
+**Result-destination validation (hard policy):** every
+results-destination address must be `@apache.org`-rooted:
+
+- personal `@apache.org` addresses (`<id>@apache.org`),
+- per-project aliases (`private@<pmc>.apache.org`,
+  `security@<pmc>.apache.org`).
+
+**Not acceptable** — even when the requester explicitly asks for
+a personal address (`@gmail.com`, employer address, etc.). The
+hard policy lives in
+[`feedback_apache_only_result_destinations`](../../..) memory; two
+reasons: (1) the `@apache.org` rooting is the cheapest verification
+that the recipient is still an ASF member with rights to see
+pre-disclosure findings; (2) the vendor (Alpha-Omega) expects
+ASF-anchored recipient addresses as the trust boundary.
+
+If a request lists a personal address in the results destinations,
+don't silently accept it — propose the equivalent `@apache.org`
+address (or the `private@<pmc>` list) as the replacement and note
+that the member can configure their Apache address to forward
+wherever they want. Same goes if the requester *later* asks for
+results to be sent to a personal inbox — push back politely.
+
+Reply fragment (missing fields):
 
 > Thanks — to queue the scan we still need the following items
 > the original request didn't include:
@@ -121,6 +144,19 @@ Reply fragment:
 > - <missing field 2>
 >
 > Once we have those we'll continue with the verification steps.
+
+Reply fragment (results-destination is a personal address):
+
+> One adjustment on the results destination. Scan reports
+> contain pre-disclosure vulnerability candidates and we send
+> them only to `@apache.org`-rooted addresses — that's both an
+> internal-trust boundary on our side and an Alpha-Omega
+> vendor expectation. So instead of `<personal address>` we'd
+> send results to `<candidate @apache.org address>` (or to
+> `private@<pmc>.apache.org`, your call). You can set your
+> Apache address up to forward to whatever inbox you prefer
+> — that part lives entirely on your side and we don't see
+> the forwarding rule.
 
 ### Gate 2 — Sender identity is apache.org-rooted
 
