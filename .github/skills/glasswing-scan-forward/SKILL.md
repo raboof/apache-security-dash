@@ -51,14 +51,14 @@ Skip when:
 
 2. **Cite the PMC's threat model for every filter
    decision.** If a finding is dropped because it's in
-   §4.11a "known non-findings", say so. If it's out of
-   scope per §4.3, cite that. If it's a `BY-DESIGN:
-   property-disclaimed` case from §4.9, cite. **Never** drop
+   §11a "known non-findings", say so. If it's out of
+   scope per §3, cite that. If it's a `BY-DESIGN:
+   property-disclaimed` case from §9, cite. **Never** drop
    a finding without a citable reason — that's the
    difference between curation and censorship.
 
 3. **When uncertain, forward — don't filter.** A finding
-   that looks like noise but isn't a clean §4.11a match
+   that looks like noise but isn't a clean §11a match
    should be forwarded with a `MODEL-GAP` note, not
    dropped. The PMC's reviewer is the final judge; the
    Security team is just a noise filter on the way there.
@@ -109,19 +109,19 @@ Skip when:
 ## The slop-filter rubric
 
 For each finding in Mirko's report, classify into exactly one
-disposition (these mirror the threat-model-producer §4.13
+disposition (these mirror the threat-model-producer §13
 triage labels):
 
 | Label | Meaning | Action |
 | --- | --- | --- |
-| `VALID` | Violates a property the PMC's model claims, in-scope adversary + input. | Forward to PMC. Annotate with the §4.8 property violated. |
-| `VALID-HARDENING` | Not a §4.8 violation, but matches §4.11 misuse pattern the PMC has elected to harden. | Forward to PMC, marked as `HARDENING`. |
-| `OUT-OF-MODEL: trusted-input` | Requires attacker control of a parameter the model marks trusted (§4.6). | **Filter.** Note the §4.6 row that says trusted. |
-| `OUT-OF-MODEL: adversary-not-in-scope` | Requires an attacker capability the model excludes (§4.7). | **Filter.** Note the §4.7 line. |
-| `OUT-OF-MODEL: unsupported-component` | Lands in `contrib/`, `examples/`, or §4.3 explicit out-of-scope. | **Filter.** Note §4.3. |
-| `OUT-OF-MODEL: non-default-build` | Only manifests under a discouraged §4.5a flag. | **Filter.** Note §4.5a. |
-| `BY-DESIGN: property-disclaimed` | Concerns a property §4.9 explicitly says the project doesn't provide. | **Filter.** Note §4.9. |
-| `KNOWN-NON-FINDING` | Matches a §4.11a entry. | **Filter.** Note the §4.11a row. |
+| `VALID` | Violates a property the PMC's model claims, in-scope adversary + input. | Forward to PMC. Annotate with the §8 property violated. |
+| `VALID-HARDENING` | Not a §8 violation, but matches §11 misuse pattern the PMC has elected to harden. | Forward to PMC, marked as `HARDENING`. |
+| `OUT-OF-MODEL: trusted-input` | Requires attacker control of a parameter the model marks trusted (§6). | **Filter.** Note the §6 row that says trusted. |
+| `OUT-OF-MODEL: adversary-not-in-scope` | Requires an attacker capability the model excludes (§7). | **Filter.** Note the §7 line. |
+| `OUT-OF-MODEL: unsupported-component` | Lands in `contrib/`, `examples/`, or §3 explicit out-of-scope. | **Filter.** Note §3. |
+| `OUT-OF-MODEL: non-default-build` | Only manifests under a discouraged §5a flag. | **Filter.** Note §5a. |
+| `BY-DESIGN: property-disclaimed` | Concerns a property §9 explicitly says the project doesn't provide. | **Filter.** Note §9. |
+| `KNOWN-NON-FINDING` | Matches a §11a entry. | **Filter.** Note the §11a row. |
 | `MODEL-GAP` | Cannot be cleanly routed to any of the above. | **Forward** with a `MODEL-GAP` flag and one-line rationale. PMC judges + may update the model. |
 
 The disposition column is what the slop-filter produces.
@@ -138,7 +138,7 @@ they want to spot-check).
 | PMC name and slug | From Mirko's email subject (`[GLASSWING] results for <PMC>` or similar), or the user supplies it |
 | Scan report content | Attachment(s) or inline content of Mirko's email |
 | PMC threat model URL | From the PMC sheet's `Security Model` column + the verified discoverability chain (model-verify SKILL) |
-| §4.11a known non-findings | From the linked threat model (or its companion FAQ — Logging Services for example links to `logging.apache.org/security/faq.html`) |
+| §11a known non-findings | From the linked threat model (or its companion FAQ — Logging Services for example links to `logging.apache.org/security/faq.html`) |
 | Scan-result recipient list | From the original `[GLASSWING]` request thread (or the PMC sheet's `Notes` if recorded there) |
 | Primary + backup PMC contacts | From the PMC sheet |
 | `Date scan requested` (sanity check) | From the PMC sheet |
@@ -165,7 +165,7 @@ If the threat model URL, the recipient list, or the
 
    Refuse if any pre-condition is wrong.
 
-3. **Fetch the threat model + §4.11a known non-findings.**
+3. **Fetch the threat model + §11a known non-findings.**
    Use the model URL recorded for the PMC. Some PMCs split
    non-findings into a separate FAQ doc (Logging Services
    does this); fetch both if so.
@@ -177,7 +177,7 @@ If the threat model URL, the recipient list, or the
    ```
    Finding F-001: SQL injection in QueryBuilder.append()
      Disposition: OUT-OF-MODEL: trusted-input
-     Rationale: §4.6 marks application code calling
+     Rationale: §6 marks application code calling
        QueryBuilder as trusted. Caller must validate input
        before passing to .append(); not a framework bug.
      Action: filter.
@@ -240,7 +240,7 @@ Repos scanned (from the submission scope):
 Threat model the scan was run against:
   <model URL>
   (Scan rubric: apache/security threat-model-producer
-  SKILL §4.13 dispositions.)
+  SKILL §13 dispositions.)
 
 === FORWARDED FINDINGS ===
 
@@ -248,8 +248,8 @@ Threat model the scan was run against:
 
 Finding <ID> — <one-line title>
   Disposition: VALID  (or VALID-HARDENING / MODEL-GAP)
-  Property violated (per your model): §4.8 — <property name>
-  Reachability per your model: §4.4 — <preconditions>
+  Property violated (per your model): §8 — <property name>
+  Reachability per your model: §4 — <preconditions>
   File / lines: <citation from scan>
   Severity hint (vendor): <severity>
   Reproducer sketch (if provided by vendor): <text>
@@ -268,9 +268,9 @@ non-findings. Each is one line below with the model section
 that licensed the filter. Spot-check at will; happy to
 forward the full text of any if you want a closer look.
 
-  F-NNN — <short label>  ·  OUT-OF-MODEL: trusted-input  ·  §4.6 / trust assumption row N
-  F-NNN — <short label>  ·  KNOWN-NON-FINDING  ·  §4.11a "<row title>"
-  F-NNN — <short label>  ·  BY-DESIGN: property-disclaimed  ·  §4.9 "<property>"
+  F-NNN — <short label>  ·  OUT-OF-MODEL: trusted-input  ·  §6 / trust assumption row N
+  F-NNN — <short label>  ·  KNOWN-NON-FINDING  ·  §11a "<row title>"
+  F-NNN — <short label>  ·  BY-DESIGN: property-disclaimed  ·  §9 "<property>"
   ...
 
 === NEXT STEPS ===
@@ -283,7 +283,7 @@ If any of the FORWARDED findings turn out to be invalid on
 closer look, ping security@apache.org with the finding ID
 and the reason — it sharpens the slop-filter for the next
 scan run. Same for MODEL-GAP entries: a one-line "this is
-the right disposition" from the PMC lets us update §4.11a
+the right disposition" from the PMC lets us update §11a
 (via a small PR if you like) so the next scan doesn't
 re-discover them.
 
@@ -312,7 +312,7 @@ a 50-finding scan with 5 forwarded is a short email; a
   one disposition the SKILL drives toward "PMC, please
   judge". The note should make clear why the existing
   model didn't cleanly cover the finding — that's the
-  signal the PMC needs to update §4.11a or §4.9.
+  signal the PMC needs to update §11a or §9.
 - **No PMC findings should leak across PMCs.** The
   forwarded email is per-PMC. Don't accidentally CC a
   different PMC's `private@` list or include another PMC's
@@ -339,7 +339,7 @@ a 50-finding scan with 5 forwarded is a short email; a
 - Setting `Forwarded scan to PMC` before the user has
   actually clicked Send in Gmail. That cell tracks real
   delivery turnaround; pre-filling it pollutes the metric.
-- A forward that doesn't include the §4.11a appendix
+- A forward that doesn't include the §11a appendix
   (filtered list). The appendix is the audit trail; it's
   also how the next scan can re-use the filter rationale.
 
@@ -349,6 +349,6 @@ This SKILL completes the back half of the Glasswing pipeline.
 The "slop-filter before forwarding" principle has been a
 team norm since the program started; this SKILL codifies it.
 The disposition labels are imported verbatim from
-`threat-model-producer` §4.13, which makes the labels in
+`threat-model-producer` §13, which makes the labels in
 the forward directly cite-able back at the model that
 licenses them.

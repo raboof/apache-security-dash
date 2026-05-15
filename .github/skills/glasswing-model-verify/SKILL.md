@@ -107,15 +107,15 @@ no model, no scan).
    `threat-model-producer`, every claim must carry a
    `*(documented)*` / `*(maintainer)*` / `*(inferred)*` tag, and
    every `*(inferred)*` claim must route to a matching open
-   question in §4.14. Do not silently fabricate maintainer
+   question in §14. Do not silently fabricate maintainer
    positions. The PR is a *starting point* for the PMC to react
    to, not a finished model.
 
 4. **Default to *email reply* for substantive gaps; default to
    *PR* for mechanical fixes.** A missing `AGENTS.md` link is
-   mechanical (one-line repo add). A missing §4.8 "Properties
+   mechanical (one-line repo add). A missing §8 "Properties
    provided" section is substantive (needs maintainer input).
-   Borderline cases (e.g. missing §4.11a known-non-findings
+   Borderline cases (e.g. missing §11a known-non-findings
    list) lean toward email with an offer to draft a PR on
    request. The email always replies to the original
    `[GLASSWING]` thread so the PMC sees it in the same
@@ -167,7 +167,7 @@ no model, no scan).
    correct, reject, or discuss as needed**" (or similar). Do
    not phrase suggestions as obligations ("you need to do X" /
    "the scan requires Y"). The scan does not require any of
-   the §4.7 / §4.8 / §4.11a / §4.13 gaps to be filled before
+   the §7 / §8 / §11a / §13 gaps to be filled before
    it runs; it just runs better when they are. Say so plainly.
 
 8. **Do not mention "Glasswing" (or the OpenAI program name)
@@ -256,22 +256,22 @@ below; each must either contain substantive content or be marked
 
 | Section | Why the scan needs it |
 | --- | --- |
-| §4.2 Scope and intended use (with the component-family table) | Tells the scan which directories are in-model. Without it, every finding in `examples/` or `contrib/` lands on the PMC's plate. |
-| §4.3 Out of scope (explicit non-goals) | The complement of §4.2 — same reasoning. |
-| §4.6 Inputs and the per-parameter trust table | Triagers route findings against specific sinks; prose alone isn't enough. |
-| §4.7 Adversary model | Lets the agent classify "in-model attacker" vs "out-of-model attacker" without re-deriving. |
-| §4.8 Security properties provided (with violation symptom + severity) | The "what's a real bug" list. The single most-cited section in triage. |
-| §4.9 Security properties *not* provided (with false-friends + well-known attack classes) | Pre-empts the most common false-positive category. |
-| §4.10 Downstream responsibilities | What the integrator must do — clarifies which finding categories aren't the project's bug. |
-| §4.11a Known non-findings | The recurring-false-positive list that feeds the scan agent's suppression. **Highest leverage section for noise reduction.** |
-| §4.13 Triage dispositions | The closed set of routing outcomes. Without it, every finding is implicitly `MODEL-GAP`. |
+| §2 Scope and intended use (with the component-family table) | Tells the scan which directories are in-model. Without it, every finding in `examples/` or `contrib/` lands on the PMC's plate. |
+| §3 Out of scope (explicit non-goals) | The complement of §2 — same reasoning. |
+| §6 Inputs and the per-parameter trust table | Triagers route findings against specific sinks; prose alone isn't enough. |
+| §7 Adversary model | Lets the agent classify "in-model attacker" vs "out-of-model attacker" without re-deriving. |
+| §8 Security properties provided (with violation symptom + severity) | The "what's a real bug" list. The single most-cited section in triage. |
+| §9 Security properties *not* provided (with false-friends + well-known attack classes) | Pre-empts the most common false-positive category. |
+| §10 Downstream responsibilities | What the integrator must do — clarifies which finding categories aren't the project's bug. |
+| §11a Known non-findings | The recurring-false-positive list that feeds the scan agent's suppression. **Highest leverage section for noise reduction.** |
+| §13 Triage dispositions | The closed set of routing outcomes. Without it, every finding is implicitly `MODEL-GAP`. |
 
 Sections explicitly **not** part of the minimum bar (nice to
 have, but verification passes without them):
 
-- §4.5a Build-time and configuration variants — only required
+- §5a Build-time and configuration variants — only required
   if the project has security-relevant build flags.
-- §4.15 Machine-readable companion (`threat-model.yaml`) —
+- §15 Machine-readable companion (`threat-model.yaml`) —
   optional; useful but not blocking.
 
 If a section is `Not applicable — <reason>`, verification passes
@@ -281,7 +281,7 @@ it out). Empty headings with no commentary count as missing.
 **Important — completeness is graded, not pass/fail.** A model
 with substantive coverage of the core rubric (scope,
 out-of-scope, inputs, adversary, properties) but gaps in
-§4.11a or §4.13 is still good enough for the scan to run.
+§11a or §13 is still good enough for the scan to run.
 The gaps are recorded as *improvement proposals* (per hard
 rule 7), not as blockers. The only hard-fail under this SKILL
 is **discoverability** — without it the scan agent literally
@@ -365,15 +365,15 @@ with.
    multiple repos share one):
      Model: <URL>
        Repos sharing this model: <list>
-       §4.2 Scope                  present / partial / missing
-       §4.3 Out of scope           ...
-       §4.6 Inputs                 ...
-       §4.7 Adversary              ...
-       §4.8 Properties provided    ...
-       §4.9 Properties not         ...
-       §4.10 Downstream resp.      ...
-       §4.11a Known non-findings   ...
-       §4.13 Triage dispositions   ...
+       §2 Scope                  present / partial / missing
+       §3 Out of scope           ...
+       §6 Inputs                 ...
+       §7 Adversary              ...
+       §8 Properties provided    ...
+       §9 Properties not         ...
+       §10 Downstream resp.      ...
+       §11a Known non-findings   ...
+       §13 Triage dispositions   ...
    ```
 
    When the verification message goes to the PMC (or to
@@ -395,13 +395,13 @@ with.
      against the repo's public artefacts to generate drafts for
      each missing section, with every claim carrying a
      provenance tag (predominantly `*(inferred)*` on first
-     draft) and corresponding §4.14 open questions. The PR
+     draft) and corresponding §14 open questions. The PR
      scope is *adding* those sections — do not edit existing
      content.
 
 7. **For issue-path remediations**, draft the issue body
    (template below) listing the gaps with section citations and
-   the rationale ("the Glasswing scan needs §4.11a to suppress
+   the rationale ("the Glasswing scan needs §11a to suppress
    recurring false positives; without it the noise rate is
    X-fold higher").
 
@@ -430,9 +430,9 @@ with.
 | `SECURITY.md` exists but doesn't link to a model and has no embedded model content | Email reply | PMC needs to decide where the model lives. |
 | Project-site URL 404 / redirects | Email reply | PMC owns the destination, not us. |
 | 1–2 model sections missing, project public artefacts are rich enough to draft from | PR with draft additions via `threat-model-producer` | Maintainer reacts to a concrete starting point. |
-| ≥ 3 model sections missing, OR §4.7 adversary / §4.8 properties absent | Email reply listing all gaps with rubric citations | Substantive work that the PMC has to drive. Drafting it all unsolicited is too much. |
+| ≥ 3 model sections missing, OR §7 adversary / §8 properties absent | Email reply listing all gaps with rubric citations | Substantive work that the PMC has to drive. Drafting it all unsolicited is too much. |
 | Sections present but tagged with hedge-words (`(implicit)`, `(generally known)`) | Email reply with a one-line note about provenance tagging discipline | Not blocking the scan per se, but worth flagging. |
-| §4.11a (known non-findings) missing on a project that's been scanned before | Email reply with offer to draft from prior scan findings on request | Highest-leverage section but only the maintainer knows which findings were false positives. |
+| §11a (known non-findings) missing on a project that's been scanned before | Email reply with offer to draft from prior scan findings on request | Highest-leverage section but only the maintainer knows which findings were false positives. |
 
 When in doubt, lean toward **email reply** with the explicit
 offer to draft a PR if the PMC prefers. PRs that the PMC has
@@ -531,7 +531,7 @@ phrasing), framed as the file-creation case.
 
 **Diff**: append the generated sections to the existing model,
 each carrying provenance tags per §3.3 of the producer SKILL.
-Group all the `*(inferred)*` claims into a fresh §4.14 Open
+Group all the `*(inferred)*` claims into a fresh §14 Open
 questions block at the end (or merge into the existing one).
 
 **PR body skeleton**:
@@ -560,12 +560,12 @@ Every claim in the draft carries a provenance tag:
 - *(documented)* — lifted from a project doc; cited.
 - *(inferred)* — agent guess from code structure or domain
   norms. **Every *(inferred)* tag has a matching question in
-  §4.14 "Open questions"** for the PMC to confirm, correct,
+  §14 "Open questions"** for the PMC to confirm, correct,
   or strike.
 
 What's needed from the PMC:
 
-1. Walk the §4.14 questions and answer in-thread (a one-line
+1. Walk the §14 questions and answer in-thread (a one-line
    confirm / correct / strike per question is enough — see the
    producer SKILL §3.2 for the "react, don't compose" pattern).
 2. We'll fold the answers in and the *(inferred)* tags will
@@ -828,7 +828,7 @@ Gmail tools directly.
 
 ## Style notes
 
-- **Concrete over abstract.** "Your model doesn't have a §4.11a
+- **Concrete over abstract.** "Your model doesn't have a §11a
   section" beats "your model has gaps". Cite the rubric.
 - **Single ask per artefact.** Per hard rule 2, one
   remediation per failing check.

@@ -293,7 +293,7 @@ actually applies to that PMC.
   ultimately for, not just who's authorized.
 - Glossing over a partial-completeness pass. If
   `glasswing-model-verify` flagged soft gaps that the PMC
-  accepted, say so in the body ("§4.7 / §4.11a / §4.13 gaps
+  accepted, say so in the body ("§7 / §11a / §13 gaps
   recorded as advisory; PMC informed in <thread>; scan
   proceeds against the existing model"). Hidden caveats land
   badly when Mirko's team triages results later.
