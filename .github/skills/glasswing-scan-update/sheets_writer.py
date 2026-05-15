@@ -440,7 +440,7 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
     else:
         model_status = "Missing"
 
-    repo_count = len([r for r in repos_requested.splitlines() if r.strip()])
+    repo_count = len([r for r in repos_requested.splitlines() if r.strip() and not r.strip().startswith("#")])
 
     pr_urls = parse_pr_urls(pr_issues)
     pr_state = query_pr_states(pr_urls) if pr_urls else {"open": 0, "merged": 0, "closed": 0, "errors": []}
@@ -661,7 +661,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             [
                 e["pmc"],
                 e["slug"],
-                len([r for r in e["repos_submitted"].splitlines() if r.strip()]),
+                len([r for r in e["repos_submitted"].splitlines() if r.strip() and not r.strip().startswith("#")]),
                 prs_open_cell,
                 prs_merged_cell,
                 prs_total_cell,
