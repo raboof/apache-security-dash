@@ -824,7 +824,52 @@ If any check fails, iterate before publishing.
 ## 9. Skill provenance
 
 This SKILL is a verbatim import of Michael Scovetta's gist
-[`scovetta/2dc9a0695c7cbcc32e23799e00d2ced3`](https://gist.github.com/scovetta/2dc9a0695c7cbcc32e23799e00d2ced3).
-The original is the canonical source; this local copy is what the
-agent runs against. When the upstream gist is updated, re-import to
-keep this file in sync.
+[`scovetta/2dc9a0695c7cbcc32e23799e00d2ced3`](https://gist.github.com/scovetta/2dc9a0695c7cbcc32e23799e00d2ced3),
+with `§3.1a` updates and the website-security-pages section from
+PR-review feedback (see commits `fa6afe5` and later in
+`apache/security`). The original is the upstream rubric; this local
+copy is what the Security team's agents run against. When the
+upstream gist is updated, re-import to keep this file in sync.
+
+## 10. Public mirror
+
+`apache/security` is a **private** repo. The Security team's
+outbound emails to PMCs (drafted by `glasswing-scan-response`,
+`glasswing-model-verify`, `glasswing-scan-forward`,
+`glasswing-scan-submit`) routinely link to this SKILL as the
+rubric a PMC's threat model should hit. A private-repo URL
+would 404 for the recipient.
+
+The canonical **public** mirror lives at:
+
+> <https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573>
+
+Outbound SKILL references in PMC-facing email templates (this
+SKILL and the others) use that URL, not the in-repo path.
+Internal docs (this repo, the README, the helper script
+comments) can still link to the in-repo file.
+
+### Keeping the mirror in sync
+
+When this SKILL is edited in `apache/security`, the gist must
+be updated to match. The simplest way:
+
+```
+gh gist edit da14a826283038ddfe38cc9fe6310573 \
+    .github/skills/threat-model-producer/SKILL.md
+```
+
+(Run from the repo root. `gh gist edit` accepts the local
+path and replaces the gist's `SKILL.md` content with it.)
+
+A `git push` to `apache/security` does **not** propagate to
+the gist — the sync is manual on purpose, so a half-finished
+edit doesn't immediately leak. After every PR that touches
+this file merges into `apache/security`'s default branch, the
+maintainer running the merge also pushes the new content to
+the gist via the command above.
+
+If the gist URL ever needs to be rotated (lost access, etc.):
+update this section and grep the rest of the repo for the
+old gist ID — the SKILLs that link the rubric externally
+need their URLs updated too.

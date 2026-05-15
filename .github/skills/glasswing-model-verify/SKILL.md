@@ -485,7 +485,7 @@ team has reached out separately on the PMC's private list with
 the program details; this PR is the public-facing repo piece.
 
 The Security team uses
-[`threat-model-producer`](https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md)
+[`threat-model-producer`](https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573)
 as the rubric for what a complete model looks like — but this
 PR is just the *link*; nothing about the model content itself
 changes.
@@ -546,7 +546,7 @@ filled in before it runs — it just runs better when they are.
 
 Context: the ASF Security team is preparing this project for
 an automated agentic security scan we're piloting. Per the
-[`threat-model-producer`](https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md)
+[`threat-model-producer`](https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573)
 rubric — this PR proposes **draft** content for the following
 currently-empty sections, written from the project's own
 public artefacts (README, docs, header comments, FAQ):
@@ -616,7 +616,7 @@ Status update on the pre-flight for the Glasswing scan against
   model is substantive on <list the sections that landed
   well — e.g. "scope, out-of-scope, inputs, downstream
   responsibilities">. We ran it against the rubric in
-  https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md
+  https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573
   and flagged a few gaps as suggestions (nothing here blocks
   the scan; closing them reduces noise in the output):
 
@@ -631,7 +631,7 @@ Two paths forward, either works for us:
 1. You drive — walk the gaps section by section, ping us when
    you'd like a re-check.
 2. We draft. We can run the threat-model-producer recipe
-   (https://github.com/apache/security/blob/main/.github/skills/threat-model-producer/SKILL.md)
+   (https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573)
    against your repo's public artefacts, open a PR with
    *(inferred)*-tagged drafts for each gap, and collect the
    open questions at the end so you react to a concrete
