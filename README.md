@@ -58,13 +58,26 @@ flowchart LR
     V --> S{{scan-submit<br/>email to Mirko}}:::skill
     S --> M[(Mirko @<br/>Alpha-Omega<br/>runs the scan)]:::vendor
     M --> F{{scan-forward<br/>slop-filter against model}}:::skill
-    F --> RES([Curated findings<br/>delivered to PMC]):::pmc
+    F --> A[(Archive to scans/<br/>md + .json + .notes.md<br/>committed to private repo)]:::archive
+    A --> RES([Curated findings<br/>delivered to PMC<br/>citing archive filename]):::pmc
     RES --> T([PMC normal triage<br/>CVE / disclosure / release]):::pmc
 
     classDef pmc fill:#fff3cd,stroke:#9a7d00,color:#553e00
     classDef skill fill:#d4e6f9,stroke:#1f6feb,color:#0a2e5c
     classDef vendor fill:#e2d6f9,stroke:#6f42c1,color:#3d2469
+    classDef archive fill:#cfe9d7,stroke:#1f7a3a,color:#0a3a1c
 ```
+
+The **archive step** (`scans/`) is the canonical audit trail —
+every scan we forward to a PMC lands there as three files:
+`<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md` (the curated
+findings as forwarded), a `.json` sidecar (Mirko's raw report
+verbatim, so the slop-filter pass is auditable), and a
+`.notes.md` sidecar (per-finding decision log). The archive
+filename is cited in the PMC-facing email so the PMC has a
+stable identifier without needing access to this private repo.
+See [`scans/README.md`](scans/README.md) for the layout, the
+metadata-header spec, and the confidentiality rules.
 
 Every transition between blocks is a write to the **Mythos
 tracker spreadsheet** (the team's shared coordination workbook,
@@ -89,13 +102,18 @@ stateDiagram-v2
     BlockedDiscoverability --> ModelVerifyPending: PRs merged<br/>or scope narrowed
     Ready --> Submitted: scan-submit<br/>email sent to Mirko
     Submitted --> Triaging: Mirko returns report
-    Triaging --> Forwarded: slop-filter pass,<br/>forward to PMC
+    Triaging --> Archived: slop-filter pass<br/>+ commit to scans/
+    Archived --> Forwarded: forwarding email<br/>sent to PMC
     Forwarded --> [*]: PMC triages normally
 ```
 
 The colors in the Status tab map onto this progression
 (light-red Pre-flight → yellow Ready → light-green Submitted →
-medium-green Triaging → dark-green Forwarded).
+medium-green Triaging → green Archived → dark-green Forwarded).
+`Archived` is a brief, mostly-synchronous step: the archive
+commit and the forwarding-email draft are produced together,
+and the user's single approval covers both before the email
+is sent.
 
 ### Typical interaction
 
@@ -117,8 +135,9 @@ sequenceDiagram
     end
     Sec->>V: scan-submit: queue request<br/>(email to mirko@alpha-omega.dev)
     V-->>Sec: Scan report
-    Sec->>Sec: scan-forward: slop-filter<br/>against model + §4.11a
-    Sec-->>PMC: Curated findings<br/>+ filtered appendix
+    Sec->>Sec: scan-forward: slop-filter<br/>against model + §11a
+    Sec->>Sec: Archive to scans/<br/>(md + .json + .notes.md commit)
+    Sec-->>PMC: Curated findings<br/>+ filtered appendix<br/>(cites archive filename)
     PMC->>PMC: Triage / CVE /<br/>coordinated disclosure
 ```
 
