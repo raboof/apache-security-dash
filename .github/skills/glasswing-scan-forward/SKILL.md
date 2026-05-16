@@ -63,12 +63,45 @@ Skip when:
    dropped. The PMC's reviewer is the final judge; the
    Security team is just a noise filter on the way there.
 
-4. **Use the PMC's specified scan-result destination.** This
-   is *not* the named contacts. The original `[GLASSWING]`
-   request listed the scan-result email addresses
-   explicitly (e.g. "Please send scan results to
-   security@logging.apache.org" or a list of `@apache.org`
-   addresses). That's the To: for the forward.
+4. **Use the PMC's specified scan-result destination — and
+   every address on the To/Cc must be `@apache.org`-rooted.**
+   The original `[GLASSWING]` request listed the scan-result
+   email addresses explicitly (e.g. "Please send scan results
+   to `security@logging.apache.org`" or a list of personal
+   `@apache.org` addresses). That's the To: for the forward.
+
+   **Hard restriction — `@apache.org` only:** every address on
+   the To: and Cc: of the forward must end in `@apache.org` or
+   `@<pmc>.apache.org`. Acceptable shapes:
+
+   - personal `@apache.org` addresses of named PMC members,
+   - `private@<pmc>.apache.org`,
+   - `security@<pmc>.apache.org` (where the alias exists),
+   - `security@apache.org` (Foundation audit trail — always Cc'd).
+
+   **Not acceptable**, even if requested by a PMC member or
+   recorded in the tracker:
+
+   - personal `@gmail.com` / `@employer.com` / other addresses,
+   - any address that isn't anchored to ASF identity.
+
+   **Why**: scan reports contain pre-disclosure vulnerability
+   candidates. The `@apache.org` rooting is the cheapest
+   verification that the recipient is still an ASF member with
+   the right to see them. The vendor (Alpha-Omega) also
+   expects ASF-anchored recipient addresses as the trust
+   boundary. A PMC member who wants results to land in their
+   personal inbox can configure their `@apache.org` address to
+   forward there — that's the standard Apache committer pattern
+   and it keeps the boundary on our side.
+
+   **If the tracker's results-destination cell or the request's
+   stated destination contains a non-`@apache.org` address**:
+   surface the conflict before drafting the forward. Do not
+   silently substitute; flag to the user, who decides whether
+   to (a) ask the PMC to designate an `@apache.org` alternative,
+   or (b) route via the PMC's `private@<pmc>` list with the
+   non-`@apache.org` address dropped from the recipient list.
 
 5. **Draft + confirm before creating the Gmail draft.** Same
    pattern as every other write-capable SKILL: render the
