@@ -132,6 +132,36 @@ the code folder.
 After setup, future invocations of `apply` reuse the refresh
 token silently.
 
+### Troubleshooting setup
+
+- **`setup` exits with "Place your OAuth client secret JSON at
+  …".** Step 5 above (placing `oauth_client_secret.json`) has
+  not happened yet. The script does *not* create the JSON for
+  you — you have to go through steps 1–4 in the Google Cloud
+  Console, download the JSON, and `mv` it to the documented
+  path. Re-run `setup` after. The error message is brief
+  (one line + exit code 1) and easy to miss if scrolled past;
+  the script is *not* hanging silently if the browser doesn't
+  open — scroll back and check stderr.
+
+- **`test -f ~/.config/asf-security/glasswing/token.json`
+  returns false from inside Claude Code.** The default
+  sandbox denies reads of `~/.config/asf-security/`. A
+  negative result from `test -f` (or `Path.exists()`) here
+  doesn't mean the file is missing — it can also mean the
+  sandbox blocked the read. Verify with
+  `dangerouslyDisableSandbox: true` before assuming OAuth
+  isn't set up.
+
+- **`gh gist create` / other GitHub API calls fail with
+  `tls: failed to verify certificate: x509: OSStatus -26276`
+  on macOS.** Known macOS / `gh` CLI cert-chain issue inside
+  the sandbox. Bypass with `dangerouslyDisableSandbox: true`
+  for the affected commands (`gh gist create`, `gh pr view`,
+  etc.). Operations against the *Sheets* API use a different
+  HTTP path and work fine; only `gh`'s GraphQL path hits
+  this.
+
 ### Why this directory
 
 `~/.config/asf-security/glasswing/` is XDG-compliant, user-

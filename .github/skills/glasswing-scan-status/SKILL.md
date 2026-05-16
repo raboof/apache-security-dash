@@ -39,6 +39,28 @@ of the three sheets concatenated in order. Get the last-modified
 timestamp via `mcp__claude_ai_Google_Drive__get_file_metadata`
 on the same file ID.
 
+**Important — the Drive MCP truncates large spreadsheets.**
+`read_file_content` silently caps its output at ~80KB of
+markdown. For the current ~210-PMC `Mythos scan` workbook this
+means rows past roughly the first ~140 (alphabetically up
+through "Apache Phoenix") are dropped from the rendering
+without any indication that truncation occurred. PMCs whose
+slugs sort later — including Polaris, Shiro, Spark, Struts,
+Thrift, Tomcat, Traffic Server, and any not-yet-added PMC
+that lands after `P` alphabetically — will be **invisible** to
+a status pass that trusts the MCP output alone.
+
+When the *row count itself* matters (verifying which PMCs
+have `Scan Requested = Yes`, checking whether a given PMC has
+a row at all, computing program totals, enumerating slugs),
+query the Sheets API directly via the `sheets_writer.py`
+helper in the `glasswing-scan-update` SKILL (or a one-off
+Python script using the same OAuth credentials). Reading
+just the `PMCs!A:C` range is enough to enumerate slugs +
+Scan-Requested state across the whole sheet; drill into
+specific rows with targeted reads after. The MCP read remains
+useful for the *content* of rows you've already identified.
+
 ### Sheet layout
 
 The workbook has up to five sheets:
