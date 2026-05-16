@@ -37,6 +37,11 @@ Google Sheets API v4 directly.
 - A repo needs its `PMC Slug` / `PMC Agreed` / `Security model`
   column updated (e.g. an `(unmapped)` repo gets mapped to its
   owning PMC after research).
+- A genuinely-new PMC needs a row added to the `PMCs` sheet
+  (e.g. a PMC that didn't exist when the sheet was last
+  regenerated, or one that was trimmed). Use the `append-pmc`
+  subcommand — `apply` errors on zero-match by design and won't
+  create rows.
 
 Skip this skill when the user is only asking for the *current*
 state — that's `glasswing-scan-status`. Skip it when the user is
@@ -240,6 +245,7 @@ Subcommands:
 | `apply --spreadsheet-id ID --updates PATH [--dry-run]` | Apply updates from a JSON file. `--dry-run` prints the diff and exits. |
 | `init-canned-tab --spreadsheet-id ID [--dry-run]` | Idempotently create the `Canned Responses` sheet (header row + frozen first row). Run once per workbook. |
 | `append-canned --spreadsheet-id ID --entries PATH [--dry-run]` | Append one or more canned-response rows. `Date Added` is auto-filled to today; all other fields come from the JSON. |
+| `append-pmc --spreadsheet-id ID --entries PATH [--dry-run]` | Append one or more new PMC rows to the `PMCs` sheet. Entries JSON is a list of objects keyed by `PMCs`-sheet column header; `PMC Name` and `PMC Slug` are required; unknown columns abort; duplicate-slug appends abort (use `apply` to update existing rows instead). For genuinely-new PMCs that don't yet have a row — `apply` errors on zero-match by design. |
 | `insert-column --spreadsheet-id ID --sheet S --after H --header NEW [--dry-run]` | Insert a new column at a specific position in a sheet (right after the column with header `H`). Idempotent. |
 | `add-columns --spreadsheet-id ID --sheet S --headers H1 H2 ... [--dry-run]` | Append new column headers to the end of a sheet. Idempotent per header. |
 | `rename-column --spreadsheet-id ID --sheet S --old H --new NEW [--dry-run]` | Rename the header text at row 1 of a sheet's column. |
