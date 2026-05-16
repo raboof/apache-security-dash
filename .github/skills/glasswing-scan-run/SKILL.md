@@ -131,6 +131,26 @@ reference memory under `mythos-tracker`). Specifically:
   in-flight + completed view, as a fast confirmation of
   what the email sweep should match.
 
+**Important — Drive MCP truncation caveat.** The Drive MCP
+(`mcp__claude_ai_Google_Drive__read_file_content`) silently
+truncates the spreadsheet rendering at ~80KB of markdown,
+dropping rows past the first ~140 alphabetically (cuts off
+around "Apache Phoenix" with the current ~210-PMC tracker).
+PMC rows beyond that boundary are **invisible** to a sweep
+that relies on the MCP output alone — sweeps will silently
+miss in-flight PMCs like Tomcat, Polaris, Shiro, Spark,
+Thrift, Traffic Server, and anything else that sorts after
+`P`. For accurate sweep coverage, query the Sheets API
+directly via `sheets_writer.py` (the helper in
+`glasswing-scan-update`): read `PMCs!A:C` to enumerate slugs
++ Scan-Requested state across the whole sheet, then read
+the rest of the row content for the slugs you actually care
+about. The MCP read remains useful for the *content* of rows
+you've identified via the API. Misdiagnosis from trusting
+the truncated MCP output cost the 2026-05-16 sweep a wrong
+"6 PMCs need new rows" conclusion that the helper's
+duplicate-slug guard then caught on first append-attempt.
+
 For each PMC row, compute the same pipeline state that
 `build-status-tab` does (Pre-flight / Ready / Submitted /
 Triaging / Delivered).
