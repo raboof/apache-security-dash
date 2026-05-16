@@ -312,6 +312,85 @@ def cmd_append_canned(args: argparse.Namespace) -> None:
     print(f"\nAppended {len(rows)} row(s). updatedRange={updated_range}")
 
 
+PMCS_SHEET = "PMCs"
+PMCS_REQUIRED_FIELDS = ("PMC Name", "PMC Slug")
+
+
+def cmd_append_pmc(args: argparse.Namespace) -> None:
+    """Append one or more new PMC rows to the 'PMCs' sheet.
+
+    Entries JSON is a list of objects keyed by PMC-sheet column header.
+    'PMC Name' and 'PMC Slug' are required; everything else is optional.
+    Unknown column keys abort. Duplicate-slug appends abort
+    (use 'apply' to update an existing row instead).
+    """
+    entries = json.loads(Path(args.entries).read_text())
+    if not isinstance(entries, list):
+        sys.exit("Entries JSON must be a list of objects.")
+
+    service = get_service()
+    grid = fetch_sheet_grid(service, args.spreadsheet_id, PMCS_SHEET)
+    if not grid:
+        sys.exit(f"'{PMCS_SHEET}' sheet is empty (no header row).")
+    header = grid[0]
+    slug_col_idx = header.index("PMC Slug") if "PMC Slug" in header else None
+    if slug_col_idx is None:
+        sys.exit(f"'{PMCS_SHEET}' header has no 'PMC Slug' column.")
+    existing_slugs = {
+        (row[slug_col_idx].strip() if slug_col_idx < len(row) else ""): r_idx
+        for r_idx, row in enumerate(grid[1:], start=2)
+    }
+
+    rows: list[list[str]] = []
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            sys.exit(f"Entry #{i} must be a JSON object.")
+        for k in PMCS_REQUIRED_FIELDS:
+            if k not in entry or not str(entry[k]).strip():
+                sys.exit(f"Entry #{i} missing required field: {k!r}")
+        unknown = [k for k in entry.keys() if k not in header]
+        if unknown:
+            sys.exit(
+                f"Entry #{i} has unknown columns: {unknown}. "
+                f"Available: {header}"
+            )
+        slug = str(entry["PMC Slug"]).strip()
+        if slug in existing_slugs and slug != "":
+            sys.exit(
+                f"Entry #{i}: PMC Slug {slug!r} already exists at "
+                f"{PMCS_SHEET} row {existing_slugs[slug]}. Use 'apply' to "
+                f"update it instead of appending a duplicate."
+            )
+        rows.append([str(entry.get(col, "")) for col in header])
+
+    print(f"Planned append to '{PMCS_SHEET}' ({len(rows)} new row(s)):")
+    for idx, row in enumerate(rows):
+        entry = entries[idx]
+        print(f"  Entry #{idx} — {entry.get('PMC Name', '?')} ({entry.get('PMC Slug', '?')}):")
+        for col, val in zip(header, row):
+            if not val:
+                continue
+            display = val if len(val) <= 80 else val[:77] + "..."
+            print(f"    {col}: {display!r}")
+    if args.dry_run:
+        print(f"\nDry run — no changes written. ({len(rows)} rows would be appended.)")
+        return
+    resp = (
+        service.spreadsheets()
+        .values()
+        .append(
+            spreadsheetId=args.spreadsheet_id,
+            range=PMCS_SHEET,
+            valueInputOption="USER_ENTERED",
+            insertDataOption="INSERT_ROWS",
+            body={"values": rows},
+        )
+        .execute()
+    )
+    updated_range = resp.get("updates", {}).get("updatedRange", "<unknown>")
+    print(f"\nAppended {len(rows)} row(s) to '{PMCS_SHEET}'. updatedRange={updated_range}")
+
+
 STATUS_SHEET = "Status"
 
 # Pipeline states in progression order. Order matters: the state-detection
@@ -902,6 +981,19 @@ def main() -> None:
     )
     appc_p.add_argument("--dry-run", action="store_true")
 
+    apppmc_p = sub.add_parser(
+        "append-pmc",
+        help=f"Append one or more new PMC rows to '{PMCS_SHEET}'. Errors on duplicate slug.",
+    )
+    apppmc_p.add_argument("--spreadsheet-id", required=True)
+    apppmc_p.add_argument(
+        "--entries",
+        required=True,
+        type=Path,
+        help="Path to JSON list of objects keyed by PMC-sheet column header. 'PMC Name' + 'PMC Slug' required.",
+    )
+    apppmc_p.add_argument("--dry-run", action="store_true")
+
     status_p = sub.add_parser(
         "build-status-tab",
         help="Create or refresh the 'Status' tab with in-flight + completed tables and timeline data, color-coded by pipeline state.",
@@ -956,6 +1048,8 @@ def main() -> None:
         cmd_init_canned(args)
     elif args.cmd == "append-canned":
         cmd_append_canned(args)
+    elif args.cmd == "append-pmc":
+        cmd_append_pmc(args)
     elif args.cmd == "add-columns":
         cmd_add_columns(args)
     elif args.cmd == "insert-column":
