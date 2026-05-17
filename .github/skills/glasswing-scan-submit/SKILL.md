@@ -167,14 +167,22 @@ operator decides to actually queue the scan with Mirko.
    `Repositories submitted`) and hands off to the update
    SKILL.
 
-9. **Glasswing name is allowed here** because every
-   recipient on either email is either inside the program's
-   trust boundary (Mirko; `security@apache.org`) or on a
-   private PMC list. The public-artefact name-discipline
-   rule from `glasswing-model-verify` (rule 8) does not
-   apply to these emails — Mirko *is* the program contact,
-   naming it explicitly is precise communication, not a
-   leak.
+9. **Vendor opacity on PMC-facing Email 2.** Email 1 is
+   vendor-facing (Mirko + `security@apache.org` only) and
+   may name Mirko / Alpha-Omega / the Glasswing vendor
+   pipeline freely — those are precise communication, not
+   a leak. **Email 2 is PMC-facing** and follows
+   `glasswing-scan-response`'s hard rule 5 (Vendor
+   opacity): the body must not name the scan vendor in
+   any form (no "Mirko", no "Alpha-Omega", no "the
+   Glasswing pipeline" as vendor synonym, no
+   `mirko@alpha-omega.dev`). Canonical PMC-facing
+   wordings: "our scan vendor partner" / "the scan
+   pipeline" / "the vendor relationship". The Glasswing
+   *program name* is fine (it's already in the
+   `[GLASSWING]` subject line); Anthropic + Apache Magpie
+   + Claude OSS are fine to name. What's redacted is **who
+   runs the pipeline downstream of the Security team**.
 
 ## Inputs the SKILL needs before drafting
 
@@ -277,6 +285,16 @@ repos + the model URL + the (optional) expedite list.
 
 ## Email 2 template — PMC notification
 
+**Vendor opacity reminder** — this email is PMC-facing.
+Per `glasswing-scan-response` hard rule 5, the body must
+not name the scan vendor (no "Mirko", no "Alpha-Omega",
+no "the Glasswing pipeline" used as vendor synonym).
+Canonical phrasing is "our scan vendor partner" / "the
+scan pipeline" / "the vendor relationship". Anthropic +
+Apache Magpie + Claude OSS are fine to mention by name in
+the expedite-block of the body; vendor identity is what's
+redacted.
+
 **To**: primary PMC contact (the `Contact Person` cell's
 `@apache.org` address)
 
@@ -287,10 +305,12 @@ repos + the model URL + the (optional) expedite list.
 every `@apache.org` address from the original `[GLASSWING]`
 request's "send results to" list.
 
-**Subject**: `[GLASSWING] Apache <PMC name> — scan request submitted to vendor`
+**Subject**: `[GLASSWING] Apache <PMC name> — scan request submitted`
 
 (Distinct subject from Email 1; this is the PMC's
-notification thread, not a forward of the vendor thread.)
+notification thread, not a forward of the vendor thread.
+Note: no "to vendor" in the subject either — vendor
+opacity applies to subject lines too.)
 
 **Body**:
 
@@ -298,9 +318,9 @@ notification thread, not a forward of the vendor thread.)
 Hi <Primary contact first name>,
 
 The scan request for Apache <PMC name> has been submitted
-to Mirko Svilus at Alpha-Omega (the Glasswing pipeline).
-The vendor's queue position is TBD — usually a few days to
-a couple of weeks, with no commitment.
+through the Security team's scan pipeline. Queue position
+is TBD — usually a few days to a couple of weeks, with no
+commitment.
 
 Repos submitted (current HEAD at submission time):
   - <repo URL 1>
@@ -308,7 +328,7 @@ Repos submitted (current HEAD at submission time):
   - ...
 
 What happens next:
-  - Mirko's team runs the scan against each repo.
+  - The scan runs against each repo.
   - Scan results come back to the ASF Security team first
     at security@apache.org.
   - We do a slop-filter / pre-triage pass to remove
@@ -322,20 +342,21 @@ You don't need to do anything until the results arrive.
 
 <IF the `Expedite Claude OSS Requests` cell was non-empty,
 include this block; otherwise omit>
-Expedite request:
-We also asked Mirko to forward an Anthropic
-Claude-for-Open-Source expedite request for the <N>
-@apache.org address(es) you nominated:
+Anthropic Claude-for-OSS expedite request:
+We also forwarded an expedite request via our vendor
+relationship for the <N> @apache.org address(es) you
+nominated:
 
   - <addr1@apache.org>
   - <addr2@apache.org>
   - ...
 
-No promises from us or from Anthropic — just the relay.
-PMC members should still register at
+No promises from us or from Anthropic — just the relay;
+their subscription team makes the call. The named PMC
+members should already have registered at
 https://claude.com/contact-sales/claude-for-oss with their
-@apache.org address; the expedite ask is the courtesy on
-top.
+@apache.org address (which is the prerequisite the
+expedite ask references).
 
 </block>
 

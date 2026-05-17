@@ -24,8 +24,9 @@ Google Sheets API v4 directly.
   `Forwarded scan to PMC`, `Contact Person`, `Backup contact`,
   `Security Model`, `Security model verified`, `Notes`,
   `Initial Model assessment`, `Expedite Claude OSS Requests`,
-  `PR/Issues`, `PMC thread (ponymail)`, or
-  `Mirko thread (ponymail)` columns).
+  `Claude OSS Subscriptions Submitted`, `PR/Issues`,
+  `PMC thread (ponymail)`, or `Mirko thread (ponymail)`
+  columns).
 - The scan for a PMC progresses through one of its workflow
   stages: request received (`Request date`), submitted to
   Glasswing (`Date scan requested`), results back
@@ -42,15 +43,26 @@ Google Sheets API v4 directly.
   regenerated, or one that was trimmed). Use the `append-pmc`
   subcommand — `apply` errors on zero-match by design and won't
   create rows.
-- A PMC replies to the pre-flight-pass OSS-expedite pitch from
+- A PMC replies to the pre-flight-pass OSS-tooling offer from
   `glasswing-scan-response` with the list of `@apache.org`
   addresses they want included in the Claude-for-OSS
   subscription expedite request. Write them (newline-separated)
-  to the `Expedite Claude OSS Requests` cell. If the PMC
-  explicitly opts out of Path B, write the literal string
-  `none` rather than leaving the cell blank — empty means
-  "not yet asked / not yet replied"; `none` means "asked +
-  PMC declined".
+  to the `Expedite Claude OSS Requests` cell. **Prerequisite**:
+  the PMC must have confirmed those addresses already registered
+  via https://claude.com/contact-sales/claude-for-oss — don't
+  write addresses to this cell that haven't been registered yet
+  because the expedite ask would be a no-op against Anthropic's
+  side. If the PMC explicitly opts out of the OSS subscription
+  offer, write the literal string `none` rather than leaving
+  the cell blank — empty means "not yet asked / not yet
+  replied"; `none` means "asked + PMC declined".
+- Anthropic confirms a subscription grant for one of the
+  expedite-asked addresses. Append the confirmed
+  `@apache.org` address to the `Claude OSS Subscriptions
+  Submitted` cell (preserve existing addresses; newline-
+  separated). This cell tracks actually-granted outcomes,
+  distinct from `Expedite Claude OSS Requests` which tracks
+  what the PMC asked us to expedite for.
 
 Skip this skill when the user is only asking for the *current*
 state — that's `glasswing-scan-status`. Skip it when the user is
