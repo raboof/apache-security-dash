@@ -12,25 +12,59 @@ in-flight engagement, and surfaces a per-PMC action list that
 the user can triage. All writes happen via the per-task SKILLs
 that this one hands off to.
 
-The pipeline this SKILL covers has eight observable stages:
+The pipeline this SKILL covers:
+
+**Scan pipeline** (one path; operator-gated):
 
 ```
-                                     +-------------------+
-                                     | Vendor pipeline   |
-                                     +---------+---------+
-                                               | scan results
-                                               v
-+-----------+   +-----------+   +-----------+   +-----------+   +-----------+   +-----------+
-| [GLASS-   |-->| Pre-flight|-->| Submitted |-->| Triaging  |-->| Archived  |-->| Forwarded |
-| WING]     |   | (model    |   | to vendor |   | (slop     |   | (committed|   | to PMC    |
-| request   |   |  verify)  |   |           |   |  filter)  |   |  to scans/|   |  citing   |
-|           |   |           |   |           |   |           |   |  tree)    |   |  filename)|
-+-----------+   +-----------+   +-----------+   +-----------+   +-----------+   +-----------+
-       ^                                                                              |
-       |                                                                              v
-   PMC inbox                                                                    PMC's normal
-                                                                              triage process
+                                                                              +-------------------+
+                                                                              | Vendor pipeline   |
+                                                                              +---------+---------+
+                                                                                        | scan results
+                                                                                        v
++--------+  +---------+  +---------+  +-----------+  +-----------+  +-----------+  +-----------+  +-----------+
+|[GLASS- |->|Pre-     |->|Pitch    |->|PMC reply  |->|Operator   |->|Submitted  |->|Triaging   |->|Archived + |
+| WING]  |  |flight   |  |sent to  |  |(expedite  |  |gate       |  |to vendor  |  |(slop      |  |Forwarded  |
+| request|  |(model + |  |PMC      |  | list /    |  |(explicit  |  |(Email 1 + |  | filter)   |  |to PMC     |
+|        |  | discov.) |  |(scan-   |  | 'none')   |  | go-ahead) |  | Email 2)  |  |           |  |(named     |
+|        |  |         |  | response|  |           |  |           |  |           |  |           |  | contacts) |
+|        |  |         |  | template)|  |           |  |           |  |           |  |           |  |           |
++--------+  +---------+  +---------+  +-----------+  +-----------+  +-----------+  +-----------+  +-----------+
+   ^                                                                                                       |
+   |                                                                                                       v
+PMC inbox                                                                                              PMC's normal
+                                                                                                       triage process
 ```
+
+**OSS-tooling side flow** (parallel, non-blocking on the
+scan pipeline). The PMC's reply to the pitch above may
+nominate `@apache.org` addresses for an
+Anthropic-Claude-for-Open-Source subscription expedite ask.
+If it does, the flow is:
+
+```
++-----------+    +---------------+    +---------------+    +---------------+
+| Step 1:   |    | Step 2:       |    | We relay      |    | Anthropic     |
+| PMC mem-  |--->| Expedite list |--->| expedite via  |--->| grants subs.  |
+| bers reg- |    | written to    |    | vendor to     |    | Recorded in   |
+| ister at  |    | "Expedite     |    | Anthropic     |    | "Claude OSS   |
+| claude.   |    |  Claude OSS   |    | (best-effort, |    |  Subscriptions|
+| com/      |    |  Requests"    |    |  no promise;  |    |  Submitted"   |
+| contact-  |    | cell          |    |  track record |    | cell as they  |
+| sales/    |    |               |    |  is fast)     |    | confirm       |
+| claude-   |    |               |    |               |    |               |
+| for-oss   |    |               |    |               |    |               |
++-----------+    +---------------+    +---------------+    +---------------+
+```
+
+The two flows are independent: the scan can be submitted
+with or without an OSS expedite ask in flight, and an
+expedite can be relayed before, during, or after the scan
+submission. The pitch step in the scan pipeline raises the
+OSS-tooling offer (one outbound email), and the PMC reply
+step collects both decisions in one inbound response (which
+@apache.org addresses to expedite — if any — and any
+substantive scoping / threat-model follow-up).
 
 The `Archived` step is a synchronous part of `glasswing-scan-forward`:
 the SKILL slop-filters Mirko's report, commits the curated
