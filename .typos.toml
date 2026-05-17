@@ -20,6 +20,12 @@ Svilus = "Svilus"
 ponymail = "ponymail"
 Whimsy = "Whimsy"
 
+# The repo uses British English spelling deliberately (18+ occurrences
+# of "artefact*" across README + SKILL docs). Allowlist the
+# British variants instead of fighting the existing prose style.
+artefact = "artefact"
+artefacts = "artefacts"
+
 [files]
 extend-exclude = [
   # SKILL files quote PMC member names + email addresses verbatim
