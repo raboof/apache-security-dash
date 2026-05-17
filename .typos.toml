@@ -1,0 +1,31 @@
+# typos configuration for apache/security.
+#
+# See https://github.com/crate-ci/typos for the spec.
+
+[default]
+locale = "en-us"
+
+[default.extend-words]
+# Project / program names + ASF terms that aren't typos.
+PMC = "PMC"
+PMCs = "PMCs"
+ASF = "ASF"
+Glasswing = "Glasswing"
+Mythos = "Mythos"
+Magpie = "Magpie"
+Scovetta = "Scovetta"
+Karwasz = "Karwasz"
+Mirko = "Mirko"
+Svilus = "Svilus"
+ponymail = "ponymail"
+Whimsy = "Whimsy"
+
+[files]
+extend-exclude = [
+  # SKILL files quote PMC member names + email addresses verbatim
+  # from inbound requests; spell-checking them is too noisy.
+  "scans/**",
+  # Generated thread permalinks in the spreadsheet snapshots (if any
+  # land here later).
+  "*.tracker.txt",
+]
