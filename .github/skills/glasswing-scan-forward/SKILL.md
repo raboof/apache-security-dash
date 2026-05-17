@@ -195,7 +195,7 @@ generation errors:
 | **Truncation** | The report doesn't end mid-finding / mid-section / mid-line. Mirko's output is typically a single markdown document; if the last finding's body is cut off mid-sentence, that's a truncation. |
 | **Cross-PMC leakage** | No findings or text from a different PMC's scan accidentally ended up in this report. Rare but high-blast-radius if it slips through. |
 | **Formatting integrity** | Markdown actually renders; no half-escaped JSON blobs in the body; no obviously broken tables; no missing headings that would render as plain text. |
-| **Plausibility** | Sanity-check that the finding count and topic distribution look reasonable for the project (e.g. a scan of a logging library returning 100 findings about cryptography is a signal the report may have been mis-routed). Not a triage step — just a "does this look like the vendor actually ran on the right thing" check. |
+| **Plausibility** | Sanity-check that the finding count and topic distribution look reasonable for the project (e.g. a scan of a logging library returning 100 findings about cryptography is a signal the report may have been misrouted). Not a triage step — just a "does this look like the vendor actually ran on the right thing" check. |
 
 If any check fails: **stop**, surface to the user before drafting
 the forward. Typically the resolution is asking Mirko to re-run
