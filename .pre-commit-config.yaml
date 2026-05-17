@@ -1,0 +1,82 @@
+# Pre-commit hooks for apache/security.
+#
+# Run via `prek` (recommended) or `pre-commit`:
+#
+#     prek install            # one-time per checkout
+#     prek run --all-files    # before pushing
+#
+# See AGENTS.md for the full convention. The hooks here catch:
+#   - merge-conflict markers / private keys / trailing whitespace /
+#     mixed line endings / missing trailing newlines
+#     (pre-commit-hooks)
+#   - broken markdown anchors + dangling link references
+#     (markdownlint-cli2 against .markdownlint.json)
+#   - typos (typos against .typos.toml)
+#   - Python lint + format on the repo's one Python file
+#     (ruff against sheets_writer.py)
+
+default_stages: [commit, push]
+default_language_version:
+  python: python3
+minimum_prek_version: '0.3.5'
+
+repos:
+  - repo: meta
+    hooks:
+      - id: identity
+        name: Print input to the static check hooks for troubleshooting
+      - id: check-hooks-apply
+        name: Check if all hooks apply to the repository
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-merge-conflict
+        name: Check that merge conflicts are not being committed
+      - id: detect-private-key
+        name: Detect if a private key is added to the repository
+      - id: end-of-file-fixer
+        name: Make sure that there is an empty line at the end
+      - id: mixed-line-ending
+        name: Detect mixed line endings (\r vs. \r\n)
+      - id: trailing-whitespace
+        name: Remove trailing whitespace at end of line
+
+  # markdownlint — catches structurally-bad markdown. Config in
+  # `.markdownlint.json` enables only the rules that catch real bugs
+  # (broken anchors via MD051, dangling link references via MD053);
+  # style choices that the existing docs already settled stay off.
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.22.1
+    hooks:
+      - id: markdownlint-cli2
+        name: markdownlint
+        files: \.md$
+
+  # typos — fast spell-checker. Allowlist is `.typos.toml`. Override
+  # the default args (which include `--write-changes`) so the hook
+  # never silently rewrites files; CI surfaces typos as errors.
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.45.2
+    hooks:
+      - id: typos
+        name: typos
+        args: [--force-exclude]
+
+  # ruff lint + format for the one Python file in the repo
+  # (`sheets_writer.py` — uses PEP 723 inline metadata via `uv run`).
+  # Run via `uvx ruff` so we don't need a separate ruff install.
+  - repo: local
+    hooks:
+      - id: ruff-check-sheets-writer
+        name: ruff check (sheets_writer.py)
+        language: system
+        entry: uvx ruff check
+        files: ^\.github/skills/glasswing-scan-update/sheets_writer\.py$
+        pass_filenames: true
+      - id: ruff-format-sheets-writer
+        name: ruff format (sheets_writer.py)
+        language: system
+        entry: uvx ruff format --check
+        files: ^\.github/skills/glasswing-scan-update/sheets_writer\.py$
+        pass_filenames: true

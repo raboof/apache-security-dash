@@ -1,0 +1,116 @@
+# AGENTS.md
+
+Conventions for agentic tooling (Claude Code, Codex, similar) working in this repo. The goal is to keep the diff small, the commits readable, and the PR-creation flow consistent with how the apache/security maintainers prefer to review.
+
+## What this repo is
+
+apache/security is the ASF Security team's private skill set + tooling for managing the Glasswing scan-outreach program. SKILLs live under `.github/skills/` and are symlinked from `.claude/skills/` so Claude Code can find them. The [README](README.md) at the repo root is the entry point and the canonical workflow reference (diagrams, per-PMC state machine, sequence diagram).
+
+## Pre-commit hooks
+
+**Required before any PR.** The repo uses [`prek`](https://github.com/j178/prek) (a faster Rust-based drop-in replacement for `pre-commit`) for static checks. Every push to a branch that will become a PR must first pass `prek run --all-files` locally — agents and humans both. The hooks catch the easy mistakes before a maintainer's review cycle is spent on them.
+
+### One-time setup per checkout
+
+```bash
+# 1. Install prek (if you don't already have it).
+#    Recommended: install as a uv tool so it's per-user, not per-project:
+uv tool install prek
+
+#    Alternatives:
+#    - pipx:                       pipx install prek
+#    - homebrew (macOS / Linux):   brew install prek
+#    - cargo (from source):        cargo install prek
+#
+#    If you're stuck on classic pre-commit instead (e.g. an env where
+#    prek won't install), `pre-commit install` + `pre-commit run` work
+#    too — the config in `.pre-commit-config.yaml` is compatible.
+
+# 2. Install the git hooks into this checkout.
+prek install
+```
+
+`prek install` writes a `.git/hooks/pre-commit` shim that fires the hooks automatically on `git commit`. You only run it once per fresh checkout.
+
+### Before pushing
+
+```bash
+prek run --all-files    # runs every hook against every file
+```
+
+Run this **before** `git push`, not after. The hooks catch:
+
+- **Generic safety** (`pre-commit-hooks`): merge-conflict markers, accidentally-committed private keys, trailing whitespace, mixed line endings, missing trailing newline.
+- **Markdown structure** (`markdownlint-cli2` against `.markdownlint.json`): broken anchors (`MD051`), dangling link references (`MD053`). Style rules are off — the existing docs settled those.
+- **Typos** (`typos` against `.typos.toml`): fast spell-checker. Project-specific terms (`Glasswing`, `Mythos`, PMC names) are allowlisted; common English misspellings are caught.
+- **Python lint + format** (`ruff` against `.github/skills/glasswing-scan-update/sheets_writer.py`): the one Python file in the repo. Both `ruff check` and `ruff format --check` run.
+
+If a hook fails, fix the underlying issue rather than bypassing — `--no-verify` is not a convention here. The hooks are fast (single-digit seconds for a clean run); running them locally before pushing is the expected workflow.
+
+## Commit messages
+
+- **Title under 70 characters; user-impact-focused.** "Add OSS-expedite path to scan-response" beats "Update scan-response.md".
+- **Body explains *why*, not *what*** — the diff already shows what.
+- **Use `Generated-by:` trailer, not `Co-Authored-By:`.** Generative AI tooling cannot be a commit author; humans are authors, agents are assistants. Use:
+
+  ```
+  Generated-by: Claude Code (Claude Opus 4.7) following the apache/security AGENTS.md conventions
+  ```
+
+  at the bottom of the commit body. Substitute the actual agent name / version you're running.
+
+- **One logical change per commit.** SKILL doc updates that touch multiple files for one policy shift land as one commit; unrelated touch-ups stay out. If you find yourself writing "and also" in a commit message body, it's two commits.
+
+## Pull requests
+
+**Prerequisite check before pushing**: confirm `prek` is installed and the hooks pass (see [Pre-commit hooks](#pre-commit-hooks) above). If `prek install` has not run on this checkout yet, do that first — the git pre-commit hook needs to be in place so future commits stay clean automatically.
+
+**Always use `gh pr create --web`** so the browser opens for the human to review the PR description + click Submit themselves. The agent drafts; the human submits.
+
+```bash
+gh pr create --web \
+  --title "Short title (under 70 chars)" \
+  --body "$(cat <<'EOF'
+## Summary
+
+Brief description of what + why.
+
+## Test plan
+
+- [ ] checklist of how this was validated
+
+Generated-by: Claude Code (Claude Opus 4.7)
+EOF
+)"
+```
+
+The `--web` flag is non-negotiable for agent-created PRs. It gives the human a final review pass before the PR opens against `apache/security`'s main branch. The agent prepares; the human commits to the public action.
+
+After the user has the PR open, **do not push more commits to the branch without their explicit approval**. Each push is content the user is attributing to themselves once they submit.
+
+## SKILL changes
+
+Changes to files under `.github/skills/<skill>/SKILL.md` become canonical immediately on merge — the SKILL doc IS the source of truth for agent behaviour. Be precise about what changes and why. The PR description should quote the new template / rule text so reviewers can compare against the prose without context-switching to the file.
+
+Cross-references between SKILLs (e.g. "per `glasswing-scan-response` hard rule 5") need to stay accurate; when you renumber a rule, grep for the rule reference across all SKILLs and update them in the same commit.
+
+## Live spreadsheet writes
+
+The Glasswing program coordinates state in a Google Sheet that lives outside this repo (the `mythos-tracker` user-scope memory entry holds its ID + URL). SKILLs that mutate the sheet go through `.github/skills/glasswing-scan-update/sheets_writer.py`, which authenticates via per-user OAuth (`~/.config/asf-security/glasswing/`).
+
+Spreadsheet writes are out-of-band relative to git — they're applied at SKILL invocation time, not at PR-merge time. If a SKILL PR depends on a new column or renamed column, **apply the schema change to the live sheet FIRST** (via `insert-column` / `add-columns` / `rename-column`) so the SKILL doc can reference the live cell layout accurately. Don't let a schema reference in a merged SKILL doc race ahead of the live sheet.
+
+## Sandbox bypass — when it's OK, when to be loud
+
+Per the user's CLAUDE.md, sandbox-bypass proposals must be **visually loud** (`!!! SANDBOX BYPASS: <reason> !!!`). Bypass is OK for:
+
+- `git push` / `git commit` (SSH signing reads `~/.ssh`)
+- `gh pr create` / `gh gist create` / other `gh api` (macOS cert-chain issue against `api.github.com`)
+- `uv run sheets_writer.py` (reads OAuth state from `~/.config/asf-security/glasswing/`, writes to `sheets.googleapis.com`)
+- Reading `~/.config/asf-security/glasswing/` files (sandbox denies that path by default)
+
+Bypass is **not** OK for one-off curls or general internet access — those should go through `WebFetch` against allowlisted hosts.
+
+## Provenance
+
+This AGENTS.md captures conventions surfaced during the 2026-05 Glasswing pipeline development, when multiple PRs (#54 through #59) landed back-to-back and the team realized the agent-side conventions for commit trailers + PR creation + pre-commit hygiene weren't written down anywhere. Patterned after Airflow's AGENTS.md (`apache/airflow/AGENTS.md`) and apache-steward's pre-commit config (`apache/airflow-steward/.pre-commit-config.yaml`); scoped down for apache/security's much smaller surface area.
