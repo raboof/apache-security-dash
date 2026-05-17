@@ -1,6 +1,6 @@
 ---
 name: glasswing-scan-forward
-description: Process a scan report received from Mirko Svilus / Alpha-Omega and forward it to the appropriate PMC after a Security-team slop-filter pass. Identifies which PMC the scan belongs to, reads the report against that PMC's threat model + known non-findings, removes obvious false positives, annotates remaining findings with the model section that licenses each disposition, and drafts a forwarding email to the PMC's listed scan-result recipients. Output is a Gmail draft for human review — never sends directly. After send, hand off to glasswing-scan-update to set `Date scan received` and `Forwarded scan to PMC` on the PMC's row. Use whenever an email from `@alpha-omega.dev` arrives with a scan report, or whenever Jarek says "process the X scan results", "forward the X report", or "the X scan is back".
+description: Process a scan report received from Mirko Svilus / Alpha-Omega and forward it to the appropriate PMC after a Security-team pre-forward sanity check. Identifies which PMC the scan belongs to, sanity-checks the report for catastrophic generation errors (wrong project, wrong/stale model, truncated output, accidentally-mixed PMCs, mangled formatting), archives the raw scan into the team's private `scans/` tree, and drafts a forwarding email to the PMC's listed scan-result recipients with the vendor's findings forwarded verbatim. The team does NOT do per-finding triage — that's the PMC's job against their own threat model. Output is a Gmail draft for human review — never sends directly. After send, hand off to glasswing-scan-update to set `Date scan received` and `Forwarded scan to PMC` on the PMC's row. Use whenever an email from `@alpha-omega.dev` arrives with a scan report, or whenever Jarek says "process the X scan results", "forward the X report", or "the X scan is back".
 ---
 
 # glasswing-scan-forward SKILL
@@ -8,14 +8,19 @@ description: Process a scan report received from Mirko Svilus / Alpha-Omega and 
 The "results path" of the Glasswing pipeline — the inverse of
 `glasswing-scan-submit`. Where `submit` sends a request *to*
 Mirko and waits, this SKILL handles the report coming *back*:
-identify the PMC, do the Security-team's slop-filter pass
-against the PMC's own threat model + known non-findings, and
-forward the curated output to the PMC's named recipients.
+identify the PMC, do a **pre-forward sanity check** on the
+report, archive the raw scan into the team's private `scans/`
+tree, and forward the vendor's report to the PMC's named
+recipients.
 
-The Security team owes the PMC pre-reviewed findings, not raw
-vendor output — the goal of the slop-filter is to spend an
-hour of one Security-team member's time so the PMC doesn't
-spend a day chasing scanner noise.
+The Security team's role is **gatekeeping for catastrophic
+generation errors** — wrong project, wrong/stale model,
+truncated output, accidentally-mixed PMCs, mangled formatting.
+The PMC gets the vendor's findings unedited; per-finding
+triage is the PMC's job against their own threat model. The
+goal is to spend a few minutes of a Security-team member's
+time so the PMC isn't asked to read a clearly broken report
+— not to second-guess individual findings.
 
 ## When to invoke
 
@@ -23,18 +28,13 @@ spend a day chasing scanner noise.
   `@alpha-omega.dev` with a scan report attached, inline, or
   linked.
 - Jarek says "process the <PMC> scan results", "the <PMC>
-  scan is back, let's forward it", "slop-filter the <PMC>
-  report", or anything similarly explicit.
+  scan is back, let's forward it", "sanity-check the <PMC>
+  scan", or anything similarly explicit.
 - The Mythos tracker shows a PMC with `Date scan requested`
   filled but `Date scan received` blank, and a Mirko reply
   has landed in Gmail.
 
 Skip when:
-- The report needs PMC-specific context the Security team
-  doesn't have (e.g. a finding the model explicitly punts on
-  to deployment-specific decisions). In that case forward
-  with the framing "we'd defer to PMC judgment on this one"
-  rather than silently passing or filtering.
 - The scan is for a PMC whose row indicates incomplete
   pre-flight (`Security model verified` blank). Should not
   happen — but if it does, surface the gap rather than
@@ -42,26 +42,36 @@ Skip when:
 
 ## Hard rules (do not skip)
 
-1. **Always slop-filter before forwarding.** Mirko's output
-   is raw — true positives, false positives, low-quality
-   advisory items, and scanner noise are all in there. The
-   Security team's job is to read all of it and forward
-   *only* what's worth a PMC reviewer's time, with rationale
-   for what was filtered.
+1. **Sanity-check the report before forwarding.** Read
+   through Mirko's output looking for catastrophic
+   generation errors — wrong project, wrong/stale model
+   metadata, truncated output, accidentally-mixed PMCs,
+   mangled formatting, repos the PMC didn't submit (or
+   submitted repos missing entirely). The checklist below
+   ("Sanity-check checklist") names what to look for. If
+   anything looks broken, surface to the user before
+   drafting; typically that means going back to Mirko
+   with the issue rather than forwarding a known-broken
+   report.
 
-2. **Cite the PMC's threat model for every filter
-   decision.** If a finding is dropped because it's in
-   §11a "known non-findings", say so. If it's out of
-   scope per §3, cite that. If it's a `BY-DESIGN:
-   property-disclaimed` case from §9, cite. **Never** drop
-   a finding without a citable reason — that's the
-   difference between curation and censorship.
+2. **Forward the vendor's findings verbatim — no
+   per-finding triage.** The PMC owns the read against
+   their own threat model. The Security team does **not**
+   classify findings, drop findings, filter findings,
+   suppress findings, or annotate findings with model
+   citations on the PMC's behalf. The team's role is the
+   sanity check in rule 1 and nothing further on the
+   substance of the findings. If a finding looks weak,
+   misguided, or out of scope to the team — that's the
+   PMC's call to make, not ours.
 
-3. **When uncertain, forward — don't filter.** A finding
-   that looks like noise but isn't a clean §11a match
-   should be forwarded with a `MODEL-GAP` note, not
-   dropped. The PMC's reviewer is the final judge; the
-   Security team is just a noise filter on the way there.
+3. **When uncertain whether something is a generation
+   error or a real finding, forward as-is.** Sanity-check
+   bar is "the report is recognisably the vendor's actual
+   output for this project at this model", not "the
+   findings look correct to the team". If a finding looks
+   odd but the report otherwise passes the checklist,
+   forward — the PMC's reviewer decides.
 
 4. **Use the PMC's specified scan-result destination — and
    every address on the To/Cc must be `@apache.org`-rooted.**
@@ -105,10 +115,10 @@ Skip when:
 
 5. **Draft + confirm before creating the Gmail draft.** Same
    pattern as every other write-capable SKILL: render the
-   full draft (To / CC / Subject / body / filtered count /
-   forwarded count), wait for "yes" / "send" / "go", then
-   call `mcp__claude_ai_Gmail__create_draft`. Never call
-   `send` directly.
+   full draft (To / CC / Subject / body / finding count /
+   sanity-check verdict), wait for "yes" / "send" / "go",
+   then call `mcp__claude_ai_Gmail__create_draft`. Never
+   call `send` directly.
 
 6. **CC discipline.** The CC list:
    - `security@apache.org` (Foundation-level audit trail);
@@ -131,13 +141,16 @@ Skip when:
 
    This SKILL does not write to the spreadsheet directly.
 
-8. **Preserve every filtered finding in the slop-filter
-   appendix.** The forward to the PMC includes a section
-   titled "Filtered as known non-findings" (or similar) with
-   one line per filtered finding + the section citation that
-   licensed the filter. The PMC can spot-check the filter
-   decisions, and the next scan (six months later, when the
-   suppression list has grown) inherits the rationale.
+8. **Surface sanity-check observations explicitly when
+   present.** If the sanity check turned up anything worth
+   the PMC's awareness (e.g. "vendor's metadata cites a
+   stale model commit; current model body is unchanged",
+   "one of the three submitted repos is missing from the
+   report — asked the vendor to re-run for it"), include
+   a short `Sanity-check observations` block in the
+   forwarding email. If the check passed cleanly with
+   nothing to note, omit the block — don't pad with
+   "everything looked fine".
 
 9. **Always archive the scan into `scans/` before
    forwarding.** Per the spec in
@@ -169,30 +182,36 @@ Skip when:
     can name Mirko / Alpha-Omega freely — those are
     internal context for the agent, not PMC-visible.
 
-## The slop-filter rubric
+## Sanity-check checklist
 
-For each finding in Mirko's report, classify into exactly one
-disposition (these mirror the threat-model-producer §13
-triage labels):
+Before forwarding, scan the vendor's output for catastrophic
+generation errors:
 
-| Label | Meaning | Action |
-| --- | --- | --- |
-| `VALID` | Violates a property the PMC's model claims, in-scope adversary + input. | Forward to PMC. Annotate with the §8 property violated. |
-| `VALID-HARDENING` | Not a §8 violation, but matches §11 misuse pattern the PMC has elected to harden. | Forward to PMC, marked as `HARDENING`. |
-| `OUT-OF-MODEL: trusted-input` | Requires attacker control of a parameter the model marks trusted (§6). | **Filter.** Note the §6 row that says trusted. |
-| `OUT-OF-MODEL: adversary-not-in-scope` | Requires an attacker capability the model excludes (§7). | **Filter.** Note the §7 line. |
-| `OUT-OF-MODEL: unsupported-component` | Lands in `contrib/`, `examples/`, or §3 explicit out-of-scope. | **Filter.** Note §3. |
-| `OUT-OF-MODEL: non-default-build` | Only manifests under a discouraged §5a flag. | **Filter.** Note §5a. |
-| `BY-DESIGN: property-disclaimed` | Concerns a property §9 explicitly says the project doesn't provide. | **Filter.** Note §9. |
-| `KNOWN-NON-FINDING` | Matches a §11a entry. | **Filter.** Note the §11a row. |
-| `MODEL-GAP` | Cannot be cleanly routed to any of the above. | **Forward** with a `MODEL-GAP` flag and one-line rationale. PMC judges + may update the model. |
+| Check | What "fail" looks like |
+| --- | --- |
+| **Project identity** | The report's project / repo identifiers match what was submitted. Catches obvious cases like a scan accidentally run against `apache/foo` when we submitted `apache/bar`, or report metadata naming a different PMC. |
+| **Model identity** | The threat model the vendor cites in metadata matches the model URL recorded for the PMC, at a recent enough commit. Catches "vendor ran against a stale or wrong model" cases. |
+| **Repo coverage** | Every repo the team submitted appears somewhere in the report. A scan that silently dropped one of N submitted repos is a generation error worth surfacing back to the vendor. |
+| **Truncation** | The report doesn't end mid-finding / mid-section / mid-line. Mirko's output is typically a single markdown document; if the last finding's body is cut off mid-sentence, that's a truncation. |
+| **Cross-PMC leakage** | No findings or text from a different PMC's scan accidentally ended up in this report. Rare but high-blast-radius if it slips through. |
+| **Formatting integrity** | Markdown actually renders; no half-escaped JSON blobs in the body; no obviously broken tables; no missing headings that would render as plain text. |
+| **Plausibility** | Sanity-check that the finding count and topic distribution look reasonable for the project (e.g. a scan of a logging library returning 100 findings about cryptography is a signal the report may have been mis-routed). Not a triage step — just a "does this look like the vendor actually ran on the right thing" check. |
 
-The disposition column is what the slop-filter produces.
-Forwarded findings get the full text + the disposition
-label + the citing model section. Filtered findings appear
-in the "Filtered" appendix with just the disposition label +
-citation (the PMC can ask for the full text of any if
-they want to spot-check).
+If any check fails: **stop**, surface to the user before drafting
+the forward. Typically the resolution is asking Mirko to re-run
+or re-send, not forwarding a known-broken report to the PMC.
+
+If every check passes: the report is forwarded **verbatim** to
+the PMC. The team does not add finding-by-finding annotations,
+classifications, or filter decisions. Anything worth flagging
+from the sanity check itself (e.g. "vendor metadata cites a
+stale model commit; model body unchanged") goes into the
+`Sanity-check observations` block in the forwarding email.
+
+**This is not per-finding triage.** Do not classify findings
+against the threat model, drop findings as "out of scope",
+suppress findings as "known non-findings", or annotate findings
+with model citations. The PMC owns that read.
 
 ## Inputs the SKILL needs
 
@@ -200,14 +219,15 @@ they want to spot-check).
 | --- | --- |
 | PMC name and slug | From Mirko's email subject (`[GLASSWING] results for <PMC>` or similar), or the user supplies it |
 | Scan report content | Attachment(s) or inline content of Mirko's email |
-| PMC threat model URL | From the PMC sheet's `Security Model` column + the verified discoverability chain (model-verify SKILL) |
-| §11a known non-findings | From the linked threat model (or its companion FAQ — Logging Services for example links to `logging.apache.org/security/faq.html`) |
+| PMC threat model URL | From the PMC sheet's `Security Model` column. Used only for the **model identity** sanity check (does the vendor's metadata cite this URL?) and as the URL the forward references — not for per-finding filtering. |
+| Submitted repos list | From the PMC sheet's `Repositories submitted` cell (filled when `glasswing-scan-submit` ran). Used for the **repo coverage** sanity check. |
 | Scan-result recipient list | From the original `[GLASSWING]` request thread (or the PMC sheet's `Notes` if recorded there) |
 | Primary + backup PMC contacts | From the PMC sheet |
 | `Date scan requested` (sanity check) | From the PMC sheet |
 
-If the threat model URL, the recipient list, or the
-`Date scan requested` is missing, refuse and surface the gap.
+If the threat model URL, the submitted-repos list, the
+recipient list, or the `Date scan requested` is missing,
+refuse and surface the gap.
 
 ## Procedure
 
@@ -228,29 +248,38 @@ If the threat model URL, the recipient list, or the
 
    Refuse if any pre-condition is wrong.
 
-3. **Fetch the threat model + §11a known non-findings.**
-   Use the model URL recorded for the PMC. Some PMCs split
-   non-findings into a separate FAQ doc (Logging Services
-   does this); fetch both if so.
+3. **Note the threat model URL.** Used for the **model
+   identity** sanity check (does the vendor's metadata
+   cite this URL, at a recent enough commit?) and as the
+   URL the forwarding email references. Do **not** read
+   the model to triage findings — the team's job is
+   sanity check, not classification.
 
-4. **Walk each finding in Mirko's report and assign a
-   disposition** from the rubric above. Produce a per-
-   finding decision log:
+4. **Run the sanity-check pass** described in the
+   "Sanity-check checklist" section above. For each
+   check, record one of `PASS` / `PASS-with-note: <text>`
+   / `FAIL: <text>`. Produce a short sanity-check log:
 
    ```
-   Finding F-001: SQL injection in QueryBuilder.append()
-     Disposition: OUT-OF-MODEL: trusted-input
-     Rationale: §6 marks application code calling
-       QueryBuilder as trusted. Caller must validate input
-       before passing to .append(); not a framework bug.
-     Action: filter.
+   Project identity: PASS
+   Model identity: PASS-with-note: vendor cites model
+     commit abc123; current HEAD is def456, model body
+     unchanged (verified by diff).
+   Repo coverage: PASS — all 3 submitted repos present.
+   Truncation: PASS.
+   Cross-PMC leakage: PASS.
+   Formatting integrity: PASS.
+   Plausibility: PASS — finding mix matches project
+     surface area.
    ```
 
-5. **Build the forwarded-findings list** — only the
-   `VALID`, `VALID-HARDENING`, and `MODEL-GAP` dispositions
-   make it through. The `OUT-OF-MODEL:*`, `BY-DESIGN:*`,
-   and `KNOWN-NON-FINDING` dispositions land in the
-   "Filtered" appendix.
+   On any `FAIL`: stop, surface to user, escalate to Mirko
+   before continuing. Do not draft the forward.
+
+5. **Take the vendor's findings verbatim.** No
+   classification, no filtering, no per-finding
+   annotation. The forwarded-findings list is just
+   Mirko's findings in the order Mirko provided.
 
 6. **Archive the scan into the `scans/` tree** — per the
    [`scans/README.md`](../../../scans/README.md) spec. This
@@ -293,37 +322,40 @@ If the threat model URL, the recipient list, or the
 
       ```yaml
       ---
-      project:         <pmc-slug>
-      repo:            apache/<repo>
-      head_sha:        <full 40-char SHA>
-      scan_date:       <YYYY-MM-DD>T<HH:MM:SS>Z
-      glasswing_model: <model id Mirko reported>
-      threat_model:    <model URL recorded for the PMC in the tracker>
-      findings_total:  <count from Mirko's report>
-      findings_after_slop_filter: <count after the decision log in step 4>
-      pre_reviewed_by: <agent operator's @apache.org>
-      pre_review_date: <YYYY-MM-DD>
+      project:           <pmc-slug>
+      repo:              apache/<repo>
+      head_sha:          <full 40-char SHA>
+      scan_date:         <YYYY-MM-DD>T<HH:MM:SS>Z
+      glasswing_model:   <model id Mirko reported>
+      threat_model:      <model URL recorded for the PMC in the tracker>
+      findings_total:    <count from Mirko's report>
+      sanity_check:      <PASS / PASS-with-notes / RETURNED-TO-VENDOR>
+      sanity_checked_by: <agent operator's @apache.org>
+      sanity_check_date: <YYYY-MM-DD>
       ---
       ```
 
-      followed by the curated findings produced in step 5
-      (each finding under its own `## ` heading, with the
-      affected file/lines, the violated property cited by
-      threat-model `§N`, a short reproducer, severity hint,
-      and the disposition decided in step 4).
+      followed by the vendor's findings **verbatim** (one
+      finding per `## ` heading, with whatever
+      file/lines / property / reproducer / severity hint
+      the vendor included — not re-formatted by the team).
 
    4. **Write the `.json` sidecar** with the same filename
       prefix and `.json` extension — Mirko's raw report
-      verbatim, so the slop-filter pass is auditable
-      later. Use the exact filename:
+      verbatim, so the archive is auditable later. Use
+      the exact filename:
       `<project>-<repo>-<YYYY-MM-DD>-<short-sha>.json`.
 
-   5. **Write the `.notes.md` sidecar** with the per-finding
-      decision log from step 4 (one block per finding:
-      ID, disposition, rationale, action). Same filename
-      prefix, `.notes.md` extension. This is the audit
-      record of *why* each finding was filtered or
-      forwarded.
+   5. **Write the `.notes.md` sidecar** with the
+      sanity-check log from step 4 (the per-check
+      PASS/PASS-with-note/FAIL lines, plus any free-form
+      observation worth recording — e.g. "asked Mirko to
+      re-run because the lucene-core repo was missing"
+      or "current PMC model URL has moved since vendor
+      ran; updated the canonical archive file with the
+      live URL"). Same filename prefix, `.notes.md`
+      extension. This is the audit record of *what we
+      sanity-checked*, not a per-finding decision log.
 
    6. **Stage and commit** all three files (`<filename>.md`,
       `.json`, `.notes.md`) in **one** commit. Commit
@@ -333,8 +365,8 @@ If the threat model URL, the recipient list, or the
       [scan] <project>/<repo> <YYYY-MM-DD>-<short-sha>
 
       Glasswing scan against apache/<repo> at <full-sha>.
-      Total findings: <N>; after slop-filter: <M>;
-      forwarded: <K>, filtered: <N-K>.
+      Findings: <N>. Sanity check: <PASS / PASS-with-notes
+      / RETURNED-TO-VENDOR>. Forwarded to PMC verbatim.
 
       Generated-by: Claude Code (Claude Opus 4.7)
       ```
@@ -353,14 +385,15 @@ If the threat model URL, the recipient list, or the
 7. **Draft the forwarding email.** Template below. Cite
    the archive filename(s) from step 6 in the email body
    so the PMC has the canonical identifier. Show the full
-   draft + the filter rationale list + the planned commit
+   draft + the sanity-check log + the planned commit
    to the user.
 
 8. **Wait for explicit approval** ("yes" / "send it" / "go"
    / similar). The approval covers both the commit (step 6)
    and the email draft (step 7). If the user wants edits
-   to filter decisions, revise the decision log first,
-   regenerate the email + the archive files, re-show.
+   to the sanity-check log (e.g. a check the agent missed),
+   revise the log, regenerate the email + the archive files,
+   re-show.
 
 9. **Create the Gmail draft** via
    `mcp__claude_ai_Gmail__create_draft`. `replyToMessageId`
@@ -398,26 +431,35 @@ To], primary + backup PMC contacts.
 ```text
 Hi <primary contact first name (and any others)>,
 
-The Glasswing scan for Apache <PMC name> is back. The Security
-team has done a slop-filter pass against the project's threat
-model at <model URL>; the curated findings follow.
+The Glasswing scan for Apache <PMC name> is back. Before
+passing it on, the Security team has done a quick pre-forward
+sanity check to make sure the report isn't catastrophically
+broken — right project, right model, no truncation, all
+submitted repos covered, no cross-PMC leakage, plausible
+finding mix. The report passed the check; the vendor's
+findings are forwarded verbatim below.
+
+We're explicitly not pre-classifying or pre-triaging the
+findings on your behalf — that's your call against the
+project's threat model at <model URL>, through your normal
+private@<pmc>.apache.org triage process. Our role on results
+is the sanity check only.
 
 Canonical scan reference(s) (cite these in your tracker —
-each archives the pre-reviewed scan + raw vendor output + our
-decision log against apache/<repo> at the listed commit):
+each archives the raw vendor output + our sanity-check notes
+against apache/<repo> at the listed commit):
 
   - <project>-<repo>-<YYYY-MM-DD>-<short-sha>
   - <project>-<repo2>-<YYYY-MM-DD>-<short-sha>   [if multiple repos]
 
 (Files are in the Security team's private archive at
 scans/<project>/<repo>/; you don't have access to that repo,
-but the filename is the stable identifier and the curated
+but the filename is the stable identifier and the full
 findings are in this email.)
 
 Summary:
-  Total findings from Glasswing: <N>
-  Forwarded (VALID / VALID-HARDENING / MODEL-GAP): <K>
-  Filtered as out-of-model / known non-findings: <N - K>
+  Findings from Glasswing: <N>
+  Sanity check: <PASS / PASS with notes — see block below>
 
 Repos scanned (from the submission scope):
   - <repo URL 1>
@@ -426,39 +468,27 @@ Repos scanned (from the submission scope):
 
 Threat model the scan was run against:
   <model URL>
-  (Scan rubric: apache/security threat-model-producer
-  SKILL §13 dispositions.)
 
-=== FORWARDED FINDINGS ===
+<IF the sanity check produced anything worth flagging, include
+this block; otherwise omit entirely. Do not pad with
+"everything looked fine".>
+Sanity-check observations:
+  - <one-line bullet per observation — e.g. "vendor cites
+    threat-model commit abc123; current HEAD is def456,
+    model body unchanged" or "the apache/lucene-solr repo
+    in scope returned zero findings, flagging in case
+    that's unexpected">
 
-[For each forwarded finding:]
+=== FINDINGS ===
 
-Finding <ID> — <one-line title>
-  Disposition: VALID  (or VALID-HARDENING / MODEL-GAP)
-  Property violated (per your model): §8 — <property name>
-  Reachability per your model: §4 — <preconditions>
-  File / lines: <citation from scan>
-  Severity hint (vendor): <severity>
-  Reproducer sketch (if provided by vendor): <text>
+[Vendor's findings, forwarded verbatim, in the order the
+vendor provided. Each finding's heading, file/line refs,
+property cited, severity hint, reproducer sketch — all left
+as the vendor wrote them. The Security team does not
+re-format, re-classify, or add notes inside individual
+findings.]
 
-  Security-team note (optional): <one-line rationale for
-  why we kept this — particularly for MODEL-GAP findings,
-  where we couldn't cleanly classify and want the PMC's
-  read.>
-
-[... one block per forwarded finding ...]
-
-=== FILTERED FINDINGS (appendix) ===
-
-We filtered <N - K> findings as out-of-model or known
-non-findings. Each is one line below with the model section
-that licensed the filter. Spot-check at will; happy to
-forward the full text of any if you want a closer look.
-
-  F-NNN — <short label>  ·  OUT-OF-MODEL: trusted-input  ·  §6 / trust assumption row N
-  F-NNN — <short label>  ·  KNOWN-NON-FINDING  ·  §11a "<row title>"
-  F-NNN — <short label>  ·  BY-DESIGN: property-disclaimed  ·  §9 "<property>"
-  ...
+[... one block per finding ...]
 
 === NEXT STEPS ===
 
@@ -466,13 +496,12 @@ Triage through your normal process:
   private@<pmc>.apache.org -> CVE / coordinated disclosure /
   release flow.
 
-If any of the FORWARDED findings turn out to be invalid on
-closer look, ping security@apache.org with the finding ID
-and the reason — it sharpens the slop-filter for the next
-scan run. Same for MODEL-GAP entries: a one-line "this is
-the right disposition" from the PMC lets us update §11a
-(via a small PR if you like) so the next scan doesn't
-re-discover them.
+If on closer look you find findings that fall clearly outside
+your threat model (§3 out-of-scope, §11a known non-findings,
+§9 disclaimed properties), a one-line "this falls outside the
+model" reply back to security@apache.org helps us pass that
+back to the vendor for the next scan's suppression list — but
+the disposition call is yours, not ours.
 
 Best,
 <sign-off in the human's voice — the SKILL doesn't sign>
@@ -485,57 +514,68 @@ a 50-finding scan with 5 forwarded is a short email; a
 
 ## Style notes
 
-- **One finding per block.** Don't pack multiple findings
-  into a paragraph — the PMC will quote individual findings
-  back when triaging; one-per-block keeps the quoting
-  clean.
-- **Preserve the vendor's finding IDs.** Mirko's scans
-  assign IDs (e.g. `F-001`). Keep them — they're the
-  shared reference for follow-up conversation.
-- **Don't editorialize on severity.** Mirko's severity hint
-  is what it is; the PMC may disagree, and that's fine.
-  Don't recompute severity in the forward.
-- **Be explicit about MODEL-GAP rationale.** This is the
-  one disposition the SKILL drives toward "PMC, please
-  judge". The note should make clear why the existing
-  model didn't cleanly cover the finding — that's the
-  signal the PMC needs to update §11a or §9.
+- **Preserve the vendor's output verbatim.** Don't reformat
+  findings, don't merge them, don't re-order them, don't
+  rename their IDs. The PMC's triagers will quote findings
+  back by ID; the IDs and shape need to match what's in the
+  archived raw report.
+- **Don't editorialize on severity, scope, or validity.**
+  These are the PMC's calls. If the team thinks a finding
+  is off-base, the right move is to flag it back to Mirko
+  for the next scan's tuning — not annotate it in the
+  forward.
 - **No PMC findings should leak across PMCs.** The
   forwarded email is per-PMC. Don't accidentally CC a
   different PMC's `private@` list or include another PMC's
-  findings as context.
+  findings as context. (This is also one of the sanity
+  checks in step 4.)
+- **The `Sanity-check observations` block is optional.**
+  Include it only when the check turned up something worth
+  noting. A clean check produces no block — don't pad with
+  "everything looked fine".
 - **Sign in the human's voice.** The SKILL drafts; the
   human signs. Leave `<sign-off>` placeholder rather than
   baking a signature.
 
 ## Examples of bad forwards (avoid)
 
-- Forwarding Mirko's raw output to the PMC without a slop-
-  filter pass. The PMC doesn't want raw scanner output;
-  they want the team's curated read.
-- Filtering findings without citing the model section. A
-  "we dropped 30 findings" line with no rationale is worse
-  than no filter at all.
-- Filtering aggressively to keep the forward small. The
-  KPI isn't "small email"; it's "every kept finding is
-  worth the reviewer's time". If 40 of 45 findings are
-  valid, forward 40.
+- Forwarding a report that failed sanity check (wrong
+  project, wrong/stale model, truncated, missing repos)
+  rather than escalating to Mirko first. The whole point
+  of the sanity check is to **not** waste the PMC's time
+  on a clearly broken report — bypass it and you've
+  defeated the purpose.
+- Per-finding triage in the forward — disposition labels,
+  "filtered as out-of-model" appendix, "we dropped 30
+  findings as known non-findings", per-finding model
+  citations from the team. None of that. The PMC owns the
+  read against their own model; the team's role is the
+  sanity check.
+- Re-formatting or condensing the vendor's findings to
+  make the email shorter. The PMC needs the full vendor
+  text; if it's long, it's long.
 - Sending the forward back to Mirko. Mirko doesn't need
   the PMC-facing email; if the Security team has follow-up
   for Mirko, that's a separate reply on Mirko's thread.
 - Setting `Forwarded scan to PMC` before the user has
   actually clicked Send in Gmail. That cell tracks real
   delivery turnaround; pre-filling it pollutes the metric.
-- A forward that doesn't include the §11a appendix
-  (filtered list). The appendix is the audit trail; it's
-  also how the next scan can re-use the filter rationale.
+- A forward that pads the `Sanity-check observations`
+  block with "all checks passed, nothing to note" or
+  similar boilerplate. Omit the block entirely when there
+  is nothing to flag.
 
 ## Provenance
 
 This SKILL completes the back half of the Glasswing pipeline.
-The "slop-filter before forwarding" principle has been a
-team norm since the program started; this SKILL codifies it.
-The disposition labels are imported verbatim from
-`threat-model-producer` §13, which makes the labels in
-the forward directly cite-able back at the model that
-licenses them.
+Earlier versions had the Security team doing per-finding
+triage (classifying against the threat model, dropping
+out-of-scope findings, filtering known non-findings into an
+appendix) before forwarding. That scope was narrowed: the
+team's role on results is now a **pre-forward sanity check
+only** — catch catastrophic generation errors so the PMC
+isn't asked to read a clearly broken report. Per-finding
+triage stays with the PMC against their own model. The shift
+keeps the Security team out of the position of editorialising
+the vendor's output, and keeps the PMC's relationship with
+the report direct rather than mediated.

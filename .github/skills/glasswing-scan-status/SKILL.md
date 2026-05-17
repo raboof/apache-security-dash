@@ -202,21 +202,22 @@ following state machine (latest applicable state wins):
 | Pre-flight | Scan requested, model not yet verified | light red |
 | Ready | `Security model verified` set, not yet submitted to vendor | yellow |
 | Submitted | `Date scan requested` set, results not yet back | light green |
-| Triaging | `Date scan received` set, not yet forwarded | medium green |
+| Triaging | `Date scan received` set, not yet forwarded. (Legacy state-column name written to the sheet by `sheets_writer.py`; the team's actual activity in this state is a pre-forward sanity check for catastrophic generation errors, not per-finding triage — see `glasswing-scan-forward`.) | medium green |
 | Delivered | `Forwarded scan to PMC` set | dark green (appears in the COMPLETED table, not in-flight) |
 
 The `Triaging → Delivered` transition includes a side-effect
 that does **not** get its own state column: the
-`glasswing-scan-forward` SKILL commits the curated scan +
-sidecars to the [`scans/`](../../../scans/README.md) tree
-before drafting the forwarding email. The archive commit and
-the email draft are produced together under a single approval
-gate, so a PMC normally moves Triaging → Delivered in one
-operator interaction. If something abnormal interrupts that
-flow (archive committed but email never drafted), the
-`glasswing-scan-run` classifier surfaces it as
-`archived-not-forwarded` rather than letting the row sit in
-`Triaging` indefinitely.
+`glasswing-scan-forward` SKILL commits the vendor's scan +
+sidecars (raw `.json` + `.notes.md` sanity-check log) to the
+[`scans/`](../../../scans/README.md) tree before drafting the
+forwarding email (vendor findings verbatim — no per-finding
+triage). The archive commit and the email draft are produced
+together under a single approval gate, so a PMC normally
+moves Triaging → Delivered in one operator interaction. If
+something abnormal interrupts that flow (archive committed
+but email never drafted), the `glasswing-scan-run` classifier
+surfaces it as `archived-not-forwarded` rather than letting
+the row sit in `Triaging` indefinitely.
 
 The `Model` column is independent of the pipeline state and
 indicates how far the threat-model verification has
@@ -335,7 +336,7 @@ output markdown), not the outreach tracker.
        — how long Glasswing takes per run.
      - *Forwarding lag*: `Date scan received` →
        `Forwarded scan to PMC` — how long results sit in
-       pre-review.
+       pre-forward sanity check.
      - *End-to-end*: `Request date` → `Forwarded scan to PMC`.
 
      For each, report min / median / max in days.

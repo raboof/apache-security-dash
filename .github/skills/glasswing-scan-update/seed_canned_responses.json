@@ -37,7 +37,7 @@
   {
     "topic": "process",
     "question_pattern": "asks what a finding looks like / what we deliver",
-    "response": "A single markdown file with multiple findings, one section per issue, each tagged with: file & line refs, the security property violated (citing the project's threat model when one exists), reproducer sketch where feasible, and a severity hint. The Security team pre-reviews to filter slop before forwarding. The PMC then triages through its normal process — the private@<pmc>.apache.org → security@<project>.apache.org → coordinated disclosure / CVE / release flow.",
+    "response": "A single markdown file with multiple findings, one section per issue, each tagged with: file & line refs, the security property violated (citing the project's threat model when one exists), reproducer sketch where feasible, and a severity hint. The Security team does a quick pre-forward sanity check on the report (right project, right model, no truncation, all submitted repos covered — catching catastrophically broken vendor output so PMCs aren't asked to read clearly broken reports) and forwards the vendor's findings to the PMC verbatim — no per-finding triage or filtering on our side. The PMC then triages through its normal process — the private@<pmc>.apache.org → security@<project>.apache.org → coordinated disclosure / CVE / release flow — applying the project's own threat model for the per-finding read.",
     "author": "ASF Security team",
     "notes": "Sub <pmc> with the actual project slug before sending."
   },

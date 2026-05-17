@@ -447,9 +447,12 @@ instead.
 path: when the Security team operator gives the green
 light, we submit the request to our scan vendor partner,
 the scan runs, results come back to the Security team for
-a slop-filter pass, then we forward the curated markdown
-to the PMC's named triage contacts. That sequence is the
-same for every PMC.
+a pre-forward sanity check (catching catastrophic
+generation errors only — wrong project, wrong/stale model,
+truncated output), then we forward the vendor's report
+verbatim to the PMC's named triage contacts for the PMC's
+own per-finding triage against the project's threat model.
+That sequence is the same for every PMC.
 
 **Separately**, the template raises an offer for PMC
 members who'll be doing the triage work on the results:
@@ -515,10 +518,15 @@ whenever you give the green light. We do NOT auto-submit;
 the operator on our side waits for explicit go-ahead per
 PMC before the scan request goes out. Once submitted,
 results come back to the ASF Security team first for a
-slop-filter pass, then we forward the curated markdown to
-your named triage contacts via a separate thread on our
-side. Standard cycle is usually days to a couple of weeks
-end-to-end depending on queue position.
+pre-forward sanity check (we make sure the report isn't
+catastrophically broken — wrong project, wrong/stale
+model, truncated output — so you're not asked to read a
+clearly broken report). The vendor's findings are then
+forwarded verbatim to your named triage contacts via a
+separate thread on our side; per-finding triage against
+your threat model is on your end. Standard cycle is
+usually days to a couple of weeks end-to-end depending on
+queue position.
 
 A separate offer for PMC members who'll be doing the
 triage work:
@@ -536,8 +544,9 @@ supports:
   - Importing scan results and converting them into
     GitHub issues (JIRA support landing very soon).
   - Pre-triage + first-pass scan-result assessment
-    (filtering slop, grouping by component, classifying
-    against the project's threat model).
+    (grouping by component, classifying against the
+    project's threat model, weeding out findings that
+    fall outside the project's scope).
   - Looking at possible solutions per issue based on the
     maintainer discussion around it.
   - Creating PRs based on the issue + the maintainer
@@ -816,11 +825,16 @@ contacts before kickoff.
 A single markdown file with multiple findings, one section per issue,
 each tagged with: file & line refs, the security property violated
 (citing the project's threat model when one exists), reproducer
-sketch where feasible, and a severity hint. The Security team
-pre-reviews to filter slop before forwarding. The PMC then triages
-through its normal process — the `private@<pmc>.apache.org` →
-`security@<project>.apache.org` → coordinated disclosure / CVE /
-release flow.
+sketch where feasible, and a severity hint. The Security team does
+a quick pre-forward sanity check on the report (right project,
+right model, no truncation, all submitted repos covered — catching
+catastrophically broken vendor output so PMCs aren't asked to read
+clearly broken reports) and forwards the vendor's findings to the
+PMC **verbatim** — no per-finding triage or filtering on our side.
+The PMC then triages through its normal process — the
+`private@<pmc>.apache.org` → `security@<project>.apache.org` →
+coordinated disclosure / CVE / release flow — applying the
+project's own threat model for the per-finding read.
 
 ### "We'd like to opt in — what do we do?"
 
