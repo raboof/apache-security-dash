@@ -23,9 +23,9 @@ Google Sheets API v4 directly.
   `Date scan requested`, `Date scan received`,
   `Forwarded scan to PMC`, `Contact Person`, `Backup contact`,
   `Security Model`, `Security model verified`, `Notes`,
-  `Initial Model assessment`, `PR/Issues`,
-  `PMC thread (ponymail)`, or `Mirko thread (ponymail)`
-  columns).
+  `Initial Model assessment`, `Expedite Claude OSS Requests`,
+  `PR/Issues`, `PMC thread (ponymail)`, or
+  `Mirko thread (ponymail)` columns).
 - The scan for a PMC progresses through one of its workflow
   stages: request received (`Request date`), submitted to
   Glasswing (`Date scan requested`), results back
@@ -42,6 +42,15 @@ Google Sheets API v4 directly.
   regenerated, or one that was trimmed). Use the `append-pmc`
   subcommand — `apply` errors on zero-match by design and won't
   create rows.
+- A PMC replies to the pre-flight-pass OSS-expedite pitch from
+  `glasswing-scan-response` with the list of `@apache.org`
+  addresses they want included in the Claude-for-OSS
+  subscription expedite request. Write them (newline-separated)
+  to the `Expedite Claude OSS Requests` cell. If the PMC
+  explicitly opts out of Path B, write the literal string
+  `none` rather than leaving the cell blank — empty means
+  "not yet asked / not yet replied"; `none` means "asked +
+  PMC declined".
 
 Skip this skill when the user is only asking for the *current*
 state — that's `glasswing-scan-status`. Skip it when the user is

@@ -400,6 +400,163 @@ PR URL when adding a new one — the cell is a running list,
 not a single-slot field, and `build-status-tab` relies on
 every URL being present to compute open/merged counts.
 
+## Pre-flight-pass template — OSS-expedite pitch + ready-to-scan notification
+
+**When to use this template.** Fires when
+`glasswing-model-verify` has just passed for a PMC
+(threat model verified + per-repo discoverability either
+landed or in flight as a small PR), and the PMC's row in
+the tracker has `Security model verified` filled. This is
+**not** a question-response — it's a workflow step. The
+existing `glasswing-scan-submit` SKILL no longer fires
+automatically on pre-flight pass; this template is what
+goes out first instead, and it asks the PMC to decide
+between two paths:
+
+1. The standard Glasswing pipeline (we forward to Mirko
+   when the operator gives the green light).
+2. The Anthropic Claude-for-Open-Source subscription path
+   (PMC registers via Anthropic's form; we attempt — no
+   promise — to expedite by relaying through Mirko).
+
+The PMC can also choose both, or neither. The template
+collects the PMC's expedite-account list (the @apache.org
+addresses they want included in the expedite ask) — those
+get written to the new `Expedite Claude OSS Requests`
+column on the PMC's row via `glasswing-scan-update`.
+
+**To**: PMC primary contact.
+
+**CC**: PMC backup contact(s), `private@<pmc>.apache.org`,
+`security@<pmc>.apache.org` *(if exists)*,
+`security@apache.org`, every `@apache.org` address from
+the original `[GLASSWING]` request's "send results to"
+list.
+
+**Subject**: `Re: [GLASSWING] <original subject>` — reply
+on the existing PMC thread so the conversation history
+stays linked.
+
+**Body**:
+
+```text
+Hi <Primary contact first name>,
+
+Pre-flight is complete for Apache <PMC name>:
+  - Threat model verified at <URL> (<one-line
+    completeness verdict — PASS / PASS-with-soft-gaps>).
+  - Per-repo discoverability: <PASS for all N repos / PASS
+    for X of N; the remaining are in flight via
+    PR(s)#NN+#NN>.
+
+That means we're ready to put the scan into the queue
+whenever you are. Before we do, an alternative path that's
+been working well for ASF projects in similar shape — you
+can take either or both:
+
+Path A — Standard Glasswing pipeline (third-party vendor):
+We forward the scan request to Mirko at Alpha-Omega. The
+vendor's queue position is TBD (usually days to a couple
+of weeks). Results come back to the ASF Security team for
+a slop-filter pass, then we forward the curated markdown
+to your PMC's named triage contacts.
+
+Path B — Anthropic Claude-for-Open-Source subscription:
+PMC members register directly via
+https://claude.com/contact-sales/claude-for-oss with their
+@apache.org address. From our side we can attempt — no
+promises — to expedite the requests for projects that have
+completed pre-flight (which <PMC> now has).
+
+Why this path is worth considering:
+
+  - Claude Opus 4.7 has proven solid in this domain:
+    assessing vulnerabilities reported by scans,
+    suggesting fixes with reasoning, and drafting PRs
+    against the project's own code based on the
+    maintainer discussion around each issue. Several ASF
+    projects are using it in this capacity today.
+
+  - Apache Magpie (hopefully to be established as an ASF
+    TLP) is a set of reusable skills already in flight at
+    https://github.com/apache/airflow-steward. It
+    supports:
+
+      - Importing scan results (the markdown the vendor
+        produces) and converting them into GitHub issues
+        (JIRA support landing very soon).
+      - Pre-triage + first-pass scan-result assessment
+        (filtering slop, grouping by component,
+        classifying against the project's threat model).
+      - Looking at possible solutions for each issue
+        based on the discussion that accumulates around
+        it.
+      - Creating PRs based on the issue + the maintainer
+        discussion.
+
+  The combination — scan results → Magpie ingests →
+  Claude Opus 4.7 triages and proposes fixes — has
+  worked well in practice. We mention this not to push
+  it; just so you have it on the radar before deciding
+  which path you'd like to take.
+
+If PMC members who've committed to triage want to be
+included in an expedite request, send back:
+
+  - Which of the @apache.org accounts on this thread
+    should be included in the expedite ask. We'll
+    reference those addresses specifically when we ask on
+    your behalf — via Mirko, who can relay to Anthropic's
+    OSS program team.
+
+  - Confirmation that you'd like us to attempt the
+    expedite. (PMC members still need to register at
+    https://claude.com/contact-sales/claude-for-oss
+    themselves with their @apache.org address; the
+    expedite ask is what we add.)
+
+If no PMC member wants the OSS-subscription path, that's
+fine — Path A stays available. Either way, we are NOT
+auto-submitting the scan to the vendor without explicit
+go-ahead from the Security team operator. The pre-flight
+pass means we're ready when you are; pick whichever path
+(or both) and we'll proceed.
+
+Best,
+<sign-off>
+```
+
+**Procedure for this template:**
+
+1. Read the PMC's row from the tracker (via Sheets API per
+   the truncation caveat). Confirm `Security model verified`
+   is filled — if not, this template doesn't fire yet;
+   point the user at `glasswing-model-verify` instead.
+
+2. Render the draft with the per-PMC specifics (model URL,
+   per-repo discoverability verdict, primary contact
+   first-name, etc.). Wait for explicit approval before
+   creating the Gmail draft.
+
+3. **When the PMC reply lands** naming accounts for the
+   expedite ask, do two things:
+
+   - Write the @apache.org addresses to the PMC's
+     `Expedite Claude OSS Requests` cell via
+     `glasswing-scan-update apply` (newline-separated). If
+     the PMC explicitly opts out of Path B, write the
+     literal string `none` to the cell so the absence is
+     deliberate-and-recorded rather than blank-and-unclear.
+   - Surface the PMC as `pmc-pitch-replied-awaiting-
+     operator-decision` for the next `glasswing-scan-run`
+     sweep. The operator then decides whether to invoke
+     `glasswing-scan-submit` for that PMC.
+
+4. **Do not invoke `glasswing-scan-submit` directly from
+   this template's response handling.** That SKILL is
+   operator-gated — surface the state, let the operator
+   pick.
+
 ## Canned responses (consult first, contribute back)
 
 The Mythos tracker spreadsheet has a `Canned Responses` sheet
