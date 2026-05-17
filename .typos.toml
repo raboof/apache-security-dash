@@ -3,7 +3,14 @@
 # See https://github.com/crate-ci/typos for the spec.
 
 [default]
-locale = "en-us"
+# Use the generic English locale rather than `en-us` or `en-gb`. The
+# repo's prose is mixed (both "behavior" / "behaviour", "artifacts" /
+# "artefacts", etc. appear across SKILL docs + README). Switching from
+# `en-us` to `en` means typos won't flag either variant — it only
+# catches true misspellings with no regional alternative. If the team
+# later wants to normalize on one variant, that's a focused follow-up
+# PR; for now both are accepted.
+locale = "en"
 
 [default.extend-words]
 # Project / program names + ASF terms that aren't typos.
@@ -20,11 +27,13 @@ Svilus = "Svilus"
 ponymail = "ponymail"
 Whimsy = "Whimsy"
 
-# The repo uses British English spelling deliberately (18+ occurrences
-# of "artefact*" across README + SKILL docs). Allowlist the
-# British variants instead of fighting the existing prose style.
-artefact = "artefact"
-artefacts = "artefacts"
+[default.extend-identifiers]
+# Commit SHA fragments referenced in SKILL doc provenance sections.
+# typos tokenises substrings inside short hex strings (e.g. `afe`
+# inside `fa6afe5`) and flags them as misspellings of real words;
+# listing the full identifier here keeps it intact. Add more as
+# additional commit refs land in the docs.
+fa6afe5 = "fa6afe5"
 
 [files]
 extend-exclude = [
