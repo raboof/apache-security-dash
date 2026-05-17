@@ -134,7 +134,7 @@ stateDiagram-v2
     ModelVerifyPending --> PreFlightPassedPitchNotSent: model passes rubric<br/>+ every repo discoverable
     ModelVerifyPending --> BlockedDiscoverability: some repos lack AGENTS.md
     BlockedDiscoverability --> ModelVerifyPending: PRs merged<br/>or scope narrowed
-    PreFlightPassedPitchNotSent --> PreFlightPassedAwaitingPmcPitchReply: pitch sent<br/>(scan-response pre-flight-pass<br/>template; OSS-tooling offer)
+    PreFlightPassedPitchNotSent --> PreFlightPassedAwaitingPmcPitchReply: pitch sent<br/>(scan-response pre-flight-pass<br/>template, OSS-tooling offer)
     PreFlightPassedAwaitingPmcPitchReply --> PmcPitchRepliedAwaitingOperatorDecision: PMC replies<br/>(expedite list / 'none' /<br/>scoping clarification)
     PmcPitchRepliedAwaitingOperatorDecision --> Submitted: operator says "submit"<br/>(scan-submit dual-email flow:<br/>Email 1 vendor + Email 2 PMC)
     Submitted --> Triaging: vendor returns report
@@ -183,15 +183,15 @@ sequenceDiagram
         PMC-->>Sec: Merges PR
         Sec->>Sec: model-verify re-runs
     end
-    Sec-->>PMC: Pre-flight-pass template<br/>(scan ready when you say go;<br/>OSS-tooling offer for triagers)
+    Sec-->>PMC: Pre-flight-pass template<br/>(scan ready when you say go,<br/>OSS-tooling offer for triagers)
     PMC-->>Sec: Reply (expedite list / 'none' /<br/>scoping clarification)
     opt PMC nominated expedite addresses
         Note over PMC,A: PMC members first register at<br/>https://claude.com/contact-sales/claude-for-oss
         Sec->>Sec: Write addresses to<br/>'Expedite Claude OSS Requests' cell
     end
     Note over Sec: Wait for operator gate<br/>(explicit per-PMC go-ahead)
-    Sec->>V: Email 1 — scan-submit<br/>(mirko@alpha-omega.dev,<br/>CC security@apache.org only;<br/>body includes expedite addresses<br/>if PMC nominated any)
-    Sec-->>PMC: Email 2 — PMC notification<br/>(scan request submitted;<br/>results forthcoming;<br/>NO vendor identity in body)
+    Sec->>V: Email 1 — scan-submit<br/>(mirko@alpha-omega.dev,<br/>CC security@apache.org only,<br/>body includes expedite addresses<br/>if PMC nominated any)
+    Sec-->>PMC: Email 2 — PMC notification<br/>(scan request submitted,<br/>results forthcoming,<br/>NO vendor identity in body)
     par OSS side flow (only if expedite asked)
         V->>A: Vendor relays expedite ask
         A-->>Sec: Subscription grant confirmation
@@ -200,7 +200,7 @@ sequenceDiagram
         V-->>Sec: Scan report
         Sec->>Sec: scan-forward: slop-filter<br/>against model + §11a
         Sec->>Sec: Archive to scans/<br/>(md + .json + .notes.md commit)
-        Sec-->>PMC: Curated findings<br/>+ filtered appendix<br/>(cites archive filename;<br/>NO vendor identity in body)
+        Sec-->>PMC: Curated findings<br/>+ filtered appendix<br/>(cites archive filename,<br/>NO vendor identity in body)
     end
     PMC->>PMC: Triage / CVE /<br/>coordinated disclosure
 ```
