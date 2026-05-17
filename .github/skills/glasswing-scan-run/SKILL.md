@@ -16,7 +16,7 @@ The pipeline this SKILL covers has eight observable stages:
 
 ```
                                      +-------------------+
-                                     | Mirko / vendor    |
+                                     | Vendor pipeline   |
                                      +---------+---------+
                                                | scan results
                                                v

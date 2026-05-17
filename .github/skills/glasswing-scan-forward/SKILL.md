@@ -151,6 +151,24 @@ Skip when:
    cite the canonical filename. A scan that has been
    forwarded without an archive entry is a process bug.
 
+10. **Vendor opacity in the PMC-facing forwarding
+    email.** This email is PMC-facing; per
+    `glasswing-scan-response` hard rule 5, the body must
+    not name the scan vendor (no "Mirko", no
+    "Alpha-Omega", no "the Glasswing pipeline" used as
+    vendor synonym, no `mirko@alpha-omega.dev`). The
+    existing template uses generic "vendor" and "scan
+    pipeline" phrasing throughout — keep it that way. The
+    Glasswing **program name** is fine ("The Glasswing
+    scan for Apache X is back" is what the template
+    opens with — that's the program name in the subject
+    line, not vendor identity). Anthropic / Apache Magpie
+    / Claude OSS are fine to mention by name; vendor
+    identity is what's redacted. Internal SKILL doc
+    sections (the "Why" rationales, the procedure steps)
+    can name Mirko / Alpha-Omega freely — those are
+    internal context for the agent, not PMC-visible.
+
 ## The slop-filter rubric
 
 For each finding in Mirko's report, classify into exactly one
