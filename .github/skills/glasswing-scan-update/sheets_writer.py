@@ -90,8 +90,7 @@ def load_credentials() -> Credentials:
         TOKEN_PATH.write_text(creds.to_json())
         return creds
     sys.exit(
-        "No valid OAuth token. Run 'sheets_writer.py setup' to "
-        "authorize this machine."
+        "No valid OAuth token. Run 'sheets_writer.py setup' to authorize this machine."
     )
 
 
@@ -119,9 +118,7 @@ def cmd_setup() -> None:
             "before running setup. See SKILL.md for how to create one in "
             "the Google Cloud Console."
         )
-    flow = InstalledAppFlow.from_client_secrets_file(
-        str(CLIENT_SECRET_PATH), SCOPES
-    )
+    flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRET_PATH), SCOPES)
     creds = flow.run_local_server(port=0, prompt="consent", access_type="offline")
     TOKEN_PATH.write_text(creds.to_json())
     TOKEN_PATH.chmod(0o600)
@@ -146,8 +143,7 @@ def find_unique_row(
     header = grid[0]
     if match_column not in header:
         sys.exit(
-            f"Match column '{match_column}' not found in header. "
-            f"Available: {header}"
+            f"Match column '{match_column}' not found in header. Available: {header}"
         )
     col_idx = header.index(match_column)
     hits = []
@@ -236,10 +232,7 @@ def cmd_init_canned(args: argparse.Namespace) -> None:
         print(f"Sheet '{CANNED_SHEET}' already exists; nothing to do.")
         return
     if args.dry_run:
-        print(
-            f"Would create sheet '{CANNED_SHEET}' with header row: "
-            f"{CANNED_HEADERS}"
-        )
+        print(f"Would create sheet '{CANNED_SHEET}' with header row: {CANNED_HEADERS}")
         return
     service.spreadsheets().batchUpdate(
         spreadsheetId=args.spreadsheet_id,
@@ -293,7 +286,7 @@ def cmd_append_canned(args: argparse.Namespace) -> None:
             display = val if len(val) <= 80 else val[:77] + "..."
             print(f"    {col}: {display!r}")
     if args.dry_run:
-        print(f"\nDry run — no changes written.")
+        print("\nDry run — no changes written.")
         return
     service = get_service()
     resp = (
@@ -350,10 +343,7 @@ def cmd_append_pmc(args: argparse.Namespace) -> None:
                 sys.exit(f"Entry #{i} missing required field: {k!r}")
         unknown = [k for k in entry.keys() if k not in header]
         if unknown:
-            sys.exit(
-                f"Entry #{i} has unknown columns: {unknown}. "
-                f"Available: {header}"
-            )
+            sys.exit(f"Entry #{i} has unknown columns: {unknown}. Available: {header}")
         slug = str(entry["PMC Slug"]).strip()
         if slug in existing_slugs and slug != "":
             sys.exit(
@@ -366,7 +356,9 @@ def cmd_append_pmc(args: argparse.Namespace) -> None:
     print(f"Planned append to '{PMCS_SHEET}' ({len(rows)} new row(s)):")
     for idx, row in enumerate(rows):
         entry = entries[idx]
-        print(f"  Entry #{idx} — {entry.get('PMC Name', '?')} ({entry.get('PMC Slug', '?')}):")
+        print(
+            f"  Entry #{idx} — {entry.get('PMC Name', '?')} ({entry.get('PMC Slug', '?')}):"
+        )
         for col, val in zip(header, row):
             if not val:
                 continue
@@ -388,7 +380,9 @@ def cmd_append_pmc(args: argparse.Namespace) -> None:
         .execute()
     )
     updated_range = resp.get("updates", {}).get("updatedRange", "<unknown>")
-    print(f"\nAppended {len(rows)} row(s) to '{PMCS_SHEET}'. updatedRange={updated_range}")
+    print(
+        f"\nAppended {len(rows)} row(s) to '{PMCS_SHEET}'. updatedRange={updated_range}"
+    )
 
 
 STATUS_SHEET = "Status"
@@ -406,16 +400,16 @@ PIPELINE_STATES = [
 
 STATE_COLOR = {
     "Pre-flight": {"red": 0.96, "green": 0.78, "blue": 0.78},  # light red
-    "Ready":      {"red": 1.00, "green": 0.93, "blue": 0.70},  # yellow
-    "Submitted":  {"red": 0.84, "green": 0.95, "blue": 0.74},  # light green
-    "Triaging":   {"red": 0.62, "green": 0.86, "blue": 0.62},  # medium green
-    "Delivered":  {"red": 0.40, "green": 0.74, "blue": 0.42},  # dark green
+    "Ready": {"red": 1.00, "green": 0.93, "blue": 0.70},  # yellow
+    "Submitted": {"red": 0.84, "green": 0.95, "blue": 0.74},  # light green
+    "Triaging": {"red": 0.62, "green": 0.86, "blue": 0.62},  # medium green
+    "Delivered": {"red": 0.40, "green": 0.74, "blue": 0.42},  # dark green
 }
 
 MODEL_COLOR = {
-    "Verified":    {"red": 0.70, "green": 0.90, "blue": 0.70},
-    "Nominated":   {"red": 1.00, "green": 0.93, "blue": 0.70},
-    "Missing":     {"red": 0.96, "green": 0.78, "blue": 0.78},
+    "Verified": {"red": 0.70, "green": 0.90, "blue": 0.70},
+    "Nominated": {"red": 1.00, "green": 0.93, "blue": 0.70},
+    "Missing": {"red": 0.96, "green": 0.78, "blue": 0.78},
 }
 
 
@@ -460,7 +454,9 @@ def query_pr_states(urls: list[str]) -> dict:
                 timeout=15,
             )
             if p.returncode != 0:
-                result["errors"].append(f"{url}: gh exit {p.returncode}: {p.stderr.strip()[:80]}")
+                result["errors"].append(
+                    f"{url}: gh exit {p.returncode}: {p.stderr.strip()[:80]}"
+                )
                 continue
             data = json.loads(p.stdout)
             state = data.get("state", "").upper()
@@ -479,6 +475,7 @@ def query_pr_states(urls: list[str]) -> dict:
 
 def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
     """Derive the pipeline state of a single PMC row."""
+
     def cell(name: str) -> str:
         idx = col_idx.get(name)
         if idx is None or idx >= len(row):
@@ -519,10 +516,20 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
     else:
         model_status = "Missing"
 
-    repo_count = len([r for r in repos_requested.splitlines() if r.strip() and not r.strip().startswith("#")])
+    repo_count = len(
+        [
+            r
+            for r in repos_requested.splitlines()
+            if r.strip() and not r.strip().startswith("#")
+        ]
+    )
 
     pr_urls = parse_pr_urls(pr_issues)
-    pr_state = query_pr_states(pr_urls) if pr_urls else {"open": 0, "merged": 0, "closed": 0, "errors": []}
+    pr_state = (
+        query_pr_states(pr_urls)
+        if pr_urls
+        else {"open": 0, "merged": 0, "closed": 0, "errors": []}
+    )
 
     return {
         "pmc": pmc,
@@ -564,7 +571,11 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
 
     entries = []
     for row in rows:
-        if (row[col_idx.get("Scan Requested", -1)].strip() if col_idx.get("Scan Requested", -1) < len(row) else "") != "Yes":
+        if (
+            row[col_idx.get("Scan Requested", -1)].strip()
+            if col_idx.get("Scan Requested", -1) < len(row)
+            else ""
+        ) != "Yes":
             continue
         entries.append(compute_pmc_status(row, col_idx))
 
@@ -590,21 +601,25 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             print(f"Would create sheet '{STATUS_SHEET}'.")
             sheet_id = 0  # placeholder; no API calls in dry-run
         else:
-            resp = service.spreadsheets().batchUpdate(
-                spreadsheetId=args.spreadsheet_id,
-                body={
-                    "requests": [
-                        {
-                            "addSheet": {
-                                "properties": {
-                                    "title": STATUS_SHEET,
-                                    "gridProperties": {"frozenRowCount": 1},
+            resp = (
+                service.spreadsheets()
+                .batchUpdate(
+                    spreadsheetId=args.spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "addSheet": {
+                                    "properties": {
+                                        "title": STATUS_SHEET,
+                                        "gridProperties": {"frozenRowCount": 1},
+                                    }
                                 }
                             }
-                        }
-                    ]
-                },
-            ).execute()
+                        ]
+                    },
+                )
+                .execute()
+            )
             sheet_id = resp["replies"][0]["addSheet"]["properties"]["sheetId"]
     else:
         sheet_id = sheet_meta["properties"]["sheetId"]
@@ -634,9 +649,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
                             "startColumnIndex": 0,
                             "endColumnIndex": col_span,
                         },
-                        "cell": {
-                            "userEnteredFormat": {"backgroundColor": color}
-                        },
+                        "cell": {"userEnteredFormat": {"backgroundColor": color}},
                         "fields": "userEnteredFormat.backgroundColor",
                     }
                 }
@@ -644,7 +657,9 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
 
     # Header section.
     append_row([f"Glasswing scan pipeline — status as of {today}"])
-    append_row([f"Source: PMCs sheet · regenerated by sheets_writer.py build-status-tab"])
+    append_row(
+        ["Source: PMCs sheet · regenerated by sheets_writer.py build-status-tab"]
+    )
     append_row([""])
 
     # Program-wide rollup.
@@ -653,7 +668,9 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     total_merged = sum(e["pr_merged"] for e in entries)
     total_closed = sum(e["pr_closed"] for e in entries)
     total_prs = total_open + total_merged + total_closed
-    pmcs_with_prs = len([e for e in entries if (e["pr_open"] + e["pr_merged"] + e["pr_closed"]) > 0])
+    pmcs_with_prs = len(
+        [e for e in entries if (e["pr_open"] + e["pr_merged"] + e["pr_closed"]) > 0]
+    )
     append_row(["PROGRAM TOTALS"])
     append_row(["PMCs opted in (Scan Requested = Yes)", total_pmcs])
     append_row(["PMCs with at least one PR opened", pmcs_with_prs])
@@ -740,7 +757,13 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             [
                 e["pmc"],
                 e["slug"],
-                len([r for r in e["repos_submitted"].splitlines() if r.strip() and not r.strip().startswith("#")]),
+                len(
+                    [
+                        r
+                        for r in e["repos_submitted"].splitlines()
+                        if r.strip() and not r.strip().startswith("#")
+                    ]
+                ),
                 prs_open_cell,
                 prs_merged_cell,
                 prs_total_cell,
@@ -761,7 +784,6 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     append_row(["TIMELINE DATA (wide format — chart-ready: X=date columns, Y=PMC)"])
     append_row(["PMC", "Requested", "Ready", "Submitted", "Received", "Forwarded"])
     timeline_start = len(values)
-    timeline_data_first_row = timeline_start  # for chart range
     for e in sorted(entries, key=lambda x: x["request_date"]):
         append_row(
             [
@@ -774,13 +796,14 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             ]
         )
     timeline_end = len(values)
-    timeline_data_last_row = timeline_end - 1
 
     # 5. Write values + apply colors.
     if args.dry_run:
-        print(f"Would write {len(values)} rows to '{STATUS_SHEET}'; "
-              f"in-flight={len(in_flight)}, completed={len(completed)}, "
-              f"timeline-events={timeline_end - timeline_start}.")
+        print(
+            f"Would write {len(values)} rows to '{STATUS_SHEET}'; "
+            f"in-flight={len(in_flight)}, completed={len(completed)}, "
+            f"timeline-events={timeline_end - timeline_start}."
+        )
         return
 
     a1_end_col = col_letter(max(len(r) for r in values) - 1)
@@ -794,23 +817,28 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
 
     # Bold header rows (line 1, "IN FLIGHT", "COMPLETED", "TIMELINE DATA"
     # banner rows + the two table header rows).
-    bold_request = lambda row_idx, cols=8: {
-        "repeatCell": {
-            "range": {
-                "sheetId": sheet_id,
-                "startRowIndex": row_idx,
-                "endRowIndex": row_idx + 1,
-                "startColumnIndex": 0,
-                "endColumnIndex": cols,
-            },
-            "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
-            "fields": "userEnteredFormat.textFormat.bold",
+    def bold_request(row_idx, cols=8):
+        return {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": row_idx,
+                    "endRowIndex": row_idx + 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": cols,
+                },
+                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+                "fields": "userEnteredFormat.textFormat.bold",
+            }
         }
-    }
+
     bold_rows = [0, 3, 4]  # Title + IN FLIGHT banner + IN FLIGHT header.
     # Find COMPLETED + TIMELINE DATA banners by scanning values.
     for i, row in enumerate(values):
-        if row and row[0] in ("COMPLETED", "TIMELINE DATA (one row per milestone reached)"):
+        if row and row[0] in (
+            "COMPLETED",
+            "TIMELINE DATA (one row per milestone reached)",
+        ):
             bold_rows.append(i)
             bold_rows.append(i + 1)  # The table header right below.
 
@@ -929,7 +957,9 @@ def cmd_add_columns(args: argparse.Namespace) -> None:
     additions = []
     for h in args.headers:
         if h in header:
-            print(f"Header '{h}' already exists at column {col_letter(header.index(h))}; skipping.")
+            print(
+                f"Header '{h}' already exists at column {col_letter(header.index(h))}; skipping."
+            )
             continue
         additions.append(h)
     if not additions:
