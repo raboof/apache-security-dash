@@ -178,7 +178,9 @@ classification:
 | `pmc-reply-awaiting-action` | PMC has sent a newer message than our last reply / sheet write. | Read the new message; run `glasswing-scan-response` if it raises questions; run `glasswing-model-verify` if they nominated a model; run `glasswing-scan-update` if it confirms scope / dates. |
 | `awaiting-pmc-reply` | We've replied last; nothing new from PMC. | Wait; nothing to do unless time-overdue (see below). |
 | `model-verify-pending` | Model nominated but not yet assessed for completeness + per-repo discoverability. | Run `glasswing-model-verify`. |
-| `ready-to-submit` | `Security model verified` set; `Date scan requested` blank. | Run `glasswing-scan-submit` (draft Mirko email). |
+| `pre-flight-passed-pitch-not-sent` | `Security model verified` set; `Expedite Claude OSS Requests` cell empty; no pre-flight-pass OSS-expedite pitch has gone out yet on the PMC thread. | Run `glasswing-scan-response`'s pre-flight-pass template (OSS-expedite pitch + ready-to-scan notification). Does **not** trigger `glasswing-scan-submit` directly — `submit` is now operator-gated. |
+| `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
+| `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X to Mirko" (or to defer further). | Surface for operator decision. `glasswing-scan-submit` is operator-gated — never auto-fire on this state. |
 | `submitted-awaiting-vendor` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
 | `results-back-awaiting-triage` | A scan report has arrived from Mirko but the team hasn't slop-filtered + archived + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `glasswing-scan-forward` (covers slop-filter, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
 | `archived-not-forwarded` | An archive commit exists under `scans/<project>/<repo>/` for this PMC but `Forwarded scan to PMC` is still blank. Process bug (the email should have been drafted at the same time). Detection signal: `git log --grep="^\[scan\] <project>/"` returns a commit newer than the sheet's `Forwarded scan to PMC` date. | Surface for manual intervention; re-run `glasswing-scan-forward` from step 7 (draft email) using the existing archive entry. |
@@ -215,9 +217,21 @@ Output format:
 - <PMC> — model: <URL or "missing">. Repos: <count>.
   Next: glasswing-model-verify.
 
-### ready-to-submit (N)
+### pre-flight-passed-pitch-not-sent (N)
 - <PMC> — verified <date>; <repo count> repos in scope.
-  Next: glasswing-scan-submit.
+  Next: glasswing-scan-response's pre-flight-pass template
+  (OSS-expedite pitch + ready-to-scan notification).
+
+### pre-flight-passed-awaiting-pmc-pitch-reply (N)
+- <PMC> — pitch sent <date>; awaiting PMC reply on
+  expedite-account list. No action unless overdue.
+
+### pmc-pitch-replied-awaiting-operator-decision (N)
+- <PMC> — verified <date>; expedite list:
+  <N addresses / "none" / "empty">; awaiting operator
+  decision on whether to submit to Mirko. Next: operator
+  says "submit X to Mirko" → then glasswing-scan-submit
+  (two-email flow: vendor request + PMC notification).
 
 ### blocked-on-discoverability (N)
 - <PMC> — <N> of <M> repos have AGENTS.md; awaiting PMC
