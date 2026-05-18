@@ -833,16 +833,30 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         }
 
     bold_rows = [0, 3, 4]  # Title + IN FLIGHT banner + IN FLIGHT header.
-    # Find COMPLETED + TIMELINE DATA banners by scanning values.
+    # Find COMPLETED + TIMELINE DATA banners by scanning values. Match by
+    # prefix so future banner-text edits (the TIMELINE banner already has
+    # a parenthetical that changed once) don't silently drop the bold.
     for i, row in enumerate(values):
-        if row and row[0] in (
-            "COMPLETED",
-            "TIMELINE DATA (one row per milestone reached)",
-        ):
+        if row and (row[0] == "COMPLETED" or row[0].startswith("TIMELINE DATA")):
             bold_rows.append(i)
             bold_rows.append(i + 1)  # The table header right below.
 
-    requests = [bold_request(i) for i in sorted(set(bold_rows))]
+    # Reset every cell's formatting on the Status sheet before applying the
+    # new bold + background-color requests. Without this, formatting from a
+    # previous build-status-tab run stays on cells whose values have since
+    # shifted (e.g. when the in-flight count grows, "COMPLETED" lands on
+    # what used to be a colored PMC row). The reset is grid-wide; bold/color
+    # requests below then re-apply the only formatting the new layout needs.
+    clear_format_request = {
+        "repeatCell": {
+            "range": {"sheetId": sheet_id},
+            "cell": {"userEnteredFormat": {}},
+            "fields": "userEnteredFormat",
+        }
+    }
+
+    requests = [clear_format_request]
+    requests.extend(bold_request(i) for i in sorted(set(bold_rows)))
     requests.extend(color_requests)
 
     if requests:
