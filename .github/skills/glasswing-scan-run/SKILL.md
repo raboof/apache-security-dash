@@ -23,12 +23,12 @@ The pipeline this SKILL covers:
                                                                                         | scan results
                                                                                         v
 +--------+  +---------+  +---------+  +-----------+  +-----------+  +-----------+  +-----------+  +-----------+
-|[GLASS- |->|Pre-     |->|Pitch    |->|PMC reply  |->|Operator   |->|Submitted  |->|Triaging   |->|Archived + |
-| WING]  |  |flight   |  |sent to  |  |(expedite  |  |gate       |  |to vendor  |  |(slop      |  |Forwarded  |
-| request|  |(model + |  |PMC      |  | list /    |  |(explicit  |  |(Email 1 + |  | filter)   |  |to PMC     |
-|        |  | discov.) |  |(scan-   |  | 'none')   |  | go-ahead) |  | Email 2)  |  |           |  |(named     |
-|        |  |         |  | response|  |           |  |           |  |           |  |           |  | contacts) |
-|        |  |         |  | template)|  |           |  |           |  |           |  |           |  |           |
+|[GLASS- |->|Pre-     |->|Pitch    |->|PMC reply  |->|Operator   |->|Submitted  |->|Sanity-    |->|Archived + |
+| WING]  |  |flight   |  |sent to  |  |(expedite  |  |gate       |  |to vendor  |  |checked    |  |Forwarded  |
+| request|  |(model + |  |PMC      |  | list /    |  |(explicit  |  |(Email 1 + |  |(catastr.  |  |to PMC     |
+|        |  | discov.) |  |(scan-   |  | 'none')   |  | go-ahead) |  | Email 2)  |  | errors    |  |verbatim   |
+|        |  |         |  | response|  |           |  |           |  |           |  | only)     |  |(named     |
+|        |  |         |  | template)|  |           |  |           |  |           |  |           |  | contacts) |
 +--------+  +---------+  +---------+  +-----------+  +-----------+  +-----------+  +-----------+  +-----------+
    ^                                                                                                       |
    |                                                                                                       v
@@ -67,11 +67,14 @@ step collects both decisions in one inbound response (which
 substantive scoping / threat-model follow-up).
 
 The `Archived` step is a synchronous part of `glasswing-scan-forward`:
-the SKILL slop-filters Mirko's report, commits the curated
-markdown + `.json` raw + `.notes.md` decision log to
-[`scans/<project>/<repo>/`](../../../scans/README.md), then
-drafts the forwarding email citing the archive filename. The
-single user-approval gates both the commit and the email; see
+the SKILL sanity-checks Mirko's report (catching catastrophic
+generation errors — wrong project, wrong/stale model, truncation,
+missing repos), commits the vendor's markdown + `.json` raw +
+`.notes.md` sanity-check log to
+[`scans/<project>/<repo>/`](../../../scans/README.md), then drafts
+the forwarding email (vendor findings verbatim, no per-finding
+triage) citing the archive filename. The single user-approval
+gates both the commit and the email; see
 [`scans/README.md`](../../../scans/README.md) for the path /
 metadata / confidentiality spec.
 
@@ -187,7 +190,10 @@ duplicate-slug guard then caught on first append-attempt.
 
 For each PMC row, compute the same pipeline state that
 `build-status-tab` does (Pre-flight / Ready / Submitted /
-Triaging / Delivered).
+Triaging / Delivered). ("Triaging" is the legacy state-column
+name written to the sheet; the team's actual activity in
+that state is a pre-forward sanity check, not per-finding
+triage — see `glasswing-scan-forward`.)
 
 ### Step 3 — GitHub PR sweep
 
@@ -216,7 +222,7 @@ classification:
 | `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
 | `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X to Mirko" (or to defer further). | Surface for operator decision. `glasswing-scan-submit` is operator-gated — never auto-fire on this state. |
 | `submitted-awaiting-vendor` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
-| `results-back-awaiting-triage` | A scan report has arrived from Mirko but the team hasn't slop-filtered + archived + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `glasswing-scan-forward` (covers slop-filter, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
+| `results-back-awaiting-sanity-check` | A scan report has arrived from Mirko but the team hasn't sanity-checked + archived + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `glasswing-scan-forward` (covers pre-forward sanity check, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
 | `archived-not-forwarded` | An archive commit exists under `scans/<project>/<repo>/` for this PMC but `Forwarded scan to PMC` is still blank. Process bug (the email should have been drafted at the same time). Detection signal: `git log --grep="^\[scan\] <project>/"` returns a commit newer than the sheet's `Forwarded scan to PMC` date. | Surface for manual intervention; re-run `glasswing-scan-forward` from step 7 (draft email) using the existing archive entry. |
 | `forwarded-closed` | `Forwarded scan to PMC` set **and** the corresponding archive commit exists in `scans/`. | Done. Move to "Completed" section of report. |
 | `blocked-on-discoverability` | Some repos in `Repositories requested` lack `AGENTS.md`; PMC needs to fix or we PR. | Surface; await PMC decision on path. |
@@ -394,7 +400,7 @@ unbidden.
 | Save a canned response | `glasswing-scan-update` (append-canned) |
 | Refresh the Status sheet | `glasswing-scan-update` (build-status-tab) |
 | Draft a scan-submission email to Mirko | `glasswing-scan-submit` |
-| Slop-filter Mirko's report + forward to PMC | `glasswing-scan-forward` |
+| Sanity-check Mirko's report + forward verbatim to PMC | `glasswing-scan-forward` |
 | Generate a status rollup | `glasswing-scan-status` |
 | Produce a fresh threat-model draft for a PMC | `threat-model-producer` |
 

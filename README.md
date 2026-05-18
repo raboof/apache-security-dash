@@ -28,7 +28,7 @@ team's tooling, not the public reporting entry point.
 ├── glasswing-scan-status/          — status / rollup view
 ├── glasswing-scan-submit/          — operator-gated dual-email submission flow
 │                                      (Email 1 to vendor, Email 2 to PMC)
-├── glasswing-scan-forward/         — slop-filter + forward results to PMC
+├── glasswing-scan-forward/         — sanity-check + forward results to PMC verbatim
 └── threat-model-producer/          — model-authoring rubric (imported from
                                       Scovetta's gist)
 
@@ -47,8 +47,14 @@ Alpha-Omega / OpenAI partnership that lets Apache PMCs opt in to
 cost is on the program; the PMC commits to (a) triaging real
 findings and (b) maintaining a threat model the scan can run
 against. The Security team coordinates the operational side:
-inbound requests, pre-flight checks, vendor handoff, slop-filter
-of returned reports, and delivery to the PMC.
+inbound requests, pre-flight checks, vendor handoff, pre-forward
+sanity check of returned reports (catching catastrophic
+generation errors only — wrong project, wrong/stale model,
+truncated output, missing repos), and verbatim delivery of the
+vendor's findings to the PMC. Per-finding triage stays with
+the PMC against the project's own threat model — the Security
+team does not curate, classify, or filter findings on the PMC's
+behalf.
 
 ### Pipeline
 
@@ -63,9 +69,9 @@ flowchart LR
     PR --> G{{Operator gate<br/>explicit per-PMC<br/>go-ahead}}:::gate
     G --> S{{scan-submit<br/>Email 1: vendor request<br/>Email 2: PMC notification}}:::skill
     S --> M[(Mirko @<br/>Alpha-Omega<br/>runs the scan)]:::vendor
-    M --> F{{scan-forward<br/>slop-filter against model}}:::skill
+    M --> F{{scan-forward<br/>sanity check<br/>catastrophic errors only}}:::skill
     F --> A[(Archive to scans/<br/>md + .json + .notes.md<br/>committed to private repo)]:::archive
-    A --> RES([Curated findings<br/>delivered to PMC<br/>citing archive filename]):::pmc
+    A --> RES([Vendor findings forwarded<br/>verbatim to PMC<br/>citing archive filename]):::pmc
     RES --> T([PMC normal triage<br/>CVE / disclosure / release]):::pmc
 
     classDef pmc fill:#fff3cd,stroke:#9a7d00,color:#553e00
@@ -104,10 +110,12 @@ response.
 
 The **archive step** (`scans/`) is the canonical audit trail —
 every scan we forward to a PMC lands there as three files:
-`<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md` (the curated
-findings as forwarded), a `.json` sidecar (Mirko's raw report
-verbatim, so the slop-filter pass is auditable), and a
-`.notes.md` sidecar (per-finding decision log). The archive
+`<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md` (the vendor's
+findings as forwarded, verbatim), a `.json` sidecar (Mirko's
+raw report verbatim, so the archive is auditable), and a
+`.notes.md` sidecar (the team's pre-forward sanity-check log
+— what we looked for, what we found, whether anything was
+returned to the vendor before forwarding). The archive
 filename is cited in the PMC-facing email so the PMC has a
 stable identifier without needing access to this private repo.
 See [`scans/README.md`](scans/README.md) for the layout, the
@@ -138,7 +146,7 @@ stateDiagram-v2
     PreFlightPassedAwaitingPmcPitchReply --> PmcPitchRepliedAwaitingOperatorDecision: PMC replies<br/>(expedite list / 'none' /<br/>scoping clarification)
     PmcPitchRepliedAwaitingOperatorDecision --> Submitted: operator says "submit"<br/>(scan-submit dual-email flow:<br/>Email 1 vendor + Email 2 PMC)
     Submitted --> Triaging: vendor returns report
-    Triaging --> ArchivedForwarded: slop-filter pass +<br/>commit to scans/ +<br/>forwarding email sent
+    Triaging --> ArchivedForwarded: pre-forward sanity check +<br/>commit to scans/ +<br/>forwarding email sent
     ArchivedForwarded --> [*]: PMC triages normally
 ```
 
@@ -198,9 +206,9 @@ sequenceDiagram
         Sec->>Sec: Append to<br/>'Claude OSS Subscriptions<br/>Submitted' cell
     and Scan path
         V-->>Sec: Scan report
-        Sec->>Sec: scan-forward: slop-filter<br/>against model + §11a
+        Sec->>Sec: scan-forward: sanity-check<br/>(catastrophic generation<br/>errors only — wrong project,<br/>truncation, missing repos)
         Sec->>Sec: Archive to scans/<br/>(md + .json + .notes.md commit)
-        Sec-->>PMC: Curated findings<br/>+ filtered appendix<br/>(cites archive filename,<br/>NO vendor identity in body)
+        Sec-->>PMC: Vendor findings forwarded<br/>verbatim (cites archive filename,<br/>NO vendor identity in body)
     end
     PMC->>PMC: Triage / CVE /<br/>coordinated disclosure
 ```
@@ -327,14 +335,17 @@ Output is two Gmail drafts; you click Send on each.
 ### When a scan report comes back from Mirko
 
 → Use [`glasswing-scan-forward`](.github/skills/glasswing-scan-forward/SKILL.md).
-Walks each finding through the
-[`threat-model-producer`](.github/skills/threat-model-producer/SKILL.md)
-§4.13 disposition rubric (`VALID`, `OUT-OF-MODEL:*`,
-`BY-DESIGN:property-disclaimed`, `KNOWN-NON-FINDING`,
-`MODEL-GAP`), citing the model section that licenses each
-classification. Forwards the keepers to the PMC's listed
-scan-result recipients, with the filtered set preserved in an
-appendix for audit-trail and spot-checking.
+Runs a **pre-forward sanity check** on the vendor's report —
+catching catastrophic generation errors only (wrong project,
+wrong/stale model, truncated output, missing repos,
+cross-PMC leakage, mangled formatting). If the check passes,
+forwards the vendor's findings **verbatim** to the PMC's listed
+scan-result recipients; if it fails, surfaces to the operator
+to escalate back to the vendor before the PMC ever sees the
+broken report. The team explicitly does **not** do per-finding
+triage — no classification against the threat model, no
+filtering, no annotation. The PMC owns the read against their
+own model.
 
 ### When the spreadsheet needs an update
 
@@ -391,10 +402,18 @@ Status view.
   projects have GitHub issues disabled, and issues are public
   in any case. PMC-facing follow-ups go on the existing
   `[GLASSWING]` email thread instead.
-- **Slop-filter before forwarding.** The PMC receives curated
-  findings with disposition labels + section citations, plus
-  a filtered-findings appendix. The Security team owes the
-  PMC pre-reviewed output, not raw scanner noise.
+- **Pre-forward sanity check, not per-finding triage.** The
+  Security team's role on returned scan reports is a narrow
+  gatekeeping pass — catch catastrophic generation errors
+  (wrong project, wrong/stale model, truncated output,
+  missing repos, cross-PMC leakage, mangled formatting) so
+  the PMC isn't asked to read a clearly broken report. The
+  vendor's findings are then forwarded **verbatim**. The team
+  does not classify findings against the threat model, drop
+  findings as out-of-scope, suppress findings as known
+  non-findings, or annotate findings with model citations —
+  per-finding triage stays with the PMC, against their own
+  model, through the project's normal `private@<pmc>` flow.
 - **`PR/Issues` is a running list, not a single-slot field.**
   Each PR URL is on its own line; new ones append.
   `build-status-tab` parses every URL out of the cell to

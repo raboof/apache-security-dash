@@ -1,6 +1,6 @@
 ---
 name: glasswing-scan-submit
-description: Draft the two-email submission flow for putting a PMC's scan into Alpha-Omega's queue. Email 1 goes to Mirko Svilus (mirko@alpha-omega.dev) with only security@apache.org on CC — no PMC people, no private@<pmc>, no security@<pmc> — and includes any `Expedite Claude OSS Requests` addresses the PMC asked us to forward to Anthropic's OSS-subscription team. Email 2 is a separate PMC notification ("scan has been requested with the vendor; results will be forwarded after the team's pre-triage pass") sent to the PMC contacts + private@<pmc>. The SKILL only fires on **explicit operator instruction** ("submit X for scan" / "queue X with Mirko" / "OK send the request to Mirko") — never automatically on pre-flight pass. Output is two Gmail drafts for human review — never sends directly. After the human sends Email 1, hand off to glasswing-scan-update to set Date scan requested + Repositories submitted on the PMC's row.
+description: Draft the two-email submission flow for putting a PMC's scan into Alpha-Omega's queue. Email 1 goes to Mirko Svilus (mirko@alpha-omega.dev) with only security@apache.org on CC — no PMC people, no private@<pmc>, no security@<pmc> — and includes any `Expedite Claude OSS Requests` addresses the PMC asked us to forward to Anthropic's OSS-subscription team. Email 2 is a separate PMC notification ("scan has been requested with the vendor; results will be forwarded after the team's pre-forward sanity check for catastrophic generation errors — per-finding triage stays with the PMC") sent to the PMC contacts + private@<pmc>. The SKILL only fires on **explicit operator instruction** ("submit X for scan" / "queue X with Mirko" / "OK send the request to Mirko") — never automatically on pre-flight pass. Output is two Gmail drafts for human review — never sends directly. After the human sends Email 1, hand off to glasswing-scan-update to set Date scan requested + Repositories submitted on the PMC's row.
 ---
 
 # glasswing-scan-submit SKILL
@@ -263,9 +263,12 @@ needed — just the relay.
 </block>
 
 Standard handling on our side: results come to the ASF
-Security team first (security@apache.org) for a slop-
-filter / pre-triage pass, then we forward to the PMC's
-named contacts via a separate thread.
+Security team first (security@apache.org) for a pre-forward
+sanity check (we make sure the report isn't catastrophically
+broken — wrong project, wrong/stale model, truncated output,
+missing repos), then we forward the vendor's findings
+verbatim to the PMC's named contacts via a separate thread.
+Per-finding triage stays with the PMC.
 
 Please confirm receipt and let us know rough queue
 position when you can. No timeline pressure from our side;
@@ -331,12 +334,17 @@ What happens next:
   - The scan runs against each repo.
   - Scan results come back to the ASF Security team first
     at security@apache.org.
-  - We do a slop-filter / pre-triage pass to remove
-    obvious false positives.
-  - We forward the curated results to your PMC's named
-    contacts via a separate thread — typically a markdown
-    file per repo with findings grouped by component,
-    referencing the threat model for each disposition.
+  - We do a quick pre-forward sanity check on the report —
+    right project, right model, no truncation, all
+    submitted repos covered, no cross-PMC leakage. The
+    goal is to catch catastrophically broken vendor output
+    so you're not asked to read a clearly broken report.
+    We're explicitly NOT doing per-finding triage on your
+    behalf.
+  - We forward the vendor's findings verbatim to your
+    PMC's named contacts via a separate thread —
+    typically a markdown file per repo. Per-finding triage
+    against your threat model is on your end.
 
 You don't need to do anything until the results arrive.
 
