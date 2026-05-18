@@ -63,20 +63,21 @@ repos:
         name: typos
         args: [--force-exclude]
 
-  # ruff lint + format for the one Python file in the repo
-  # (`sheets_writer.py` — uses PEP 723 inline metadata via `uv run`).
-  # Run via `uvx ruff` so we don't need a separate ruff install.
+  # ruff lint + format for the Python helpers under `.github/skills/`
+  # (sheets_writer.py, form_submitter.py — both use PEP 723 inline
+  # metadata via `uv run`). Run via `uvx ruff` so we don't need a
+  # separate ruff install.
   - repo: local
     hooks:
-      - id: ruff-check-sheets-writer
-        name: ruff check (sheets_writer.py)
+      - id: ruff-check-skill-helpers
+        name: ruff check (skill helpers)
         language: system
         entry: uvx ruff check
-        files: ^\.github/skills/glasswing-scan-update/sheets_writer\.py$
+        files: ^\.github/skills/.*\.py$
         pass_filenames: true
-      - id: ruff-format-sheets-writer
-        name: ruff format (sheets_writer.py)
+      - id: ruff-format-skill-helpers
+        name: ruff format (skill helpers)
         language: system
         entry: uvx ruff format --check
-        files: ^\.github/skills/glasswing-scan-update/sheets_writer\.py$
+        files: ^\.github/skills/.*\.py$
         pass_filenames: true

@@ -341,8 +341,8 @@ with.
 
 4. **Summarize the assessment**, per-repo. Be explicit in the
    summary about *which repos were checked* — the user (and
-   later, Mirko) needs to know that "the Logging Services
-   model is good" actually means "we verified all 4 listed
+   later, the scan vendor) needs to know that "the Logging
+   Services model is good" actually means "we verified all 4 listed
    repos: logging-log4j2 (PASS/PASS), logging-log4net
    (FAIL/N/A), …". Don't elide which repos in the cell got
    which verdict; the cell is the authoritative scope.
@@ -376,10 +376,11 @@ with.
        §13 Triage dispositions   ...
    ```
 
-   When the verification message goes to the PMC (or to
-   Mirko), the same per-repo breakdown should appear — implicit
-   summary ("the model is good") hides which repos were
-   actually checked.
+   When the verification message goes to the PMC (or into
+   the Additional Information field on the per-repo form
+   submissions), the same per-repo breakdown should appear —
+   implicit summary ("the model is good") hides which repos
+   were actually checked.
 
 5. **Decide remediation per failing check** using the decision
    table below. Show the user the assessment plus the proposed
@@ -786,21 +787,23 @@ a different downstream SKILL.
 
 ### A. Verification passes (or passes with soft gaps)
 
-Surface two follow-up offers:
+Surface the model-verified handoff offer:
 
 > Ready to mark `<pmc-slug>` as model-verified at
-> `<YYYY-MM-DD>`. Want me to:
->
-> 1. invoke `glasswing-scan-update` to set
->    `Security model verified` on that row, **and**
-> 2. invoke `glasswing-scan-submit` to draft the scan-request
->    email to Mirko Svilus at Alpha-Omega?
->
-> Either / both / neither.
+> `<YYYY-MM-DD>`. Want me to invoke `glasswing-scan-update`
+> to set `Security model verified` on that row?
 
-The two SKILLs run in order: first the sheet write, then the
-Mirko email. The user controls timing; this SKILL does not
-chain them automatically.
+**Do not** offer to invoke `glasswing-scan-submit` here.
+Pre-flight pass is not a trigger for submission anymore —
+the next step is `glasswing-scan-response`'s pre-flight-pass
+template (OSS-expedite pitch + ready-to-scan notification),
+sent to the PMC. Submission to the vendor (via the form
+flow) only fires after the PMC has replied with their
+expedite-account list (or `none`) **and** the operator has
+explicitly said "submit X". See `glasswing-scan-run`'s
+`pre-flight-passed-pitch-not-sent` and
+`pmc-pitch-replied-awaiting-operator-decision` pipeline
+states for the gating logic.
 
 ### B. PR opened (discoverability fix) but pre-flight not yet complete
 
@@ -809,7 +812,8 @@ Surface:
 > Opened PR #<n> at `<url>`. Want me to log this in the
 > tracker's `PR/Issues` column for `<pmc-slug>` via
 > `glasswing-scan-update`? Verification will be re-run once
-> the PR is merged; submission to Mirko waits on that.
+> the PR is merged; the pre-flight-pass pitch (and any
+> eventual scan submission) waits on that.
 
 ### C. Email reply drafted (substantive gaps)
 
@@ -818,8 +822,8 @@ After the user sends the email, surface:
 > Email reply drafted to <recipient>. After you send, want me
 > to log "Email reply sent <YYYY-MM-DD>" in the tracker's
 > `PR/Issues` column for `<pmc-slug>` via
-> `glasswing-scan-update`? Submission to Mirko waits on the
-> PMC's response.
+> `glasswing-scan-update`? The pre-flight-pass pitch (and any
+> eventual scan submission) waits on the PMC's response.
 
 In all three shapes, the user issues the next instruction and
 the downstream SKILL takes over with its own draft-and-confirm
