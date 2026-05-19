@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -112,6 +113,26 @@ class RepoEntry:
     criticality: float | None  # None for blank cells; sorted last
     primary_language: str
     stars: str
+    has_agents_md: bool = False
+    has_security_md: bool = False
+    has_security_txt: bool = False
+    discoverability_checked: bool = False
+
+    @property
+    def is_submittable(self) -> bool:
+        """A repo is submittable if at least one discoverability marker exists.
+
+        AGENTS.md or SECURITY.md (or security.txt) — any one of those is
+        enough for the scan agent to reach the project's threat model
+        through the AGENTS.md → SECURITY.md → model chain (the chain
+        tolerates either endpoint).
+        """
+        return self.has_agents_md or self.has_security_md or self.has_security_txt
+
+    @property
+    def can_claim_security_md(self) -> bool:
+        """Reflects the form's checkbox: 'security.txt or SECURITY.md exists'."""
+        return self.has_security_md or self.has_security_txt
 
 
 def parse_criticality(raw: str) -> float | None:
@@ -122,6 +143,51 @@ def parse_criticality(raw: str) -> float | None:
         return float(raw)
     except ValueError:
         return None
+
+
+def repo_has_file(repo_name: str, path: str) -> bool:
+    """Return True iff the file exists at HEAD on apache/<repo_name>.
+
+    Uses `gh api repos/apache/<repo>/contents/<path>` — exits 0 on 200,
+    non-zero on 404. The gh CLI is auth'd via the user's existing
+    GitHub credentials; no extra config needed.
+    """
+    result = subprocess.run(
+        ["gh", "api", f"repos/apache/{repo_name}/contents/{path}"],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def fill_discoverability(entries: list[RepoEntry]) -> None:
+    """Populate the AGENTS.md / SECURITY.md / security.txt flags on every
+    entry via the GitHub API. Mutates in place."""
+    print(
+        "Checking per-repo discoverability via gh api "
+        "(AGENTS.md / SECURITY.md / security.txt at HEAD)...",
+        file=sys.stderr,
+    )
+    for e in entries:
+        e.has_agents_md = repo_has_file(e.name, "AGENTS.md")
+        e.has_security_md = repo_has_file(e.name, "SECURITY.md")
+        e.has_security_txt = repo_has_file(e.name, "security.txt") or repo_has_file(
+            e.name, ".well-known/security.txt"
+        )
+        e.discoverability_checked = True
+        markers = (
+            ", ".join(
+                label
+                for label, present in [
+                    ("AGENTS.md", e.has_agents_md),
+                    ("SECURITY.md", e.has_security_md),
+                    ("security.txt", e.has_security_txt),
+                ]
+                if present
+            )
+            or "NONE — will skip"
+        )
+        print(f"  apache/{e.name}: {markers}", file=sys.stderr)
 
 
 def fetch_pmc_state(slug: str) -> dict:
@@ -190,6 +256,8 @@ def fetch_pmc_state(slug: str) -> dict:
         )
 
     entries.sort(key=lambda e: (-(e.criticality or -1), e.name))
+
+    fill_discoverability(entries)
 
     return {"pmc": pmc_row, "repos": entries}
 
@@ -351,9 +419,28 @@ def get_scan_result_recipients_for_pmc(pmc_row: dict) -> list[str]:
     return out
 
 
-def build_plan(state: dict, submitter: dict) -> list[FormFill]:
+def build_plan(state: dict, submitter: dict) -> tuple[list[FormFill], list[RepoEntry]]:
+    """Return (plan, skipped). Plan is the per-repo FormFill list (ordered);
+    skipped is the list of repos dropped because they lack both AGENTS.md and
+    SECURITY.md (and security.txt) at HEAD."""
     pmc_row = state["pmc"]
-    repos: list[RepoEntry] = state["repos"]
+    all_repos: list[RepoEntry] = state["repos"]
+
+    # Drop repos missing all three discoverability markers — those can't be
+    # submitted (the scan agent has no AGENTS.md / SECURITY.md / security.txt
+    # to anchor on, and the form's "valid SECURITY.md" assertion would be
+    # false anyway).
+    submittable = [r for r in all_repos if r.is_submittable]
+    skipped = [r for r in all_repos if not r.is_submittable]
+
+    if not submittable:
+        sys.exit(
+            "No repos are submittable — every repo in Repositories requested "
+            "lacks AGENTS.md, SECURITY.md, and security.txt at HEAD. Land "
+            "discoverability via glasswing-model-verify before re-running."
+        )
+
+    repos = submittable
     pmc_name_raw = pmc_row.get("PMC Name", "").strip() or pmc_row["PMC Slug"]
     pmc_name = (
         pmc_name_raw
@@ -412,14 +499,19 @@ def build_plan(state: dict, submitter: dict) -> list[FormFill]:
                 your_role=role,
                 additional_info=additional,
                 confirm_authorized=True,
-                confirm_security_md=True,  # operator overrides per-repo in --dry-run if needed
+                # Per-repo: tick only when SECURITY.md or security.txt
+                # exists at HEAD. If only AGENTS.md was found, the repo
+                # is submittable but the form's "valid SECURITY.md"
+                # assertion stays unchecked — the assertion needs to be
+                # literally true.
+                confirm_security_md=repo.can_claim_security_md,
                 confirm_claude_max=confirm_claude_max,
                 is_headline=is_headline,
                 repo_name=repo.name,
             )
         )
 
-    return plan
+    return plan, skipped
 
 
 def print_plan(plan: list[FormFill]) -> None:
@@ -593,9 +685,20 @@ def cmd_submit_pmc(args: argparse.Namespace) -> None:
     else:
         submitter = load_submitter()
     state = fetch_pmc_state(args.slug)
-    plan = build_plan(state, submitter)
+    plan, skipped = build_plan(state, submitter)
 
     print_plan(plan)
+    if skipped:
+        print(
+            f"\nSkipped {len(skipped)} repo(s) — no AGENTS.md / SECURITY.md / "
+            "security.txt at HEAD:"
+        )
+        for r in skipped:
+            print(f"  - apache/{r.name}")
+        print(
+            "These won't be submitted. Land discoverability "
+            "(via glasswing-model-verify) before re-running for them."
+        )
 
     if args.dry_run:
         print("\nDry run — no form submissions.")

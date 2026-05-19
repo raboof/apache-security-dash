@@ -118,22 +118,50 @@ operator decides to actually queue the scan.
      Never call `send` directly — the user reviews in the
      Gmail UI once more and presses Send themselves.
 
-5. **Form-submission cardinality and ordering.** One form
+5. **Form-submission cardinality, ordering, and the
+   per-repo discoverability auto-skip.** One form
    submission per repo in the PMC's confirmed scope (the
-   `Repositories requested` cell). Repos are submitted in
-   descending order of OSSF Criticality Score (read from
-   the Repositories sheet — non-blank `Criticality Score (%)`
-   cells, sorted high-to-low). The first submission ("the
-   headline form") carries the maintainer roster + OSS
-   expedite explanation + the "I'm interested in Claude
-   Max 20x" checkbox; subsequent forms are slimmer (see
-   rule 6 for the field contents).
+   `Repositories requested` cell), with two filters
+   applied:
 
-   Repos with blank Criticality Score are not in the
-   "active" set and should not be in the PMC's confirmed
-   scope in the first place; if one slips in (e.g.
-   PMC-requested a sandbox repo), submit it last after
-   any active-set repos.
+   - **Auto-skip on missing discoverability markers.**
+     For each repo, the helper queries
+     `repos/apache/<repo>/contents/AGENTS.md`,
+     `.../SECURITY.md`, `.../security.txt`, and
+     `.../.well-known/security.txt` via the GitHub API
+     before submission. A repo with **none** of those
+     markers is **silently dropped from the submission
+     batch** (and logged in the dry-run output as
+     skipped). The rationale is twofold: the scan agent
+     needs `AGENTS.md` (or one of the SECURITY anchors)
+     to reach the threat model, and the form's
+     "valid SECURITY.md" assertion is structurally
+     false for a repo with none of those files. The
+     operator lands discoverability via
+     `glasswing-model-verify` for skipped repos and
+     re-runs `submit-pmc` to pick them up. The natural
+     "phased submission" pattern (e.g. Logging's
+     wave 1 = log4j2 + log4net + log4cxx, wave 2+ as
+     `AGENTS.md` lands) falls out of this rule without
+     any separate phasing knob.
+
+   - **Ordering by OSSF Criticality Score (descending).**
+     The submittable subset is sorted high-to-low by
+     `Criticality Score (%)` (read from the Repositories
+     sheet). Repos with blank Criticality Score sort
+     last in the submittable list (they're typically
+     sandbox / less-active repos that still passed the
+     discoverability check). The first submittable repo
+     after this sort is the "headline form" — it
+     carries the maintainer roster + OSS expedite
+     explanation + the "I'm interested in Claude Max
+     20x" checkbox. Subsequent submittable forms are
+     slimmer (see rule 6 for the field contents).
+
+   The dry-run output **must** list any skipped repos
+   so the operator can decide whether to land
+   discoverability before going live. Silent skipping
+   without surfacing in the plan is a bug.
 
 6. **Field contents per submission.**
 
@@ -149,7 +177,7 @@ operator decides to actually queue the scan.
    | Your Role within the Project | `ASF Security Committee member, submitting on behalf of <PMC name> PMC at their request` | Same |
    | Additional information and context | **Full block (see template below)**: PMC primary + backup contacts, scan-result recipients, OSS-expedite addresses with one-line "for whom" explanation, and the link to the verified threat model. | **Short pointer**: "Submitted by the ASF Security Committee on behalf of `Apache <PMC name>` PMC. The maintainer roster and any OSS-expedite request are on the headline submission for this PMC (apache/`<headline-repo-name>`)." |
    | I confirm I'm authorized to request this scan, and this is aligned with the project governance | Checked (always — the operator's explicit instruction is the authorization) | Checked |
-   | There is a valid security.txt or SECURITY.md in my repository that describes how to deal with findings | Checked (per-repo: only if `glasswing-model-verify` confirmed discoverability passes for *this* repo via AGENTS.md → SECURITY.md, and there is in fact a SECURITY.md or security.txt the form's claim can reference; otherwise leave unchecked) | Same per-repo rule |
+   | There is a valid security.txt or SECURITY.md in my repository that describes how to deal with findings | Checked per-repo: **only when `SECURITY.md` or `security.txt` exists at the repo's HEAD** (verified by the helper's auto-discoverability check from rule 5). If only `AGENTS.md` was found, the repo is still submitted (the chain resolves via `AGENTS.md` → external model URL) but this checkbox stays unchecked — the form's assertion needs to be literally true. | Same per-repo rule |
    | I'm interested in Claude Max 20x for my Open Source work | Checked **only if** the PMC's `Expedite Claude OSS Requests` cell is non-empty AND not the literal string `none`. Otherwise leave unchecked. | **Always unchecked** — only the headline form carries the expedite ask |
 
    The "Additional information" headline-block template:
