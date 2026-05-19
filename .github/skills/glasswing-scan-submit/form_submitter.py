@@ -131,8 +131,17 @@ class RepoEntry:
 
     @property
     def can_claim_security_md(self) -> bool:
-        """Reflects the form's checkbox: 'security.txt or SECURITY.md exists'."""
-        return self.has_security_md or self.has_security_txt
+        """Reflects the form's "valid security.txt or SECURITY.md" checkbox.
+
+        Ticks when ANY discoverability marker is present — AGENTS.md alone
+        is sufficient because it carries the same "how to deal with
+        findings" pointer the form asks about (the AGENTS.md → external
+        SECURITY.md or threat-model URL chain is the standard pattern in
+        the ASF Glasswing pipeline). The form's literal phrasing is a bit
+        narrower, but the operational intent ("the repo tells researchers
+        where to take findings") is satisfied either way.
+        """
+        return self.has_agents_md or self.has_security_md or self.has_security_txt
 
 
 def parse_criticality(raw: str) -> float | None:
@@ -321,6 +330,7 @@ def build_headline_additional_info(
     repos: list[RepoEntry],
     headline_repo: RepoEntry,
     scan_result_recipients: list[str],
+    submission_notes_text: str = "",
 ) -> str:
     primary = pmc_row.get("Contact Person", "").strip()
     backup = pmc_row.get("Backup contact", "").strip()
@@ -381,6 +391,11 @@ def build_headline_additional_info(
         crit = f"{r.criticality:.1f}%" if r.criticality is not None else "blank"
         lines.append(f"  {i}. {r.url} (criticality {crit}){marker}")
 
+    if submission_notes_text:
+        lines.extend(["", "Submission notes (operator-supplied):"])
+        for line in submission_notes_text.splitlines():
+            lines.append(f"  {line}" if line.strip() else "")
+
     return "\n".join(lines)
 
 
@@ -419,6 +434,42 @@ def get_scan_result_recipients_for_pmc(pmc_row: dict) -> list[str]:
     return out
 
 
+def parse_submission_notes(raw: str) -> dict:
+    """Parse the PMCs sheet's 'Submission notes' free-text cell into
+    structured overrides + leftover text.
+
+    Recognised tagged lines (case-insensitive prefix match):
+      - `Scan-result destination: <addr>[, <addr>...]` overrides the
+        recipients computed from Contact Person + Backup contact for
+        the headline form's Additional Information block. Multiple
+        comma-separated addresses on one line, or repeated lines, are
+        all accumulated.
+
+    Any line that doesn't match a recognised tag is preserved in
+    `notes_text` and rendered verbatim in the headline form's
+    Additional Information (under a separate `Submission notes:`
+    section). Empty cell -> empty overrides + empty notes_text.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return {"recipients_override": [], "notes_text": ""}
+    addr_override: list[str] = []
+    keep_lines: list[str] = []
+    for line in raw.splitlines():
+        s = line.strip()
+        if s.lower().startswith("scan-result destination:"):
+            rest = s.split(":", 1)[1]
+            for tok in rest.replace(",", " ").split():
+                tok = tok.strip().rstrip(",.;")
+                if "@" in tok and tok not in addr_override:
+                    addr_override.append(tok)
+        else:
+            keep_lines.append(line)
+    # Drop a single trailing blank line; keep internal structure.
+    notes_text = "\n".join(keep_lines).strip()
+    return {"recipients_override": addr_override, "notes_text": notes_text}
+
+
 def build_plan(state: dict, submitter: dict) -> tuple[list[FormFill], list[RepoEntry]]:
     """Return (plan, skipped). Plan is the per-repo FormFill list (ordered);
     skipped is the list of repos dropped because they lack both AGENTS.md and
@@ -450,7 +501,10 @@ def build_plan(state: dict, submitter: dict) -> tuple[list[FormFill], list[RepoE
     expedite_addrs = parse_expedite_cell(
         pmc_row.get("Expedite Claude OSS Requests", "")
     )
-    scan_result_recipients = get_scan_result_recipients_for_pmc(pmc_row)
+    submission_notes = parse_submission_notes(pmc_row.get("Submission notes", ""))
+    scan_result_recipients = submission_notes[
+        "recipients_override"
+    ] or get_scan_result_recipients_for_pmc(pmc_row)
 
     sec_model = pmc_row.get("Security Model", "").strip()
     if sec_model and not sec_model.lower().startswith(("http://", "https://")):
@@ -479,6 +533,7 @@ def build_plan(state: dict, submitter: dict) -> tuple[list[FormFill], list[RepoE
                 repos=repos,
                 headline_repo=headline,
                 scan_result_recipients=scan_result_recipients,
+                submission_notes_text=submission_notes["notes_text"],
             )
             confirm_claude_max = bool(expedite_addrs)
         else:

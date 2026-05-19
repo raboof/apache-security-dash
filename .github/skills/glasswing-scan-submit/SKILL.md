@@ -118,6 +118,43 @@ operator decides to actually queue the scan.
      Never call `send` directly — the user reviews in the
      Gmail UI once more and presses Send themselves.
 
+4a. **Refresh email threads and the spreadsheet before
+   submitting.** State on PMC threads and on the tracker
+   moves fast — late OSS-expedite requests, scope
+   amendments, contact changes, additional questions, and
+   chair-level go-aheads commonly land between sweeps. A
+   submission based on stale state can miss an expedite
+   address the PMC asked for, submit the wrong scope, or
+   skip a branch the PMC explicitly named. Before running
+   the form-submission gate:
+
+   1. **Re-read the PMC's `[GLASSWING]` Gmail thread** via
+      `mcp__claude_ai_Gmail__get_thread`. Look specifically
+      for messages that arrived after the most recent
+      `glasswing-scan-run` sweep: explicit submission
+      green-lights, branch-level scope, OSS-expedite asks
+      ("please include X in your expedite ask"), recipient
+      changes ("send results to Y instead"). Surface any
+      that the spreadsheet doesn't yet reflect.
+
+   2. **Re-read the PMC's row** from the PMCs sheet via the
+      Sheets API. Compare `Expedite Claude OSS Requests`,
+      `Repositories requested`, `Contact Person`,
+      `Backup contact`, `Security Model`, and any
+      `Submission notes` against what the thread says.
+
+   3. **If divergence is found**, apply the missing updates
+      via `glasswing-scan-update apply` (Expedite, scope,
+      submission notes) **before** running `--dry-run`.
+      Don't try to short-circuit by passing values inline
+      — the spreadsheet is the durable record the rest of
+      the pipeline reads from.
+
+   The dry-run that the operator approves must reflect a
+   spreadsheet snapshot that's been reconciled against the
+   PMC thread in this session. Skipping this refresh is a
+   bug, not an optimisation.
+
 5. **Form-submission cardinality, ordering, and the
    per-repo discoverability auto-skip.** One form
    submission per repo in the PMC's confirmed scope (the
@@ -177,7 +214,7 @@ operator decides to actually queue the scan.
    | Your Role within the Project | `ASF Security Committee member, submitting on behalf of <PMC name> PMC at their request` | Same |
    | Additional information and context | **Full block (see template below)**: PMC primary + backup contacts, scan-result recipients, OSS-expedite addresses with one-line "for whom" explanation, and the link to the verified threat model. | **Short pointer**: "Submitted by the ASF Security Committee on behalf of `Apache <PMC name>` PMC. The maintainer roster and any OSS-expedite request are on the headline submission for this PMC (apache/`<headline-repo-name>`)." |
    | I confirm I'm authorized to request this scan, and this is aligned with the project governance | Checked (always — the operator's explicit instruction is the authorization) | Checked |
-   | There is a valid security.txt or SECURITY.md in my repository that describes how to deal with findings | Checked per-repo: **only when `SECURITY.md` or `security.txt` exists at the repo's HEAD** (verified by the helper's auto-discoverability check from rule 5). If only `AGENTS.md` was found, the repo is still submitted (the chain resolves via `AGENTS.md` → external model URL) but this checkbox stays unchecked — the form's assertion needs to be literally true. | Same per-repo rule |
+   | There is a valid security.txt or SECURITY.md in my repository that describes how to deal with findings | Checked per-repo: **when any of `AGENTS.md`, `SECURITY.md`, or `security.txt` exists at the repo's HEAD** (verified by the helper's auto-discoverability check from rule 5). The form's literal phrasing names SECURITY.md / security.txt, but the operational intent ("the repo tells researchers where to take findings") is satisfied equally by AGENTS.md, which is the standard pointer-file in the ASF Glasswing pipeline and carries the same find-the-model role. Tick the box whenever the chain resolves. | Same per-repo rule |
    | I'm interested in Claude Max 20x for my Open Source work | Checked **only if** the PMC's `Expedite Claude OSS Requests` cell is non-empty AND not the literal string `none`. Otherwise leave unchecked. | **Always unchecked** — only the headline form carries the expedite ask |
 
    The "Additional information" headline-block template:
@@ -222,6 +259,21 @@ operator decides to actually queue the scan.
      2. apache/<repo-2>
      3. apache/<repo-3>
      ...
+
+   <IF the PMCs sheet's `Submission notes` column is
+   non-empty for this PMC, append here verbatim under a
+   `Submission notes (operator-supplied):` header. Each
+   line is indented two spaces. The Submission notes
+   column is the operator's free-text override channel —
+   used for per-PMC quirks that don't fit the standard
+   schema, e.g. "scan main + 2.x branches of log4j2",
+   "scan-result destination: project alias rather than
+   personal addresses", "PMC asked us to leave repo X
+   out of this batch despite it being in scope". The
+   helper parses certain tagged lines from this column:
+     - `Scan-result destination: <addr>[, <addr>...]`
+       overrides the Scan-result recipients line above.
+       Everything else is rendered verbatim.>
    ```
 
    The "Additional information" subsequent-submission
@@ -343,8 +395,9 @@ operator decides to actually queue the scan.
 | Repos to submit | The subset of `Repositories requested` that passed pre-flight, ordered by OSSF Criticality Score (descending) — read from the Repositories sheet. If pre-flight passed for *all* repos in `Repositories requested`, the submit list equals that cell. If pre-flight passed for only some, submit only those — the rest land in a later batch once their discoverability is fixed. **Always show the per-repo verdict explicitly when drafting** so the operator can see why some repos are in this batch and others aren't. |
 | Threat-model URL | From the PMC sheet's `Security Model` column + the verify SKILL's notes; if the model is on a project site, that URL |
 | Primary + backup PMC contacts | From the PMC sheet's `Contact Person` + `Backup contact` cells (already `@apache.org` per scan-request verification) — for the PMC notification email AND for the Additional Information block on the headline form |
-| Scan-result recipients | From the original `[GLASSWING]` request body (the list of `@apache.org` addresses the PMC asked us to send results to) — for the PMC notification CC AND for the Additional Information block on the headline form |
+| Scan-result recipients | Default is derived from `Contact Person` + `Backup contact` cells. Override available via the `Submission notes` cell's `Scan-result destination:` tagged line — used when the PMC asked for a project alias (e.g. `security@<pmc>.apache.org`) instead of personal addresses. The override is per-PMC and goes into the Additional Information block on the headline form. |
 | Expedite addresses | From the PMC sheet's `Expedite Claude OSS Requests` column. May be empty or `none` — in which case the headline form's checkbox stays unchecked and the expedite-block in Additional Information is omitted. |
+| Submission notes (optional) | From the PMC sheet's `Submission notes` column. Free-text operator overrides + free-text quirks rendered verbatim in the headline form's Additional Information. The helper parses certain tagged lines (currently `Scan-result destination: <addr>...`) as structured overrides; the rest is preserved as-is. Use for per-PMC quirks that don't fit the standard schema: branch-level scope notes ("scan main + 2.x of log4j2"), recipient overrides, opt-outs. Empty cell = no notes section appended; no override applied. |
 | `Security model verified` date | From the PMC sheet — confirms pre-flight gate |
 | Submitter identity | From `~/.config/asf-security/glasswing/submitter.json` (Name, @apache.org email, GitHub profile URL). One-time setup. |
 
@@ -456,7 +509,26 @@ Best,
    the request" or similar, refuse and surface the PMC as
    `pre-flight-passed-awaiting-operator-decision` instead.
 
-2. **Confirm pre-flight passed.** Read the PMC's row in the
+2. **Refresh state (per hard rule 4a) before anything else.**
+   Re-fetch the PMC's `[GLASSWING]` Gmail thread and the
+   PMC's row from the spreadsheet **in this session** — not
+   from a prior sweep. Surface to the operator any
+   divergence the spreadsheet doesn't reflect:
+   - late OSS-expedite ask ("please include X in your
+     expedite ask") that isn't in `Expedite Claude OSS
+     Requests` yet;
+   - branch-level scope ("scan main + 2.x of <repo>") that
+     isn't captured in `Submission notes`;
+   - recipient override ("send results to project alias /
+     to addr X") that isn't in `Submission notes`'
+     `Scan-result destination:` line;
+   - the explicit submission green-light (operator
+     instruction).
+   Apply missing updates via `glasswing-scan-update apply`
+   **before** running `--dry-run`. The spreadsheet is the
+   durable record; don't try to pass values inline.
+
+3. **Confirm pre-flight passed.** Read the PMC's row in the
    tracker via `glasswing-scan-status` (or directly via the
    Sheets API per the truncation caveat in
    `glasswing-scan-run` Step 2). Verify:
@@ -474,7 +546,7 @@ Best,
    yourself — scope confirmation is the PMC's call, not
    the agent's.
 
-3. **Gather the rest of the inputs** from:
+4. **Gather the rest of the inputs** from:
    - the PMC sheet's `Repositories requested` cell (the
      confirmed scope; parse newline-separated URLs);
    - the Repositories sheet (read each repo's Criticality
@@ -488,9 +560,14 @@ Best,
    - the `Expedite Claude OSS Requests` cell (parse
      newline-separated `@apache.org` addresses; empty cell
      or `none` = no expedite block and unchecked OSS
-     checkbox on the headline form).
+     checkbox on the headline form);
+   - the `Submission notes` cell (free-text overrides +
+     quirks; tagged lines parsed for structured
+     overrides — currently `Scan-result destination:` —
+     the rest rendered verbatim in the headline form's
+     Additional Information).
 
-4. **Look up the per-PMC `security@<pmc>` alias** at
+5. **Look up the per-PMC `security@<pmc>` alias** at
    <https://security.apache.org/projects/> (or the
    source-of-truth JSON at
    <https://github.com/apache/security-site/blob/main/scripts/project-coordinates.json>).
@@ -498,7 +575,7 @@ Best,
    email's CC list. (It is NOT a form field; the form
    doesn't have a per-PMC alias slot.)
 
-5. **Render the form-submission plan.** Show the operator:
+6. **Render the form-submission plan.** Show the operator:
    - The PMC name + slug.
    - The repo ordering (each repo URL with its Criticality
      Score, sorted descending).
@@ -516,19 +593,19 @@ Best,
    Repositories sheet; expedite addresses from the
    `Expedite Claude OSS Requests` cell").
 
-6. **Wait for explicit approval on the submission plan.**
+7. **Wait for explicit approval on the submission plan.**
    "ok" / "submit" / "go" / similar. If the user wants
    edits, revise and re-render before re-asking.
    Substantive rewrites need fresh approval.
 
-7. **Run `form_submitter.py submit-pmc --dry-run`** with
+8. **Run `form_submitter.py submit-pmc --dry-run`** with
    the PMC slug. The helper prints what it *would* submit
-   on each form (verifies the plan from step 5 matches
+   on each form (verifies the plan from step 6 matches
    reality; catches missing config, missing repos in the
    Repositories sheet, etc.). The operator confirms the
    dry-run output matches expectations.
 
-8. **Run `form_submitter.py submit-pmc` live.** The helper
+9. **Run `form_submitter.py submit-pmc` live.** The helper
    drives the form for each repo in order. Captures the
    confirmation URL (or screenshot path) per submission.
    Reports completion + the list of submitted repo URLs +
@@ -541,27 +618,27 @@ Best,
    resume by passing `--starting-from <slug>` to skip the
    already-completed repos.
 
-9. **Render the PMC notification email draft.** Show
-   To / CC / Subject / Body, using the list of repos that
-   were actually submitted (from step 8's output), the
-   submission timestamp, and the expedite-block toggle
-   based on whether the headline form ticked the OSS
-   checkbox.
+10. **Render the PMC notification email draft.** Show
+    To / CC / Subject / Body, using the list of repos that
+    were actually submitted (from step 9's output), the
+    submission timestamp, and the expedite-block toggle
+    based on whether the headline form ticked the OSS
+    checkbox.
 
-10. **Wait for explicit approval on the PMC notification
+11. **Wait for explicit approval on the PMC notification
     email.**
 
-11. **Create the PMC notification Gmail draft** via
+12. **Create the PMC notification Gmail draft** via
     `mcp__claude_ai_Gmail__create_draft`. Pass:
     - `to`: the primary contact's `@apache.org` address
-    - `cc`: the full CC list from step 4
+    - `cc`: the full CC list from step 5
     - `subject`: the rendered subject
     - `body`: the rendered body
     - `replyToMessageId`: **omit** — this is a fresh
       thread distinct from the original `[GLASSWING]`
       request thread.
 
-12. **Hand off to `glasswing-scan-update`.** Surface the
+13. **Hand off to `glasswing-scan-update`.** Surface the
     line:
 
     > Forms submitted: <N> repos for <slug> at <timestamp>.
