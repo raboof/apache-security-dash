@@ -329,9 +329,18 @@ def build_headline_additional_info(
     expedite_addrs: list[str],
     repos: list[RepoEntry],
     headline_repo: RepoEntry,
-    scan_result_recipients: list[str],
     submission_notes_text: str = "",
 ) -> str:
+    """Build the headline form's Additional Information block.
+
+    Deliberately does NOT include the scan-result delivery destination.
+    Vendor scan results come back to the ASF Security team's submitter
+    address; the team then forwards manually to the PMC's named contacts
+    via `glasswing-scan-forward`. The form's submission shouldn't pin the
+    downstream forwarding destination — that's an internal ASF process
+    detail, and binding it to the form makes the destination hard to
+    change later if PMC contacts shift.
+    """
     primary = pmc_row.get("Contact Person", "").strip()
     backup = pmc_row.get("Backup contact", "").strip()
     model_url = pmc_row.get("Security Model", "").strip()
@@ -343,26 +352,10 @@ def build_headline_additional_info(
         f"  - Primary: {primary}",
         f"  - Backup:  {backup}",
         "",
-        "Scan-result recipients (the @apache.org addresses the ASF Security",
-        "team forwards the vendor's findings to, verbatim, after a",
-        "pre-forward sanity check):",
+        "Threat model (verified by the ASF Security team against the",
+        "Scovetta rubric):",
+        f"  - {model_url}",
     ]
-    if scan_result_recipients:
-        for addr in scan_result_recipients:
-            lines.append(f"  - {addr}")
-    else:
-        lines.append(
-            f"  - (defaults to Contact Person + Backup contact: {primary}, {backup})"
-        )
-
-    lines.extend(
-        [
-            "",
-            "Threat model (verified by the ASF Security team against the",
-            "Scovetta rubric):",
-            f"  - {model_url}",
-        ]
-    )
 
     if expedite_addrs:
         lines.extend(
@@ -434,40 +427,22 @@ def get_scan_result_recipients_for_pmc(pmc_row: dict) -> list[str]:
     return out
 
 
-def parse_submission_notes(raw: str) -> dict:
-    """Parse the PMCs sheet's 'Submission notes' free-text cell into
-    structured overrides + leftover text.
+def parse_submission_notes(raw: str) -> str:
+    """Return the PMCs sheet's 'Submission notes' free-text cell, stripped.
 
-    Recognised tagged lines (case-insensitive prefix match):
-      - `Scan-result destination: <addr>[, <addr>...]` overrides the
-        recipients computed from Contact Person + Backup contact for
-        the headline form's Additional Information block. Multiple
-        comma-separated addresses on one line, or repeated lines, are
-        all accumulated.
+    Rendered verbatim in the headline form's Additional Information
+    under a `Submission notes (operator-supplied):` section. Empty cell
+    -> empty string -> no section appended.
 
-    Any line that doesn't match a recognised tag is preserved in
-    `notes_text` and rendered verbatim in the headline form's
-    Additional Information (under a separate `Submission notes:`
-    section). Empty cell -> empty overrides + empty notes_text.
+    The helper does not parse structured tags out of this cell.
+    Operators write whatever per-PMC quirks they need the vendor's
+    scan team to see (branch-level scope, repo opt-outs, model-URL
+    caveats, etc.). Vendor-facing only; don't put internal-process
+    overrides here (e.g. don't write the scan-result delivery
+    destination — that's an ASF-internal forwarding detail that
+    shouldn't be bound to the submission).
     """
-    raw = (raw or "").strip()
-    if not raw:
-        return {"recipients_override": [], "notes_text": ""}
-    addr_override: list[str] = []
-    keep_lines: list[str] = []
-    for line in raw.splitlines():
-        s = line.strip()
-        if s.lower().startswith("scan-result destination:"):
-            rest = s.split(":", 1)[1]
-            for tok in rest.replace(",", " ").split():
-                tok = tok.strip().rstrip(",.;")
-                if "@" in tok and tok not in addr_override:
-                    addr_override.append(tok)
-        else:
-            keep_lines.append(line)
-    # Drop a single trailing blank line; keep internal structure.
-    notes_text = "\n".join(keep_lines).strip()
-    return {"recipients_override": addr_override, "notes_text": notes_text}
+    return (raw or "").strip()
 
 
 def build_plan(state: dict, submitter: dict) -> tuple[list[FormFill], list[RepoEntry]]:
@@ -501,10 +476,7 @@ def build_plan(state: dict, submitter: dict) -> tuple[list[FormFill], list[RepoE
     expedite_addrs = parse_expedite_cell(
         pmc_row.get("Expedite Claude OSS Requests", "")
     )
-    submission_notes = parse_submission_notes(pmc_row.get("Submission notes", ""))
-    scan_result_recipients = submission_notes[
-        "recipients_override"
-    ] or get_scan_result_recipients_for_pmc(pmc_row)
+    submission_notes_text = parse_submission_notes(pmc_row.get("Submission notes", ""))
 
     sec_model = pmc_row.get("Security Model", "").strip()
     if sec_model and not sec_model.lower().startswith(("http://", "https://")):
@@ -532,8 +504,7 @@ def build_plan(state: dict, submitter: dict) -> tuple[list[FormFill], list[RepoE
                 expedite_addrs=expedite_addrs,
                 repos=repos,
                 headline_repo=headline,
-                scan_result_recipients=scan_result_recipients,
-                submission_notes_text=submission_notes["notes_text"],
+                submission_notes_text=submission_notes_text,
             )
             confirm_claude_max = bool(expedite_addrs)
         else:

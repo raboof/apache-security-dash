@@ -133,9 +133,9 @@ operator decides to actually queue the scan.
       for messages that arrived after the most recent
       `glasswing-scan-run` sweep: explicit submission
       green-lights, branch-level scope, OSS-expedite asks
-      ("please include X in your expedite ask"), recipient
-      changes ("send results to Y instead"). Surface any
-      that the spreadsheet doesn't yet reflect.
+      ("please include X in your expedite ask"), scope
+      amendments. Surface any that the spreadsheet
+      doesn't yet reflect.
 
    2. **Re-read the PMC's row** from the PMCs sheet via the
       Sheets API. Compare `Expedite Claude OSS Requests`,
@@ -149,6 +149,18 @@ operator decides to actually queue the scan.
       Don't try to short-circuit by passing values inline
       — the spreadsheet is the durable record the rest of
       the pipeline reads from.
+
+   Recipient changes ("send results to Y instead of X") do
+   NOT need to be applied to the spreadsheet before form
+   submission — the form deliberately doesn't pin a
+   downstream delivery destination, and the Security team
+   handles forwarding manually when results arrive. The
+   recipient list only matters when drafting the PMC
+   notification email (step 10) and when the eventual
+   forward goes out via `glasswing-scan-forward`; apply
+   recipient updates to `Contact Person` / `Backup contact`
+   when the PMC themselves asks for a roster change, but
+   don't gate submission on it.
 
    The dry-run that the operator approves must reflect a
    spreadsheet snapshot that's been reconciled against the
@@ -227,13 +239,6 @@ operator decides to actually queue the scan.
      - Primary: <Primary contact name + @apache.org>
      - Backup:  <Backup contact name(s) + @apache.org>
 
-   Scan-result recipients (the @apache.org addresses the
-   ASF Security team forwards the vendor's findings to,
-   verbatim, after a pre-forward sanity check):
-     - <addr1@apache.org>
-     - <addr2@apache.org>
-     - ...
-
    Threat model (verified by the ASF Security team against
    the Scovetta rubric):
      - <model URL>
@@ -264,17 +269,29 @@ operator decides to actually queue the scan.
    non-empty for this PMC, append here verbatim under a
    `Submission notes (operator-supplied):` header. Each
    line is indented two spaces. The Submission notes
-   column is the operator's free-text override channel —
-   used for per-PMC quirks that don't fit the standard
-   schema, e.g. "scan main + 2.x branches of log4j2",
-   "scan-result destination: project alias rather than
-   personal addresses", "PMC asked us to leave repo X
-   out of this batch despite it being in scope". The
-   helper parses certain tagged lines from this column:
-     - `Scan-result destination: <addr>[, <addr>...]`
-       overrides the Scan-result recipients line above.
-       Everything else is rendered verbatim.>
+   column is the operator's free-text channel for per-PMC
+   quirks that the vendor's scan team should see — e.g.
+   "scan main + 2.x branches of log4j2", "PMC asked us
+   to leave repo X out of this batch despite it being in
+   scope", "model URL points at a draft pending merge in
+   PR #N". Vendor-facing only — do NOT put internal-process
+   overrides here (e.g. don't write the scan-result
+   delivery destination; that's an ASF-internal
+   forwarding detail and the Security team handles it
+   when results arrive). The helper renders the cell
+   contents verbatim without parsing tags.>
    ```
+
+   **Why no "Scan-result recipients" block?** The form is
+   the vendor-facing intake; the scan vendor sends results
+   back to the submitter (the ASF Security team), and the
+   team forwards manually to the PMC's named contacts via
+   `glasswing-scan-forward`. Binding the downstream
+   forwarding destination into the form submission makes
+   it brittle to PMC-contact changes after the scan was
+   queued. The form should describe what is to be scanned
+   and against what threat model; the team handles
+   delivery internally when results land.
 
    The "Additional information" subsequent-submission
    template:
@@ -395,9 +412,9 @@ operator decides to actually queue the scan.
 | Repos to submit | The subset of `Repositories requested` that passed pre-flight, ordered by OSSF Criticality Score (descending) — read from the Repositories sheet. If pre-flight passed for *all* repos in `Repositories requested`, the submit list equals that cell. If pre-flight passed for only some, submit only those — the rest land in a later batch once their discoverability is fixed. **Always show the per-repo verdict explicitly when drafting** so the operator can see why some repos are in this batch and others aren't. |
 | Threat-model URL | From the PMC sheet's `Security Model` column + the verify SKILL's notes; if the model is on a project site, that URL |
 | Primary + backup PMC contacts | From the PMC sheet's `Contact Person` + `Backup contact` cells (already `@apache.org` per scan-request verification) — for the PMC notification email AND for the Additional Information block on the headline form |
-| Scan-result recipients | Default is derived from `Contact Person` + `Backup contact` cells. Override available via the `Submission notes` cell's `Scan-result destination:` tagged line — used when the PMC asked for a project alias (e.g. `security@<pmc>.apache.org`) instead of personal addresses. The override is per-PMC and goes into the Additional Information block on the headline form. |
+| Scan-result recipients | Tracked separately for the PMC notification email's CC (derived from `Contact Person` + `Backup contact` cells + the original `[GLASSWING]` request body's "send results to" list). **Not used in the form's Additional Information** — the form is the vendor-facing intake and shouldn't pin the downstream forwarding destination; the Security team handles forwarding manually when results land. |
 | Expedite addresses | From the PMC sheet's `Expedite Claude OSS Requests` column. May be empty or `none` — in which case the headline form's checkbox stays unchecked and the expedite-block in Additional Information is omitted. |
-| Submission notes (optional) | From the PMC sheet's `Submission notes` column. Free-text operator overrides + free-text quirks rendered verbatim in the headline form's Additional Information. The helper parses certain tagged lines (currently `Scan-result destination: <addr>...`) as structured overrides; the rest is preserved as-is. Use for per-PMC quirks that don't fit the standard schema: branch-level scope notes ("scan main + 2.x of log4j2"), recipient overrides, opt-outs. Empty cell = no notes section appended; no override applied. |
+| Submission notes (optional) | From the PMC sheet's `Submission notes` column. Free-text operator notes rendered verbatim in the headline form's Additional Information under a `Submission notes (operator-supplied):` section. Vendor-facing only: use for per-PMC quirks the vendor's scan team should know (branch-level scope, repo opt-outs, model-URL caveats). Do NOT put internal-process overrides here (no scan-result delivery destinations — that's an ASF-internal forwarding detail). Empty cell = no section appended. |
 | `Security model verified` date | From the PMC sheet — confirms pre-flight gate |
 | Submitter identity | From `~/.config/asf-security/glasswing/submitter.json` (Name, @apache.org email, GitHub profile URL). One-time setup. |
 
@@ -561,10 +578,8 @@ Best,
      newline-separated `@apache.org` addresses; empty cell
      or `none` = no expedite block and unchecked OSS
      checkbox on the headline form);
-   - the `Submission notes` cell (free-text overrides +
-     quirks; tagged lines parsed for structured
-     overrides — currently `Scan-result destination:` —
-     the rest rendered verbatim in the headline form's
+   - the `Submission notes` cell (free-text vendor-facing
+     notes; rendered verbatim in the headline form's
      Additional Information).
 
 5. **Look up the per-PMC `security@<pmc>` alias** at
