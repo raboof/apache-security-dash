@@ -117,7 +117,9 @@ and sends. The SKILL never sends mail directly.
    SKILL: the four gate-reply fragments, the pre-flight-
    pass template, the canned-response answers, and any
    ad-hoc replies. Cross-referenced from
-   `glasswing-scan-submit` (Email 2 PMC notification) and
+   `glasswing-scan-submit` (PMC notification email; not the
+   form submission itself, which is internal vendor-side
+   and may name vendor staff freely) and
    `glasswing-scan-forward` (scan-results forwarding
    email) — both apply the same rule.
 

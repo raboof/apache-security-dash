@@ -25,8 +25,8 @@ The pipeline this SKILL covers:
 +--------+  +---------+  +---------+  +-----------+  +-----------+  +-----------+  +-----------+  +-----------+
 |[GLASS- |->|Pre-     |->|Pitch    |->|PMC reply  |->|Operator   |->|Submitted  |->|Sanity-    |->|Archived + |
 | WING]  |  |flight   |  |sent to  |  |(expedite  |  |gate       |  |to vendor  |  |checked    |  |Forwarded  |
-| request|  |(model + |  |PMC      |  | list /    |  |(explicit  |  |(Email 1 + |  |(catastr.  |  |to PMC     |
-|        |  | discov.) |  |(scan-   |  | 'none')   |  | go-ahead) |  | Email 2)  |  | errors    |  |verbatim   |
+| request|  |(model + |  |PMC      |  | list /    |  |(explicit  |  |(Forms +   |  |(catastr.  |  |to PMC     |
+|        |  | discov.) |  |(scan-   |  | 'none')   |  | go-ahead) |  | PMC mail) |  | errors    |  |verbatim   |
 |        |  |         |  | response|  |           |  |           |  |           |  | only)     |  |(named     |
 |        |  |         |  | template)|  |           |  |           |  |           |  |           |  | contacts) |
 +--------+  +---------+  +---------+  +-----------+  +-----------+  +-----------+  +-----------+  +-----------+
@@ -220,7 +220,7 @@ classification:
 | `model-verify-pending` | Model nominated but not yet assessed for completeness + per-repo discoverability. | Run `glasswing-model-verify`. |
 | `pre-flight-passed-pitch-not-sent` | `Security model verified` set; `Expedite Claude OSS Requests` cell empty; no pre-flight-pass OSS-expedite pitch has gone out yet on the PMC thread. | Run `glasswing-scan-response`'s pre-flight-pass template (OSS-expedite pitch + ready-to-scan notification). Does **not** trigger `glasswing-scan-submit` directly — `submit` is now operator-gated. |
 | `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
-| `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X to Mirko" (or to defer further). | Surface for operator decision. `glasswing-scan-submit` is operator-gated — never auto-fire on this state. |
+| `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X" (or to defer further). | Surface for operator decision. `glasswing-scan-submit` is operator-gated — never auto-fire on this state. |
 | `submitted-awaiting-vendor` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
 | `results-back-awaiting-sanity-check` | A scan report has arrived from Mirko but the team hasn't sanity-checked + archived + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `glasswing-scan-forward` (covers pre-forward sanity check, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
 | `archived-not-forwarded` | An archive commit exists under `scans/<project>/<repo>/` for this PMC but `Forwarded scan to PMC` is still blank. Process bug (the email should have been drafted at the same time). Detection signal: `git log --grep="^\[scan\] <project>/"` returns a commit newer than the sheet's `Forwarded scan to PMC` date. | Surface for manual intervention; re-run `glasswing-scan-forward` from step 7 (draft email) using the existing archive entry. |
@@ -269,9 +269,10 @@ Output format:
 ### pmc-pitch-replied-awaiting-operator-decision (N)
 - <PMC> — verified <date>; expedite list:
   <N addresses / "none" / "empty">; awaiting operator
-  decision on whether to submit to Mirko. Next: operator
-  says "submit X to Mirko" → then glasswing-scan-submit
-  (two-email flow: vendor request + PMC notification).
+  decision on whether to submit. Next: operator
+  says "submit X" → then glasswing-scan-submit
+  (form-per-repo submission via vendor's enrollment form
+  + PMC notification email).
 
 ### blocked-on-discoverability (N)
 - <PMC> — <N> of <M> repos have AGENTS.md; awaiting PMC
@@ -307,8 +308,13 @@ lists-apache.org thread permalinks:
 
 - `PMC thread (ponymail)` — the `[GLASSWING]` request thread
   between the Security team and the PMC.
-- `Mirko thread (ponymail)` — the scan-submission +
-  scan-results delivery thread with Mirko / Alpha-Omega.
+- `Mirko thread (ponymail)` — historically the scan-submission
+  + scan-results delivery thread with the vendor. As of
+  2026-05-19, `glasswing-scan-submit` submits scan requests
+  via a Google form rather than email, so this column stays
+  blank for new submissions — there is no public-list thread
+  to permalink to. Kept for back-compat with pre-2026-05-19
+  submissions; not maintained for new ones.
 
 Both cells should only ever contain
 `https://lists.apache.org/thread/<tid>` URLs — direct
@@ -349,16 +355,14 @@ Procedure:
    the original `[GLASSWING]` request is CC'd there, so the
    thread is in that archive too.
 
-3. For each PMC row where `Date scan requested` is filled
-   AND `Mirko thread (ponymail)` is blank:
-
-   - Call `mcp__ponymail__search_list` with `list=private`,
-     `domain=<pmc>.apache.org`, `subject="Scan request for
-     Apache <PMC name>"` (or the Mirko-thread pattern that
-     `glasswing-scan-submit` uses).
-   - Find the thread and write its direct permalink.
-   - Same reason for using `private@<pmc>` rather than
-     `security@apache.org`: the MCP blocks the latter.
+3. **`Mirko thread (ponymail)` is not maintained for
+   submissions made after 2026-05-19.** `glasswing-scan-submit`
+   now uses a Google form rather than email, so there is no
+   public-list thread to permalink to. Leave the cell blank
+   for new submissions; do not search for it. The column
+   stays in the schema for back-compat with pre-2026-05-19
+   submissions whose Mirko-email thread was permalinked
+   before the transition.
 
 4. If a thread can't be found despite ponymail auth being
    active, leave the cell blank and surface the row in the
@@ -399,7 +403,7 @@ unbidden.
 | Add a new column / rename / insert | `glasswing-scan-update` (add-columns / insert-column / rename-column) |
 | Save a canned response | `glasswing-scan-update` (append-canned) |
 | Refresh the Status sheet | `glasswing-scan-update` (build-status-tab) |
-| Draft a scan-submission email to Mirko | `glasswing-scan-submit` |
+| Submit per-repo scan-request forms + draft PMC notification | `glasswing-scan-submit` |
 | Sanity-check Mirko's report + forward verbatim to PMC | `glasswing-scan-forward` |
 | Generate a status rollup | `glasswing-scan-status` |
 | Produce a fresh threat-model draft for a PMC | `threat-model-producer` |
