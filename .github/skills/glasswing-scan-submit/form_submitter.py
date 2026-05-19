@@ -597,17 +597,25 @@ def submit_one(page, fill: FormFill) -> str:
         fill.additional_info
     )
 
+    # Google Forms checkboxes are custom <div role="checkbox"> elements,
+    # not native <input type="checkbox">. Playwright's .check() verifies
+    # aria-checked flips after click, but Google Forms' state update can
+    # lag the click microtask — .check() then fails with "did not change
+    # its state" even though the click registered. Use .click() instead
+    # and trust that the click took. If the state doesn't actually flip
+    # (rare in practice), the form's required-field validation catches it
+    # at Submit time and we surface the error.
     if fill.confirm_authorized:
         page.get_by_role(
             "checkbox", name=re.compile(r"authorized to request this scan", re.I)
-        ).check()
+        ).click()
     if fill.confirm_security_md:
         page.get_by_role(
             "checkbox",
             name=re.compile(r"security\.txt or SECURITY\.md", re.I),
-        ).check()
+        ).click()
     if fill.confirm_claude_max:
-        page.get_by_role("checkbox", name=re.compile(r"Claude Max 20x", re.I)).check()
+        page.get_by_role("checkbox", name=re.compile(r"Claude Max 20x", re.I)).click()
 
     page.get_by_role("button", name=re.compile(r"^(Submit|Wyślij)$", re.I)).click()
     page.wait_for_url(re.compile(r"formResponse|viewscore"), timeout=30000)
