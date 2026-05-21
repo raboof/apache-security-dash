@@ -214,16 +214,30 @@ public LDAP JSON dump is the only source that always gives the
 correct ID; everything else is a hint.
 
 1. **Whimsy public LDAP JSON (canonical, no auth required)** —
-   fetch <https://whimsy.apache.org/public/public_ldap_people.json>.
-   The `people` field maps every Apache ID to `{name, ...}`. Match
-   the sender's *human name* (From: header display name or
-   signature line) against the `name` field; read off the ID. This
-   endpoint is open and authoritative. Use it first.
+   query <https://whimsy.apache.org/public/public_ldap_people.json>
+   via the bundled `whimsy_lookup.py resolve-id` helper:
+
+       uv run .claude/skills/glasswing-scan-response/whimsy_lookup.py \
+         resolve-id "<full name from From: or signature line>"
+
+   This fetches the LDAP JSON via stdlib urllib + json (no
+   summarizing layer) and returns every Apache ID whose `name`
+   field matches the search string. Typically one hit. Use this
+   first; the endpoint is open and authoritative.
+
+   **Do NOT use WebFetch on this URL.** The LDAP people JSON is
+   several MB; WebFetch summarises it and has been observed to
+   return hallucinated keys, truncated rosters, or fabricated
+   entries. The 2026-05-21 Doris incident (Calvin Kirs) traces
+   back to a WebFetch summary that drove an unnecessary gate-3
+   challenge in a PMC-facing email; the deterministic helper
+   would have returned the correct answer. Treat WebFetch on
+   `*.json` Whimsy endpoints as a bug.
 
    Example. Sender wrote from `ancosen@gmail.com`. The local-part
    heuristic (next step) would propose `ancosen@apache.org`, but
-   the LDAP JSON shows that "Andrea Cosentino" maps to
-   `acosentino`, not `ancosen`. Trust LDAP, not the heuristic.
+   `whimsy_lookup.py resolve-id "Andrea Cosentino"` returns
+   `acosentino`. Trust the helper, not the heuristic.
 
 2. **Local-part heuristic (hint only — confirm against LDAP)** —
    `<local-part-of-sender>@apache.org`. Often right, sometimes
@@ -298,12 +312,31 @@ Reply fragment — block (only when no candidate can be inferred):
 
 Cross-check the sender's `@apache.org` address (From: header
 or body-stated, whichever gate 2 resolved to) against the PMC
-roster. Sources of truth:
+roster via the bundled `whimsy_lookup.py check-pmc-member`
+helper:
 
-- Apache Whimsy `committee-info.json`:
-  <https://whimsy.apache.org/public/committee-info.json>
-- Roster page:
-  `https://whimsy.apache.org/roster/committee/<pmc>`
+    uv run .claude/skills/glasswing-scan-response/whimsy_lookup.py \
+      check-pmc-member <pmc-slug> <apache-id> [<apache-id> ...]
+
+The helper queries
+<https://whimsy.apache.org/public/committee-info.json> via
+stdlib urllib + json (no summarizing layer), looks up the PMC
+under `committees.<slug>`, and reports YES/NO per Apache ID
+with the member's name + joining date for context. Exit code
+1 if any queried ID is not on the roster; 0 if all are.
+
+For the full roster (useful when drafting the reply or
+verifying the chair), use `whimsy_lookup.py pmc-info <slug>`.
+
+**Do NOT use WebFetch on `committee-info.json`.** Same caveat
+as Gate 2: WebFetch summarises this multi-MB file and has
+been observed to return hallucinated roster entries. The
+helper above is the only way to get a deterministic answer.
+
+The interactive roster page
+`https://whimsy.apache.org/roster/committee/<pmc>` requires
+Apache ID auth and is a fallback for the human's
+double-check, not the agent's automated gate.
 
 If the address is not on the PMC's roster, decline politely.
 Past abuse exists where non-members tried to get scans against
