@@ -523,6 +523,13 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
             if r.strip() and not r.strip().startswith("#")
         ]
     )
+    submitted_count = len(
+        [
+            r
+            for r in repos_submitted.splitlines()
+            if r.strip() and not r.strip().startswith("#")
+        ]
+    )
 
     pr_urls = parse_pr_urls(pr_issues)
     pr_state = (
@@ -537,6 +544,7 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
         "state": state,
         "model_status": model_status,
         "repos_requested_count": repo_count,
+        "repos_submitted_count": submitted_count,
         "repos_requested": repos_requested,
         "repos_submitted": repos_submitted,
         "request_date": requested_date,
@@ -671,8 +679,57 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     pmcs_with_prs = len(
         [e for e in entries if (e["pr_open"] + e["pr_merged"] + e["pr_closed"]) > 0]
     )
+    # Per-state PMC counts (state machine in compute_pmc_status).
+    state_counts = {
+        s: sum(1 for e in entries if e["state"] == s) for s in PIPELINE_STATES
+    }
+    # Pipeline-progress aggregates: a PMC counts for "scan sent to vendor"
+    # if it's reached Submitted or any later state, and for "scan results
+    # back" if it's reached Triaging or later.
+    pmcs_sent_to_vendor = sum(
+        state_counts.get(s, 0) for s in ("Submitted", "Triaging", "Delivered")
+    )
+    pmcs_results_back = sum(state_counts.get(s, 0) for s in ("Triaging", "Delivered"))
+    # Total repos requested across all in-flight PMCs (sum of the per-PMC
+    # `Repositories requested` cell line counts) and total repos actually
+    # submitted to the vendor (sum of `Repositories submitted` cells —
+    # populated by `glasswing-scan-submit` after form-per-repo submission).
+    total_repos_requested = sum(e["repos_requested_count"] for e in entries)
+    total_repos_submitted = sum(e["repos_submitted_count"] for e in entries)
+
     append_row(["PROGRAM TOTALS"])
     append_row(["PMCs opted in (Scan Requested = Yes)", total_pmcs])
+    append_row(["  Pre-flight (model not yet verified)", state_counts["Pre-flight"]])
+    append_row(
+        ["  Ready (model verified, awaiting operator submit)", state_counts["Ready"]]
+    )
+    append_row(
+        [
+            "  Submitted (sent to vendor, awaiting results)",
+            state_counts["Submitted"],
+        ]
+    )
+    append_row(
+        [
+            "  Triaging (results back, pre-forward sanity check)",
+            state_counts["Triaging"],
+        ]
+    )
+    append_row(["  Delivered (forwarded to PMC)", state_counts["Delivered"]])
+    append_row(
+        [
+            "PMCs with scan request sent to vendor (Submitted+Triaging+Delivered)",
+            pmcs_sent_to_vendor,
+        ]
+    )
+    append_row(
+        [
+            "PMCs with scan results back from vendor (Triaging+Delivered)",
+            pmcs_results_back,
+        ]
+    )
+    append_row(["Total repos requested across in-flight PMCs", total_repos_requested])
+    append_row(["Total repos submitted to vendor for scan", total_repos_submitted])
     append_row(["PMCs with at least one PR opened", pmcs_with_prs])
     append_row(["PRs opened (not yet merged)", total_open])
     append_row(["PRs merged", total_merged])
