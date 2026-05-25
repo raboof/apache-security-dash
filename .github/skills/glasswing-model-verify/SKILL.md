@@ -840,6 +840,13 @@ Gmail tools directly.
   than re-explaining what a threat model is. The PMC's threat
   model is *their* document; the rubric exists to help, not to
   impose.
+- **Don't restate what the recipient already knows.** A quick
+  acknowledgment of where things stand is fine; full re-
+  explanation of the pre-flight pipeline / sanity-check
+  mechanics / why discoverability matters belongs in the
+  initial scan-response thread, not in every follow-up. Keep
+  status updates short: what passed, what didn't, what's the
+  ask. Trust prior thread context.
 - **Maintainer voice in the *output*, not Security-team voice.**
   When generating model section drafts via the producer SKILL,
   the prose should read as if the project wrote it about

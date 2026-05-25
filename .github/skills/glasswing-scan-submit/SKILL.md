@@ -473,24 +473,10 @@ vendor's scan team has full context. Subsequent
 submissions are slimmer and point back to the headline
 submission for that context.
 
-What happens next:
-  - The scan runs against each repo.
-  - Scan results come back to the ASF Security team
-    first at security@apache.org.
-  - We do a quick pre-forward sanity check on the
-    report — right project, right model, no truncation,
-    all submitted repos covered, no cross-PMC leakage.
-    The goal is to catch catastrophically broken vendor
-    output so you're not asked to read a clearly broken
-    report. We're explicitly NOT doing per-finding
-    triage on your behalf.
-  - We forward the vendor's findings verbatim to your
-    PMC's named scan-result recipients via a separate
-    thread — typically a markdown file per repo.
-    Per-finding triage against your threat model is on
-    your end.
-
-You don't need to do anything until the results arrive.
+You don't need to do anything until the results arrive
+— we'll sanity-check the vendor's report and forward it
+verbatim to your named scan-result recipients on a fresh
+thread.
 
 <IF the Expedite Claude OSS Requests cell was non-empty
 and not "none", include this block; otherwise omit>
@@ -709,6 +695,15 @@ the values for `glasswing-scan-update` to apply.
 
 ## Style notes
 
+- **Don't restate what the recipient already knows.** The
+  PMC has already heard the pipeline mechanics
+  (sanity-check, verbatim forward, no per-finding triage on
+  our side) in the pre-flight-pass email. The notification
+  email is a status update — submission happened, here are
+  the repos, here's the expedite-ask block if applicable.
+  Cut "what happens next" recaps and process preambles;
+  keep substance (repo list, expedite addresses, the
+  reassurance that no PMC action is needed yet).
 - **One PMC per submission run.** Don't batch multiple
   PMCs into a single form-submission run. Each PMC has
   its own ordering, its own headline form, its own
