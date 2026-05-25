@@ -431,19 +431,10 @@ To], primary + backup PMC contacts.
 ```text
 Hi <primary contact first name (and any others)>,
 
-The Glasswing scan for Apache <PMC name> is back. Before
-passing it on, the Security team has done a quick pre-forward
-sanity check to make sure the report isn't catastrophically
-broken — right project, right model, no truncation, all
-submitted repos covered, no cross-PMC leakage, plausible
-finding mix. The report passed the check; the vendor's
-findings are forwarded verbatim below.
-
-We're explicitly not pre-classifying or pre-triaging the
-findings on your behalf — that's your call against the
-project's threat model at <model URL>, through your normal
-private@<pmc>.apache.org triage process. Our role on results
-is the sanity check only.
+The Glasswing scan for Apache <PMC name> is back. Sanity
+check passed; the vendor's findings are forwarded verbatim
+below for your triage against the project's threat model
+at <model URL>.
 
 Canonical scan reference(s) (cite these in your tracker —
 each archives the raw vendor output + our sanity-check notes
@@ -492,16 +483,11 @@ findings.]
 
 === NEXT STEPS ===
 
-Triage through your normal process:
-  private@<pmc>.apache.org -> CVE / coordinated disclosure /
-  release flow.
-
-If on closer look you find findings that fall clearly outside
-your threat model (§3 out-of-scope, §11a known non-findings,
-§9 disclaimed properties), a one-line "this falls outside the
-model" reply back to security@apache.org helps us pass that
-back to the vendor for the next scan's suppression list — but
-the disposition call is yours, not ours.
+If any findings fall clearly outside your threat model
+(§3 out-of-scope, §11a known non-findings, §9 disclaimed
+properties), a one-line reply back to security@apache.org
+helps us pass that back to the vendor for the next scan's
+suppression list. The disposition call is yours.
 
 Best,
 <sign-off in the human's voice — the SKILL doesn't sign>
@@ -514,6 +500,13 @@ a 50-finding scan with 5 forwarded is a short email; a
 
 ## Style notes
 
+- **Don't restate what the recipient already knows.** The PMC
+  has already heard the sanity-check spiel + the "we don't
+  triage on your behalf" framing in the pre-flight-pass email
+  and other prior thread context. Keep the forward email short:
+  state the result (sanity check passed / observations), the
+  archive references, the findings, and the disposition ask.
+  Cut process preambles.
 - **Preserve the vendor's output verbatim.** Don't reformat
   findings, don't merge them, don't re-order them, don't
   rename their IDs. The PMC's triagers will quote findings

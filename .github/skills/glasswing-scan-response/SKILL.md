@@ -548,20 +548,9 @@ Pre-flight is complete for Apache <PMC name>:
     for X of N; the remaining are in flight via
     PR(s)#NN+#NN>.
 
-That means we're ready to put the scan into the queue
-whenever you give the green light. We do NOT auto-submit;
-the operator on our side waits for explicit go-ahead per
-PMC before the scan request goes out. Once submitted,
-results come back to the ASF Security team first for a
-pre-forward sanity check (we make sure the report isn't
-catastrophically broken — wrong project, wrong/stale
-model, truncated output — so you're not asked to read a
-clearly broken report). The vendor's findings are then
-forwarded verbatim to your named triage contacts via a
-separate thread on our side; per-finding triage against
-your threat model is on your end. Standard cycle is
-usually days to a couple of weeks end-to-end depending on
-queue position.
+Ready to queue whenever you give the green light — we
+don't auto-submit. Typical end-to-end cycle is days to
+a couple of weeks depending on queue position.
 
 A separate offer for PMC members who'll be doing the
 triage work:
@@ -999,6 +988,12 @@ request before drafting a reply.
   from a mile away.
 - Concise. Reply length should be proportional to the question's
   size; a one-line question gets a paragraph or two, not three pages.
+- **Don't restate what the recipient already knows.** A quick
+  acknowledgment is fine; full re-explanation of the pipeline,
+  sanity-check mechanics, or process steps they've seen in prior
+  emails on the thread isn't. Cut "what happens next" recaps and
+  process preambles. Keep the substance (URLs, repo lists,
+  sanity-check observations, the actual ask).
 - Be honest about overlap with other tools (the "complementary, not
   replacement" framing). PMCs respect that more than over-claiming.
 - When you don't know the answer to a project-specific question
