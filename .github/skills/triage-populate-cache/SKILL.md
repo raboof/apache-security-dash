@@ -90,8 +90,11 @@ committed. Downstream SKILLs MUST follow this layout.
 
 ```text
 report-cache/
-  .seen.json                      # dedup index: every ponymail id ever downloaded
+  .seen.json                      # dedup index: every ponymail id downloaded or dismissed
   .sweep-state.json               # incremental watermark: {"last_epoch": <int>}
+  .dismissed.json                 # WRITTEN BY THE FILING SKILL: false positives removed
+                                  #   from the spool (id + subject + reason); their ids
+                                  #   stay in .seen.json so the sweep never re-downloads them
 
   _inbox/<slug>/                  # WRITTEN BY THIS SKILL: untriaged report bundles
       report.txt                  #   full plain-text body (not a snippet)
@@ -101,7 +104,7 @@ report-cache/
 
   <date>/<pmc>/<keywords>/        # WRITTEN BY THE FILING SKILL: triaged bundles
       report.txt                  #   (moved from _inbox, unchanged)
-      meta.yaml                   #   tag / pmc / keywords / wf filled in; status advanced
+      meta.yaml                   #   tag / pmc / keywords filled in; status advanced
       attachments/
       draft-forward.md            # WRITTEN BY THE DRAFTING SKILL: forward to the PMC
       draft-reply.md              #   ack / push-back to the reporter
@@ -115,11 +118,14 @@ report-cache/
 The report **tag** the team assigns has the form:
 
 ```text
-<pmc>/<date> <space-separated keywords> [wf:(reporter|cve-allocation|non-issue-feedback|non-issue-docs)]
+<pmc>/<date> <space-separated keywords> [<wf>]
 ```
 
-which maps to the canonical path `<date>/<pmc>/<keywords>/` plus the
-optional `wf` workflow marker.
+The filing SKILL stamps the `<pmc>/<date> <keywords>` part. The optional
+trailing `<wf>` workflow marker (one of `reporter`, `cve-allocation`,
+`non-issue-feedback`, `non-issue-docs`) is added by a later actioning phase,
+not at filing time. The tag maps to the canonical path
+`<date>/<pmc>/<keywords>/` (keywords hyphen-joined).
 
 ### meta.yaml schema
 
@@ -146,10 +152,10 @@ fetched_at:     # ISO-8601 UTC fetch time
 pmc:            # auto-assigned PMC slug when exactly one security@<pmc> recipient, else null
 pmc_candidates: # all PMC slugs seen in security@<pmc> recipients, or null
 
-# Triage state (pmc/keywords/wf/tag completed by the filing SKILL)
+# Triage state (pmc/keywords/tag set by the filing SKILL)
 tag:            # full tag string, or null until filed
 keywords:       # list of keywords, or null until filed
-wf:             # workflow marker, or null
+wf:             # workflow marker, set by a later actioning phase, or null
 handled:        # false until the team has actioned the report
 status:         # "inbox" -> (filing SKILL advances this)
 ```
