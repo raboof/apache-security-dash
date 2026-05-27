@@ -43,7 +43,7 @@ Run this **before** `git push`, not after. The hooks catch:
 - **Generic safety** (`pre-commit-hooks`): merge-conflict markers, accidentally-committed private keys, trailing whitespace, mixed line endings, missing trailing newline.
 - **Markdown structure** (`markdownlint-cli2` against `.markdownlint.json`): broken anchors (`MD051`), dangling link references (`MD053`). Style rules are off — the existing docs settled those.
 - **Typos** (`typos` against `.typos.toml`): fast spell-checker. Project-specific terms (`Glasswing`, `Mythos`, PMC names) are allowlisted; common English misspellings are caught.
-- **Python lint + format** (`ruff` against every `.py` under `.github/skills/` and `tools/`). Both `ruff check` and `ruff format --check` run. Today that covers `sheets_writer.py`, `form_submitter.py`, and the `tools/jira_writer/` + `tools/whimsy_lookup/` packages + tests.
+- **Python lint + format** (`ruff` against every `.py` under `.github/skills/` and `tools/`). Both `ruff check` and `ruff format --check` run. Today that covers `sheets_writer.py` plus the `tools/jira_writer/`, `tools/whimsy_lookup/`, and `tools/form_submitter/` packages + tests.
 
 If a hook fails, fix the underlying issue rather than bypassing — `--no-verify` is not a convention here. The hooks are fast (single-digit seconds for a clean run); running them locally before pushing is the expected workflow.
 

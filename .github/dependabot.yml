@@ -66,3 +66,21 @@ updates:
       semver-major-days: 14
       semver-minor-days: 7
       semver-patch-days: 3
+
+  # tools/form_submitter — Playwright-driven Google Form filler.
+  - package-ecosystem: pip
+    directory: "/tools/form_submitter"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(form_submitter)"
+    labels:
+      - dependencies
+      - python
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
