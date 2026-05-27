@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+# uv.lock for an internal stdlib-only tool isn't worth tracking; the
+# only resolved dep is pytest, and that floats fine. Add the lock back
+# if we add runtime deps that need reproducible builds.
+uv.lock

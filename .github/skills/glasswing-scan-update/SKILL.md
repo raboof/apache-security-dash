@@ -313,6 +313,58 @@ Safety properties baked into the helper:
 - `USER_ENTERED` value-input-option: dates / numbers are parsed
   as if a user typed them. Pass dates as ISO `YYYY-MM-DD`.
 
+## Companion: `jira-writer` (Apache JIRA writes)
+
+Some PMC follow-ups also require a JIRA ticket (HBase's
+"PR title needs a JIRA id" convention is the canonical case;
+several other PMCs use the same convention). For those, this
+SKILL hands off to the `jira-writer` CLI in
+[`tools/jira_writer/`](../../../tools/jira_writer/) — a small
+stdlib-only Python project with PAT-authenticated Bearer auth
+to <https://issues.apache.org/jira>.
+
+Invocation (matches the dry-run-and-confirm gate the rest of
+this SKILL uses):
+
+```bash
+# Verify auth (one-time per machine, after the PAT is saved):
+uv run --project tools/jira_writer jira-writer whoami
+
+# Create an issue:
+uv run --project tools/jira_writer jira-writer create-issue \
+    --project HBASE \
+    --summary "<title>" \
+    --description-file "$TMPDIR/jira-description.md" \
+    --dry-run                # show payload preview, contact nothing
+# ... then re-run without --dry-run after user approval.
+
+# Add a comment to an existing issue:
+uv run --project tools/jira_writer jira-writer add-comment \
+    --issue HBASE-30181 \
+    --body-file "$TMPDIR/jira-comment.md" \
+    --dry-run
+```
+
+One-time PAT setup:
+
+1. Generate a Personal Access Token at
+   <https://issues.apache.org/jira/secure/ViewProfile.jspa> →
+   **Personal Access Tokens** tab → **Create token**.
+2. Save it locally (mode 0o600 is enforced by the loader):
+
+   ```bash
+   mkdir -p ~/.config/asf-security/jira
+   printf '%s' '<PAT>' > ~/.config/asf-security/jira/token
+   chmod 600 ~/.config/asf-security/jira/token
+   ```
+
+3. Verify with `uv run --project tools/jira_writer jira-writer whoami`.
+
+Full reference (setup gotchas, error modes, security notes) in
+[`tools/jira_writer/README.md`](../../../tools/jira_writer/README.md).
+Tests at `tools/jira_writer/tests/` run via
+`uv run pytest` from the project root.
+
 ## Canned responses (workflow)
 
 The `Canned Responses` sheet accumulates reusable answer

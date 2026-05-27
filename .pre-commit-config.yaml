@@ -63,21 +63,23 @@ repos:
         name: typos
         args: [--force-exclude]
 
-  # ruff lint + format for the Python helpers under `.github/skills/`
-  # (sheets_writer.py, form_submitter.py — both use PEP 723 inline
-  # metadata via `uv run`). Run via `uvx ruff` so we don't need a
-  # separate ruff install.
+  # ruff lint + format for Python under:
+  #   - `.github/skills/` (sheets_writer.py, form_submitter.py — PEP
+  #     723 inline-metadata scripts)
+  #   - `tools/` (small Python projects with their own pyproject.toml;
+  #     jira_writer is the first one)
+  # Run via `uvx ruff` so we don't need a separate ruff install.
   - repo: local
     hooks:
-      - id: ruff-check-skill-helpers
-        name: ruff check (skill helpers)
+      - id: ruff-check-py
+        name: ruff check (skill helpers + tools)
         language: system
         entry: uvx ruff check
-        files: ^\.github/skills/.*\.py$
+        files: ^(\.github/skills|tools)/.*\.py$
         pass_filenames: true
-      - id: ruff-format-skill-helpers
-        name: ruff format (skill helpers)
+      - id: ruff-format-py
+        name: ruff format (skill helpers + tools)
         language: system
         entry: uvx ruff format --check
-        files: ^\.github/skills/.*\.py$
+        files: ^(\.github/skills|tools)/.*\.py$
         pass_filenames: true
