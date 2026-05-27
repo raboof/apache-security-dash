@@ -55,7 +55,7 @@ Some SKILLs hand off mechanical work to a Python helper. Two
 shapes coexist:
 
 - **Inline** — single PEP-723 script inside the SKILL dir
-  (`sheets_writer.py`, `form_submitter.py`, `whimsy_lookup.py`).
+  (`sheets_writer.py`, `form_submitter.py`).
 - **Promoted** — standalone Python project under
   [`../../tools/`](../../tools/) with `pyproject.toml`, tests,
   and CI. Invoked from SKILLs via
@@ -66,6 +66,7 @@ Currently in `tools/`:
 | Project | Used by | Purpose |
 | --- | --- | --- |
 | [`jira_writer`](../../tools/jira_writer/) | `glasswing-scan-update` (today); `glasswing-scan-response` + `glasswing-model-verify` (as JIRA-id-in-title PMCs come up) | Apache JIRA write helper (PAT-authenticated). Files companion tickets when a SKILL opens a PR against a PMC repo that needs a JIRA id (HBASE convention; ~5 other PMCs follow the same pattern). |
+| [`whimsy_lookup`](../../tools/whimsy_lookup/) | `glasswing-scan-response` (Gate 2 identity resolution + Gate 3 PMC-roster check) | Deterministic Apache Whimsy / LDAP lookups. Replaces unreliable WebFetch-summary calls against `public_ldap_people.json` and `committee-info.json` after the 2026-05-21 Doris-incident hallucination. |
 
 The top-level [README's "Two helper tiers" section](../../README.md#two-helper-tiers--inline-scripts-vs-tools-projects)
 documents the promotion criteria.
