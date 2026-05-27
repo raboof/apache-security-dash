@@ -1,0 +1,83 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+---
+name: codeql
+
+# CodeQL Python scan over `.github/skills/**/*.py` (the inline PEP-723
+# helpers) and `tools/**/*.py` (the promoted projects). Findings land
+# in the repo's Security tab.
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    paths:
+      - ".github/skills/**/*.py"
+      - "tools/**/*.py"
+      - ".github/workflows/codeql.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".github/skills/**/*.py"
+      - "tools/**/*.py"
+      - ".github/workflows/codeql.yml"
+  # Weekly baseline scan independent of code changes — keeps drift
+  # against newly-released CodeQL queries from accumulating silently.
+  schedule:
+    - cron: "22 4 * * 4"
+
+permissions: {}
+
+jobs:
+  analyze:
+    name: CodeQL Python analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+      # Required by github/codeql-action/init for the
+      # overlay-database caching path on PR runs — without it
+      # the action fails with "Resource not accessible by
+      # integration" against the workflow-runs API.
+      actions: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@84498526a009a99c875e83ef4821a8ba52de7c22  # codeql-bundle-v2.25.5
+        with:
+          languages: python
+          # Build mode `none` skips the build step entirely — our
+          # Python code is library-shaped (no compilation), so CodeQL
+          # can analyse the source tree directly.
+          build-mode: none
+
+      # CodeQL's SARIF upload requires GitHub Advanced Security /
+      # Code Scanning enabled on the repository. apache/security
+      # doesn't have that on today, so the analyze step's upload
+      # phase fails with "Code Security must be enabled". The
+      # analysis itself still runs; we mark the step non-blocking
+      # so the workflow doesn't gate PRs on an infra-level
+      # prerequisite. Flip `continue-on-error: false` once Code
+      # Scanning is enabled (via .asf.yaml or an ASF infra ticket).
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@84498526a009a99c875e83ef4821a8ba52de7c22  # codeql-bundle-v2.25.5
+        continue-on-error: true
+        with:
+          category: "/language:python"

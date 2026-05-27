@@ -15,17 +15,31 @@
 # specific language governing permissions and limitations
 # under the License.
 ---
-name: prek
+name: allowlist
+
+# Fail fast on workflow edits that introduce an action ref outside the
+# ASF Infrastructure approved-actions allowlist
+# (apache/infrastructure-actions/approved_patterns.yml). When a non-
+# allowlisted ref slips in, GitHub itself returns `startup_failure`
+# with 0-second runs and no logs — this check turns that into an
+# actionable PR failure with the offending refs listed.
 
 on:  # yamllint disable-line rule:truthy
   pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
 
 permissions: {}
 
 jobs:
-  prek:
+  allowlist:
+    name: ASF approved-actions allowlist
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,22 +48,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # `uv` brings its own Python and is required by two of the
-      # local hooks (`ruff-check-sheets-writer`,
-      # `ruff-format-sheets-writer`) which invoke `uvx ruff`. It also
-      # hosts the `prek` install below.
-      # Pin matches the ASF Infrastructure approved-actions allowlist
-      # (apache/infrastructure-actions/approved_patterns.yml). Bump only
-      # to another SHA in that file; an unlisted SHA fails the workflow
-      # with `startup_failure` before any step runs.
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+      - uses: apache/infrastructure-actions/allowlist-check@137df70ba4de7fae2be7f41d200844f8d3705946  # main 2026-05
         with:
-          enable-cache: true
-
-      # Install prek via uv so the install lives in the cached uv
-      # tool dir between runs.
-      - name: Install prek
-        run: uv tool install prek
-
-      - name: Run prek
-        run: prek run --show-diff-on-failure --color=always --all-files
+          scan-glob: ".github/**/*.yml"
