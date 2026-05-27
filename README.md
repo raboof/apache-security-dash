@@ -36,6 +36,8 @@ tools/                              — small Python projects with pyproject.tom
                                       tests, and CI; invoked from SKILLs
 ├── jira_writer/                    — Apache JIRA write helper (PAT-authed);
 │                                      see tools/jira_writer/README.md
+├── form_submitter/                 — Playwright-driven vendor-form filler;
+│                                      see tools/form_submitter/README.md
 └── whimsy_lookup/                  — Deterministic Whimsy/LDAP lookups for
                                       Gate 2 + Gate 3 identity checks;
                                       see tools/whimsy_lookup/README.md
@@ -52,13 +54,12 @@ content.
 The repo distinguishes between two scales of Python helper:
 
 - **Inline scripts inside a SKILL directory** (e.g.
-  `.github/skills/glasswing-scan-update/sheets_writer.py`,
-  `.github/skills/glasswing-scan-submit/form_submitter.py`) — single
+  `.github/skills/glasswing-scan-update/sheets_writer.py`) — single
   files using PEP 723 inline metadata via `uv run`. No `pyproject.toml`,
   no test suite, no CI. Right for narrow helpers a single SKILL owns
   end-to-end.
 - **Standalone projects under `tools/`** (e.g. `tools/jira_writer/`,
-  `tools/whimsy_lookup/`) — proper Python projects with `pyproject.toml`,
+  `tools/whimsy_lookup/`, `tools/form_submitter/`) — proper Python projects with `pyproject.toml`,
   unit tests, CI. Right for helpers that **multiple** SKILLs need (or
   expect to soon), have non-trivial logic worth test-covering, or
   interact with a system where regressions are expensive (e.g. JIRA

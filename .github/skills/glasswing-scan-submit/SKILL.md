@@ -1,6 +1,6 @@
 ---
 name: glasswing-scan-submit
-description: Submit a PMC's scan request to the vendor's project-enrollment Google Form (one form submission per repo), then draft the PMC notification email. The form replaces the old "Email 1 to Mirko" flow as of 2026-05-19. Repos are ordered by OSSF Criticality Score (highest first); the top-ranked repo carries the maintainer roster + the OSS-expedite explanation + the "I'm interested in Claude Max 20x" checkbox in its Additional Information field. Subsequent repos in the same PMC's scope submit slimmer forms that point back to the first submission for context. The SKILL only fires on **explicit operator instruction** ("submit X for scan" / "queue X" / "OK send the request"). Form submission uses a Playwright persistent profile (one-time Google sign-in via `form_submitter.py setup`); the helper then drives the form headlessly per repo. After all forms are submitted, the SKILL drafts a PMC-notification email for human review and hands off to `glasswing-scan-update` to set `Date scan requested` + `Repositories submitted`.
+description: Submit a PMC's scan request to the vendor's project-enrollment Google Form (one form submission per repo), then draft the PMC notification email. The form replaces the old "Email 1 to Mirko" flow as of 2026-05-19. Repos are ordered by OSSF Criticality Score (highest first); the top-ranked repo carries the maintainer roster + the OSS-expedite explanation + the "I'm interested in Claude Max 20x" checkbox in its Additional Information field. Subsequent repos in the same PMC's scope submit slimmer forms that point back to the first submission for context. The SKILL only fires on **explicit operator instruction** ("submit X for scan" / "queue X" / "OK send the request"). Form submission uses a Playwright persistent profile (one-time Google sign-in via `form-submitter setup`); the helper then drives the form headlessly per repo. After all forms are submitted, the SKILL drafts a PMC-notification email for human review and hands off to `glasswing-scan-update` to set `Date scan requested` + `Repositories submitted`.
 ---
 
 # glasswing-scan-submit SKILL
@@ -220,7 +220,7 @@ operator decides to actually queue the scan.
    | --- | --- | --- |
    | Name of the Open Source Project | `Apache <PMC name>` (e.g. `Apache Tomcat`) | Same |
    | URL of the Repository | The repo's GitHub URL (e.g. `https://github.com/apache/tomcat`) | The repo's GitHub URL for *this* submission |
-   | Your Name | Submitter's name (e.g. `Jarek Potiuk`) — read from `form_submitter.py` config | Same |
+   | Your Name | Submitter's name (e.g. `Jarek Potiuk`) — read from the `form-submitter` CLI (in `tools/form_submitter/`) config | Same |
    | Your Email Address | Submitter's `@apache.org` address (e.g. `potiuk@apache.org`) — read from config | Same |
    | URL of your Github profile | Submitter's GitHub profile URL — read from config | Same |
    | Your Role within the Project | `ASF Security Committee member, submitting on behalf of <PMC name> PMC at their request` | Same |
@@ -314,14 +314,14 @@ operator decides to actually queue the scan.
    `@apache.org` address (e.g. `potiuk@apache.org`), not a
    personal email — the submission represents the ASF
    Security Committee acting on behalf of the PMC. The
-   `form_submitter.py` helper reads this from a config
+   the `form-submitter` CLI (in `tools/form_submitter/`) helper reads this from a config
    file (`~/.config/asf-security/glasswing/submitter.json`)
    so it doesn't need to be repeated per-submission. If
    the config file is missing, surface as a question
    before submitting.
 
    The Google account the submitter signs in with during
-   `form_submitter.py setup` can be any account they
+   `form-submitter setup` can be any account they
    prefer — the form will collect that login-anchored
    email separately from the "Your Email Address" field.
    The two don't need to match; the form-collected one is
@@ -370,7 +370,7 @@ operator decides to actually queue the scan.
     PMC's row to the dates the work actually happened:
 
     - `Date scan requested` — the date the form
-      submissions were completed (`form_submitter.py`
+      submissions were completed (the `form-submitter` CLI (in `tools/form_submitter/`)
       returns this).
     - `Repositories submitted` — the exact list of repo
       URLs that were submitted via the form, newline-
@@ -599,14 +599,14 @@ Best,
    edits, revise and re-render before re-asking.
    Substantive rewrites need fresh approval.
 
-8. **Run `form_submitter.py submit-pmc --dry-run`** with
+8. **Run `form-submitter submit-pmc --dry-run`** with
    the PMC slug. The helper prints what it *would* submit
    on each form (verifies the plan from step 6 matches
    reality; catches missing config, missing repos in the
    Repositories sheet, etc.). The operator confirms the
    dry-run output matches expectations.
 
-9. **Run `form_submitter.py submit-pmc` live.** The helper
+9. **Run `form-submitter submit-pmc` live.** The helper
    drives the form for each repo in order. Captures the
    confirmation URL (or screenshot path) per submission.
    Reports completion + the list of submitted repo URLs +
@@ -654,10 +654,14 @@ Best,
     Do not invoke the update SKILL yourself; the user runs
     it once they've actually sent the notification email.
 
-## form_submitter.py helper
+## `form-submitter` helper
 
-Lives in this SKILL's directory at
-`.github/skills/glasswing-scan-submit/form_submitter.py`.
+Lives at [`tools/form_submitter/`](../../../tools/form_submitter/)
+— a standalone Python project with `pyproject.toml`, unit
+tests, and CI. Invoke as
+`uv run --project tools/form_submitter form-submitter <subcommand>`.
+See [`tools/form_submitter/README.md`](../../../tools/form_submitter/README.md)
+for the full setup + usage docs.
 
 Auth model: a persistent Chromium profile at
 `~/.config/asf-security/glasswing/playwright-profile/`,
