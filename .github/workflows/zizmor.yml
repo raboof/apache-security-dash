@@ -43,16 +43,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Upload SARIF results into the repo's Security tab.
-      security-events: write
-      # Required by the SARIF upload path (github/codeql-action/
-      # upload-sarif under the hood) — without it the upload
-      # fails with "Resource not accessible by integration".
-      actions: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           persist-credentials: false
 
       # ASF-allowlisted pin (zizmorcore/zizmor-action v0.5.6).
+      #
+      # Annotations mode (no SARIF upload). The default SARIF-upload
+      # path needs GitHub Advanced Security / Code Scanning enabled
+      # on the repository — apache/security doesn't have that on
+      # today, so the upload step fails with "Code Security must be
+      # enabled". When/if Code Scanning gets turned on (via .asf.yaml
+      # or ASF infra ticket), flip `advanced-security: true` and
+      # `annotations: false`, restore `security-events: write` +
+      # `actions: read` permissions, and findings will surface in
+      # the Security tab. Until then, annotations show inline on
+      # PR file diffs which is enough for review-time feedback.
       - uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938d  # v0.5.6
+        with:
+          advanced-security: "false"
+          annotations: "true"

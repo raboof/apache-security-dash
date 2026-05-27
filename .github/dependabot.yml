@@ -40,15 +40,14 @@ updates:
     labels:
       - dependencies
       - github-actions
-    # Cooldown — wait N days after upstream release before
+    # Cooldown — wait 7 days after upstream release before
     # opening a bump PR. Lets the release shake out any
-    # last-minute breakage before we ratchet onto it. Tuned
-    # per semver step: patches land fast, majors marinate.
+    # last-minute breakage before we ratchet onto it. The
+    # github-actions ecosystem only supports `default-days`
+    # (action tags aren't semver-shaped, so per-semver-step
+    # cooldown values are rejected by Dependabot validation).
     cooldown:
       default-days: 7
-      semver-major-days: 14
-      semver-minor-days: 7
-      semver-patch-days: 3
 
   # tools/jira_writer — Apache JIRA write helper.
   - package-ecosystem: pip

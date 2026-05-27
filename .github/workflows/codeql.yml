@@ -68,7 +68,16 @@ jobs:
           # can analyse the source tree directly.
           build-mode: none
 
+      # CodeQL's SARIF upload requires GitHub Advanced Security /
+      # Code Scanning enabled on the repository. apache/security
+      # doesn't have that on today, so the analyze step's upload
+      # phase fails with "Code Security must be enabled". The
+      # analysis itself still runs; we mark the step non-blocking
+      # so the workflow doesn't gate PRs on an infra-level
+      # prerequisite. Flip `continue-on-error: false` once Code
+      # Scanning is enabled (via .asf.yaml or an ASF infra ticket).
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@84498526a009a99c875e83ef4821a8ba52de7c22  # codeql-bundle-v2.25.5
+        continue-on-error: true
         with:
           category: "/language:python"
