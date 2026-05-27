@@ -215,9 +215,9 @@ correct ID; everything else is a hint.
 
 1. **Whimsy public LDAP JSON (canonical, no auth required)** —
    query <https://whimsy.apache.org/public/public_ldap_people.json>
-   via the bundled `whimsy_lookup.py resolve-id` helper:
+   via the `whimsy-lookup` CLI in [`tools/whimsy_lookup/`](../../../tools/whimsy_lookup/) — `resolve-id`:
 
-       uv run .claude/skills/glasswing-scan-response/whimsy_lookup.py \
+       uv run --project tools/whimsy_lookup whimsy-lookup \
          resolve-id "<full name from From: or signature line>"
 
    This fetches the LDAP JSON via stdlib urllib + json (no
@@ -236,7 +236,7 @@ correct ID; everything else is a hint.
 
    Example. Sender wrote from `ancosen@gmail.com`. The local-part
    heuristic (next step) would propose `ancosen@apache.org`, but
-   `whimsy_lookup.py resolve-id "Andrea Cosentino"` returns
+   `whimsy-lookup resolve-id "Andrea Cosentino"` returns
    `acosentino`. Trust the helper, not the heuristic.
 
 2. **Local-part heuristic (hint only — confirm against LDAP)** —
@@ -312,10 +312,9 @@ Reply fragment — block (only when no candidate can be inferred):
 
 Cross-check the sender's `@apache.org` address (From: header
 or body-stated, whichever gate 2 resolved to) against the PMC
-roster via the bundled `whimsy_lookup.py check-pmc-member`
-helper:
+roster via the `whimsy-lookup` CLI's `check-pmc-member`:
 
-    uv run .claude/skills/glasswing-scan-response/whimsy_lookup.py \
+    uv run --project tools/whimsy_lookup whimsy-lookup \
       check-pmc-member <pmc-slug> <apache-id> [<apache-id> ...]
 
 The helper queries
@@ -326,7 +325,7 @@ with the member's name + joining date for context. Exit code
 1 if any queried ID is not on the roster; 0 if all are.
 
 For the full roster (useful when drafting the reply or
-verifying the chair), use `whimsy_lookup.py pmc-info <slug>`.
+verifying the chair), use `whimsy-lookup pmc-info <slug>`.
 
 **Do NOT use WebFetch on `committee-info.json`.** Same caveat
 as Gate 2: WebFetch summarises this multi-MB file and has

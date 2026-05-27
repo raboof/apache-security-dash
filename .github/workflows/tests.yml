@@ -19,8 +19,8 @@ name: tests
 
 on:  # yamllint disable-line rule:truthy
   pull_request:
-    # Only fire when the tests' inputs actually change. Avoids re-running
-    # the whole matrix on doc-only or skill-config-only PRs.
+    # Only fire when test inputs actually change. Avoids re-running
+    # the matrix on doc-only or skill-config-only PRs.
     paths:
       - "tools/**"
       - ".github/workflows/tests.yml"
@@ -33,14 +33,21 @@ on:  # yamllint disable-line rule:truthy
 permissions: {}
 
 jobs:
-  jira-writer:
-    name: jira-writer (py${{ matrix.python-version }})
+  pytest:
+    # Matrix over (project, python-version). Add a new project by
+    # appending its directory name to `project`; the rest of the
+    # workflow runs identically against it. Failures are isolated
+    # so one project's regression doesn't mask another.
+    name: ${{ matrix.project }} (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
+        project:
+          - jira_writer
+          - whimsy_lookup
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -53,17 +60,16 @@ jobs:
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
         with:
           enable-cache: true
-          # Cache key includes the project's lock state if any.
           cache-dependency-glob: |
-            tools/jira_writer/pyproject.toml
+            tools/${{ matrix.project }}/pyproject.toml
 
       - name: Pin Python interpreter
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Install jira-writer with test extras
-        working-directory: tools/jira_writer
+      - name: Install with test extras
+        working-directory: tools/${{ matrix.project }}
         run: uv sync --extra test --python ${{ matrix.python-version }}
 
       - name: Run pytest
-        working-directory: tools/jira_writer
+        working-directory: tools/${{ matrix.project }}
         run: uv run --python ${{ matrix.python-version }} pytest -ra
