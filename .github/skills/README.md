@@ -49,6 +49,27 @@ finds the same content:
 If a new runtime convention emerges, add another symlink — never
 duplicate the content.
 
+### Sibling: `tools/` for promoted helpers
+
+Some SKILLs hand off mechanical work to a Python helper. Two
+shapes coexist:
+
+- **Inline** — single PEP-723 script inside the SKILL dir
+  (`sheets_writer.py`, `form_submitter.py`, `whimsy_lookup.py`).
+- **Promoted** — standalone Python project under
+  [`../../tools/`](../../tools/) with `pyproject.toml`, tests,
+  and CI. Invoked from SKILLs via
+  `uv run --project tools/<name> <cli> ...`.
+
+Currently in `tools/`:
+
+| Project | Used by | Purpose |
+| --- | --- | --- |
+| [`jira_writer`](../../tools/jira_writer/) | `glasswing-scan-update` (today); `glasswing-scan-response` + `glasswing-model-verify` (as JIRA-id-in-title PMCs come up) | Apache JIRA write helper (PAT-authenticated). Files companion tickets when a SKILL opens a PR against a PMC repo that needs a JIRA id (HBASE convention; ~5 other PMCs follow the same pattern). |
+
+The top-level [README's "Two helper tiers" section](../../README.md#two-helper-tiers--inline-scripts-vs-tools-projects)
+documents the promotion criteria.
+
 ## SKILLs currently here
 
 | Skill | Purpose |

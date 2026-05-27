@@ -4,7 +4,7 @@ Conventions for agentic tooling (Claude Code, Codex, similar) working in this re
 
 ## What this repo is
 
-apache/security is the ASF Security team's private skill set + tooling for managing the Glasswing scan-outreach program. SKILLs live under `.github/skills/` and are symlinked from `.claude/skills/` so Claude Code can find them. The [README](README.md) at the repo root is the entry point and the canonical workflow reference (diagrams, per-PMC state machine, sequence diagram).
+apache/security is the ASF Security team's private skill set + tooling for managing the Glasswing scan-outreach program. SKILLs live under `.github/skills/` and are symlinked from `.claude/skills/` so Claude Code can find them. Helper tools that have outgrown the single-file-inside-a-SKILL pattern live under `tools/` as proper Python projects (`pyproject.toml` + tests + CI); see the [README's "Two helper tiers" section](README.md#two-helper-tiers--inline-scripts-vs-tools-projects). The [README](README.md) at the repo root is the entry point and the canonical workflow reference (diagrams, per-PMC state machine, sequence diagram).
 
 ## Pre-commit hooks
 
@@ -43,7 +43,7 @@ Run this **before** `git push`, not after. The hooks catch:
 - **Generic safety** (`pre-commit-hooks`): merge-conflict markers, accidentally-committed private keys, trailing whitespace, mixed line endings, missing trailing newline.
 - **Markdown structure** (`markdownlint-cli2` against `.markdownlint.json`): broken anchors (`MD051`), dangling link references (`MD053`). Style rules are off — the existing docs settled those.
 - **Typos** (`typos` against `.typos.toml`): fast spell-checker. Project-specific terms (`Glasswing`, `Mythos`, PMC names) are allowlisted; common English misspellings are caught.
-- **Python lint + format** (`ruff` against `.github/skills/glasswing-scan-update/sheets_writer.py`): the one Python file in the repo. Both `ruff check` and `ruff format --check` run.
+- **Python lint + format** (`ruff` against every `.py` under `.github/skills/` and `tools/`). Both `ruff check` and `ruff format --check` run. Today that covers `sheets_writer.py`, `form_submitter.py`, `whimsy_lookup.py`, and the `tools/jira_writer/` package + tests.
 
 If a hook fails, fix the underlying issue rather than bypassing — `--no-verify` is not a convention here. The hooks are fast (single-digit seconds for a clean run); running them locally before pushing is the expected workflow.
 
@@ -100,6 +100,10 @@ The Glasswing program coordinates state in a Google Sheet that lives outside thi
 
 Spreadsheet writes are out-of-band relative to git — they're applied at SKILL invocation time, not at PR-merge time. If a SKILL PR depends on a new column or renamed column, **apply the schema change to the live sheet FIRST** (via `insert-column` / `add-columns` / `rename-column`) so the SKILL doc can reference the live cell layout accurately. Don't let a schema reference in a merged SKILL doc race ahead of the live sheet.
 
+## Live JIRA writes
+
+Companion to the sheet writer: filing JIRA tickets against `issues.apache.org` (HBase's PR-title-needs-a-JIRA-id convention is the canonical case; several other PMCs follow the same pattern) goes through [`tools/jira_writer/`](tools/jira_writer/). It's a small standalone Python project (`pyproject.toml`, stdlib-only runtime deps, pytest test suite) invoked from SKILLs as `uv run --project tools/jira_writer jira-writer <subcommand>`. PAT lives at `~/.config/asf-security/jira/token` (mode 0o600 enforced by the helper). Same draft-and-confirm discipline as the sheet writer: every write subcommand has `--dry-run`; SKILLs run `--dry-run`, show the payload to the user, and only re-run without it after explicit approval.
+
 ## Sandbox bypass — when it's OK, when to be loud
 
 Per the user's CLAUDE.md, sandbox-bypass proposals must be **visually loud** (`!!! SANDBOX BYPASS: <reason> !!!`). Bypass is OK for:
@@ -107,7 +111,8 @@ Per the user's CLAUDE.md, sandbox-bypass proposals must be **visually loud** (`!
 - `git push` / `git commit` (SSH signing reads `~/.ssh`)
 - `gh pr create` / `gh gist create` / other `gh api` (macOS cert-chain issue against `api.github.com`)
 - `uv run sheets_writer.py` (reads OAuth state from `~/.config/asf-security/glasswing/`, writes to `sheets.googleapis.com`)
-- Reading `~/.config/asf-security/glasswing/` files (sandbox denies that path by default)
+- `uv run --project tools/jira_writer jira-writer …` (reads the PAT from `~/.config/asf-security/jira/token`, writes to `issues.apache.org`)
+- Reading `~/.config/asf-security/{glasswing,jira}/` files (sandbox denies those paths by default)
 
 Bypass is **not** OK for one-off curls or general internet access — those should go through `WebFetch` against allowlisted hosts.
 

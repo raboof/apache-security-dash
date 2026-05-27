@@ -32,12 +32,42 @@ team's tooling, not the public reporting entry point.
 └── threat-model-producer/          — model-authoring rubric (imported from
                                       Scovetta's gist)
 
+tools/                              — small Python projects with pyproject.toml,
+                                      tests, and CI; invoked from SKILLs
+└── jira_writer/                    — Apache JIRA write helper (PAT-authed);
+                                      see tools/jira_writer/README.md
+
 .claude/skills/                     — symlinks so Claude Code finds the SKILLs
 ```
 
 Adding a new agent-runtime convention later means adding another
 symlink under that runtime's expected location — never duplicating
 content.
+
+### Two helper tiers — inline scripts vs. `tools/` projects
+
+The repo distinguishes between two scales of Python helper:
+
+- **Inline scripts inside a SKILL directory** (e.g.
+  `.github/skills/glasswing-scan-update/sheets_writer.py`,
+  `.github/skills/glasswing-scan-submit/form_submitter.py`,
+  `.github/skills/glasswing-scan-response/whimsy_lookup.py`) — single
+  files using PEP 723 inline metadata via `uv run`. No `pyproject.toml`,
+  no test suite, no CI. Right for narrow helpers a single SKILL owns
+  end-to-end (sheets writes, form submission, public-LDAP lookups).
+- **Standalone projects under `tools/`** (e.g. `tools/jira_writer/`) —
+  proper Python projects with `pyproject.toml`, unit tests, CI. Right
+  for helpers that **multiple** SKILLs need (or expect to soon), have
+  non-trivial logic worth test-covering, or interact with a system
+  where regressions are expensive (e.g. JIRA writes to apache.org). A
+  SKILL invokes them via `uv run --project tools/<name> <cli> ...`.
+
+The promotion path is one-way: if an inline script grows two
+callers + non-trivial logic + a "we regret a regression here would
+be costly" flavour, it moves to `tools/`. See
+[`tools/jira_writer/README.md`](tools/jira_writer/README.md) for the
+first project of that tier — added 2026-05-27 after the inline
+`jira_writer.py` reached operational use against the HBase PMC.
 
 ## The Mythos / Glasswing scan program
 
