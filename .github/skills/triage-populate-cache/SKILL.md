@@ -6,15 +6,18 @@ description: >-
   a deterministic Python sweep (sweep.py) that talks to the Ponymail HTTP API
   directly, reusing the ponymail-mcp session cookie, and writes each report's
   full body + attachments to disk while keeping message bytes out of the
-  model's context (only a compact funnel + table is printed). A classifier
-  drops the firehose of spam / CVE-workflow automation / SVN+GitHub
-  notifications / replies, and the To/Cc headers drop reports already in a
-  PMC's hands and auto-assign the PMC. This SKILL is also the canonical
-  reference for the report-cache directory layout that the downstream filing,
-  drafting, and status SKILLs reuse. Use whenever the Security team says
-  "pull new security reports", "populate the cache", "sweep security@",
-  "what new reports came in", or to refresh the cache before a triage session.
-  Populates report-cache/_inbox/ only; it does not file, draft, or send.
+  model's context (only a compact funnel + table is printed). The deterministic
+  sweep uses objective header facts only, no content heuristics: it downloads a
+  message iff it is a thread head, addressed To an ASF security@ alias that is
+  NOT a project's own specialized security list (those projects triage
+  themselves), and not addressed (To/Cc) to a private@ list. Then the agent (as
+  part of THIS skill) reads each downloaded message and removes any that are
+  not genuine security reports -- that judgement is the skill's, not code's.
+  This SKILL is also the canonical reference for the report-cache directory
+  layout that the downstream filing, drafting, and status SKILLs reuse. Use
+  whenever the Security team says "pull new security reports", "populate the
+  cache", "sweep security@", "what new reports came in", or to refresh the
+  cache before a triage session. It does not file, tag, draft, or send.
 ---
 
 # triage-populate-cache SKILL
@@ -32,8 +35,9 @@ cache this one fills.
   "what came in on `security@`", "refresh the cache before triage".
 - At the start of a triage session, to bring `_inbox/` up to date.
 
-Do **not** use this SKILL to file, tag, draft, or send anything. It only
-writes untriaged bundles into `report-cache/_inbox/`.
+This SKILL downloads candidate reports and then **removes the non-reports**
+among them (see below), leaving genuine reports in `report-cache/_inbox/`. It
+does not file, tag, draft, or send.
 
 ## Prerequisites: authentication
 
@@ -53,16 +57,13 @@ refuses a cookie older than 20 h rather than firing dead requests.
 # Ongoing: new reports since the last sweep (incremental off the watermark)
 .github/skills/triage-populate-cache/sweep.py
 
-# Cold start / catch-up: reclassify a whole window (dedup still prevents
+# Cold start / catch-up: rescan a whole window (dedup still prevents
 # re-download). The current backlog starts 2026-05-24, so a 4-day window
 # reaches it from late May:
 .github/skills/triage-populate-cache/sweep.py --since 4d --full
 
 # Preview without writing anything:
 .github/skills/triage-populate-cache/sweep.py --since 4d --dry-run
-
-# Audit what the keyword stage drops (denylist only, shows the spam residue):
-.github/skills/triage-populate-cache/sweep.py --no-keyword-filter --dry-run
 ```
 
 The script self-installs its one dependency (PyYAML) via the `uv run`
@@ -71,13 +72,10 @@ shebang. Useful flags:
 | Flag | Effect |
 |------|--------|
 | `--since` | Query window: `<N>d`, `yyyy-mm`, or a raw Ponymail `d` value (default `2d`) |
-| `--full` | Reclassify the whole window, ignoring the incremental watermark |
+| `--full` | Rescan the whole window, ignoring the incremental watermark |
 | `--limit N` | Stop after N new downloads (handy for a quick look) |
-| `--dry-run` | Fetch + classify, write nothing |
-| `--include-internal` | Keep `@apache.org` senders (CVE workflow, announcements) |
-| `--no-keyword-filter` | Disable the report-subject signal (denylist only) |
-| `--filter-config FILE` | YAML overriding the classifier rules (see `classify.py`) |
-| `--from ADDR` | Only cache reports from this sender (e.g. triage one reporter); applied client-side so the already-answered check still sees other senders' replies. Implies `--no-keyword-filter` (a named sender is a trusted scope, so the spam/false-positive keyword filter is skipped) |
+| `--dry-run` | Select + fetch, write nothing |
+| `--from ADDR` | Only cache reports from this sender (e.g. triage one reporter) |
 | `--list ADDR` | Sweep a different list (default `security@apache.org`) |
 
 Only the funnel + a one-line-per-report table reach the model. To read a
@@ -164,44 +162,51 @@ status:         # "inbox" -> (filing SKILL advances this)
 Downstream SKILLs find a report by `ponymail_id` / `message_id` and treat
 the provenance block as read-only.
 
-## How the sweep decides what to keep
+## How the sweep decides what to download
 
-`security@apache.org` is a firehose (~1000 thread heads/week). The funnel,
-printed each run, is:
+The sweep selects on objective header facts only (`classify.py`), no content
+heuristics. The funnel, printed each run, is:
 
-- **reply** - has an In-Reply-To header (not a thread head).
-- **automation-sender** - GitHub/JIRA/SVN/gitbox notification senders.
-- **internal** - `@apache.org` sender (CVE workflow, outbound
-  announcements, commits). Override with `--include-internal`.
-- **noise-subject** - `Re:` / `svn commit` / `is now ready` / etc.
-- **no-report-signal** - external thread head whose subject shows no
-  security/Apache signal (the bulk of the residual spam). Disable the
-  signal requirement with `--no-keyword-filter`.
-- **already-answered** - a thread head whose thread already drew a reply
-  from someone other than the reporter, i.e. another team member triaged
-  it. Detected from the In-Reply-To graph of the swept window (reporter
-  self-follow-ups do not count).
-- **pmc-private** - reaches the central list but is also addressed to a
-  project's `private@<pmc>.apache.org`, so that PMC already owns it (the
-  Security team does not triage it). Detected from To/Cc after fetch.
-- **candidate** - kept, downloaded into `_inbox/`.
+- **reply** - has an In-Reply-To header (not a thread head). Dropped from the
+  cheap stats summary, no fetch.
+- **automation-sender** - From is in the small `AUTOMATION_SENDERS` denylist
+  (e.g. `notifications@github.com`) that never carries a report. Also dropped
+  without fetch. Kept deliberately tiny so real mail is never missed.
+- **not-security-addressed** - the To header is not any ASF `security@` alias
+  (the message reached the archive by some other path). Checked after fetch
+  (To/Cc are not in the summary).
+- **specialized-pmc** - To is one of the specialized per-PMC security lists in
+  `classify.py`'s `SPECIALIZED_LISTS` (e.g. `security@tomcat.apache.org`); that
+  project runs its own security team, so the report is theirs, not ours.
+- **pmc-private** - addressed (To/Cc) to a project's `private@<pmc>.apache.org`,
+  so that PMC already owns it.
+- **candidate** - downloaded into `_inbox/`.
 
-Rules live in `classify.py` as data (sender denylist, internal domains,
-noise-subject regexes, report-subject regexes) and can be overridden per
-operator with `--filter-config`. Recurring spammers can be added to the
-sender denylist.
+`SPECIALIZED_LISTS` is hardcoded on purpose (only lists that actually exist
+count); refresh it from project-coordinates.json when projects gain or lose a
+dedicated team. A `security@<pmc>` address in To also **auto-identifies the
+PMC** (recorded in `meta.yaml: pmc`). Because To/Cc are not in the stats
+summary, the sweep fetches each surviving thread head to read them; for the
+normal incremental window that is a handful of fetches, a full rescan over a
+long window is correspondingly slower.
 
-### Routing rule (why a report is "ours")
+## Remove non-reports (this skill's filter)
 
-All `security@*.apache.org` aliases exist; projects with a custom contact
-in apache/security-site's `project-coordinates.json` get their reports
-routed straight to the PMC and never reach the central archive. Anything
-that *does* reach `security@apache.org` needs Security-team triage **unless
-it is also addressed to a project's `private@` list** (then it is already
-the PMC's). A `security@<pmc>` recipient both confirms the report fell
-through to central triage and **auto-identifies the PMC** (recorded in
-`meta.yaml: pmc`). This is derived from the To/Cc headers via regex, so no
-per-PMC list needs hardcoding and new PMCs work with no code change.
+The deterministic sweep is intentionally coarse: it downloads everything sent
+to a triageable `security@` address, which still includes spam, marketing, and
+other non-reports. **Deciding whether each downloaded message is a genuine new
+security report is this skill's job, done by the agent reading the text** (not
+by code, and not deferred downstream). After a sweep:
+
+1. Read each new `_inbox/<slug>/report.txt` (and skim any attachment).
+2. **Remove** the bundle (`rm -rf` the `_inbox/<slug>/` directory) for anything
+   that is not a security report: spam, phishing, marketing, vendor blasts, a
+   "thank you" note, an automated bounce, etc.
+3. Genuine reports stay in `_inbox/` for the filing SKILL.
+
+Removed ids remain in `.seen.json` (written by the sweep), so a deleted
+non-report is never re-downloaded. When in doubt, keep it — the filing/assess
+steps can still dismiss it.
 
 ## Why a deterministic script, not the MCP
 

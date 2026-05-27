@@ -1,129 +1,120 @@
-"""Deterministic noise classifier for the triage-populate-cache sweep.
+"""Deterministic selection criteria for the triage-populate-cache sweep.
 
-`security@apache.org` is a firehose: per a 2-day sample it carries spam,
-CVE-workflow automation ("CVE-X is now READY"), SVN commit mails, GitHub
-notifications, and outbound CVE announcements alongside the genuine
-inbound vulnerability reports the Security team needs to triage.
+No heuristics. A message is downloaded for triage iff, by objective facts about
+its headers:
 
-The sweep keeps only **thread heads** (no In-Reply-To) from **external**
-senders that don't match the noise denylists below. The rules are data,
-not code: pass a YAML override via --filter-config to tune them per
-operator without editing this file. Spam from novel external addresses
-will still slip through (no deterministic rule catches it); that residue
-is what the human/model triages and marks non-issue, and recurring
-spammers can be added to deny_sender_substrings.
+  1. it is a thread head (no In-Reply-To), and
+  2. it is addressed (To) to an ASF security@ alias (security@apache.org or
+     security@<project>.apache.org), and
+  3. it is NOT addressed (To) to one of the specialized per-PMC security lists
+     below -- those projects run their own security team, so reports sent there
+     are theirs to handle, not ours; but security@apache.org and any project
+     without a dedicated list still need central triage, and
+  4. it is NOT addressed (To or Cc) to a project private@ list.
+
+That is the whole filter. Spam, duplicates, and non-issues that satisfy these
+criteria are downloaded and judged by the triager / downstream skills, never
+guessed at here. The set of specialized lists is hardcoded on purpose (only
+addresses that actually exist count); refresh it from apache/security-site's
+project-coordinates.json when projects gain or lose a dedicated team.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 
-# Senders that are pure automation / never an inbound report. Matched as
-# case-insensitive substrings of the From address.
-DEFAULT_DENY_SENDERS: tuple[str, ...] = (
-    "notifications@github.com",
-    "noreply@github.com",
-    "@svn.apache.org",
-    "jira@apache.org",
-    "gitbox@apache.org",
+# Specialized per-PMC security lists: a report addressed To one of these is
+# handled by that project's own security team, so the Security team does NOT
+# triage it (do not even download it). Note: security@apache.org is NOT here --
+# the central list is exactly what we triage.
+SPECIALIZED_LISTS = frozenset(
+    {
+        "security@airflow.apache.org",
+        "security@ambari.apache.org",
+        "security@commons.apache.org",
+        "security@couchdb.apache.org",
+        "security@dolphinscheduler.apache.org",
+        "security@dubbo.apache.org",
+        "security@fineract.apache.org",
+        "security@geronimo.apache.org",
+        "security@guacamole.apache.org",
+        "security@hadoop.apache.org",
+        "security@hive.apache.org",
+        "security@httpd.apache.org",
+        "security@hugegraph.apache.org",
+        "security@ignite.apache.org",
+        "security@jackrabbit.apache.org",
+        "security@kafka.apache.org",
+        "security@libcloud.apache.org",
+        "security@logging.apache.org",
+        "security@lucene.apache.org",
+        "security@metron.apache.org",
+        "security@nifi.apache.org",
+        "security@nuttx.apache.org",
+        "security@ofbiz.apache.org",
+        "security@openmeetings.apache.org",
+        "security@openoffice.apache.org",
+        "security@sentry.apache.org",
+        "security@shiro.apache.org",
+        "security@singa.apache.org",
+        "security@sling.apache.org",
+        "security@solr.apache.org",
+        "security@spamassassin.apache.org",
+        "security@spark.apache.org",
+        "security@struts.apache.org",
+        "security@subversion.apache.org",
+        "security@tomcat.apache.org",
+        "security@trafficcontrol.apache.org",
+        "security@trafficserver.apache.org",
+        "security@trafodion.apache.org",
+        "security@zeppelin.apache.org",
+        "security@zookeeper.apache.org",
+    }
 )
 
-# Domains treated as internal (outbound announcements, CVE workflow, commits).
-# Dropped unless --include-internal is passed to the sweep.
-DEFAULT_INTERNAL_DOMAINS: tuple[str, ...] = ("apache.org",)
-
-# Subject patterns (case-insensitive) that mark automation / not-a-report.
-DEFAULT_DENY_SUBJECTS: tuple[str, ...] = (
-    r"^re:\s",
-    r"^svn commit\b",
-    r"\bis now ready\b",
-    r"^\[github\]",
-    r"^\[jira\]",
+# A deliberately tiny denylist of pure-automation senders that never carry a
+# security report. Kept minimal on purpose ("don't miss anything else"):
+# deciding whether real mail is a report is the agent's job, not this list.
+AUTOMATION_SENDERS = frozenset(
+    {
+        "notifications@github.com",
+        "noreply@github.com",
+    }
 )
 
-# Positive signal: subjects that look like a security report. Without this
-# second stage the denylist still leaves a wall of retail/points spam
-# (MyLowe's, Harbor Freight, FedEx, "(광고)" ads ...) that never mentions
-# Apache or a vuln class. Attachment presence is NOT a usable signal here:
-# spammers attach files too (verified against live data), so a candidate is
-# kept only when its subject matches one of these. Override with
-# report_subject_regexes; disable entirely with --no-keyword-filter.
-DEFAULT_REPORT_SUBJECTS: tuple[str, ...] = (
-    r"\bapache\b",
-    r"\[security",
-    r"\bvulnerab",
-    r"\bcve[- ]?\d",
-    r"\b(rce|xss|ssrf|idor|csrf|xxe)\b",
-    r"\binjection\b",
-    r"\bdeseriali",
-    r"\b(disclosure|exploit|bypass|exposure|traversal|overflow)\b",
-    r"\b(credential|password|secret|token)\b",
-    r"\bsecurity (report|issue|finding|vulnerab)",
-    r"\bproof[- ]of[- ]concept\b|\bpoc\b",
-)
+# Any ASF security alias: security@apache.org or security@<project>.apache.org.
+_SECURITY = re.compile(r"\bsecurity@(?:[a-z0-9][a-z0-9-]*\.)?apache\.org\b", re.I)
+_PRIVATE = re.compile(r"\bprivate@[a-z0-9][a-z0-9-]*\.apache\.org\b", re.I)
+_SECURITY_PMC = re.compile(r"\bsecurity@([a-z0-9][a-z0-9-]*)\.apache\.org\b", re.I)
 
 
-@dataclass
-class Rules:
-    deny_senders: tuple[str, ...] = DEFAULT_DENY_SENDERS
-    internal_domains: tuple[str, ...] = DEFAULT_INTERNAL_DOMAINS
-    deny_subjects: tuple[str, ...] = DEFAULT_DENY_SUBJECTS
-    report_subjects: tuple[str, ...] = DEFAULT_REPORT_SUBJECTS
-    include_internal: bool = False
-    require_signal: bool = True
-    _deny_res: list[re.Pattern] = field(default=None, repr=False)
-    _report_res: list[re.Pattern] = field(default=None, repr=False)
+def select(from_addr: str, to: str, cc: str, in_reply_to: str) -> tuple[bool, str]:
+    """Return (keep, reason) for a message, by objective header facts only.
 
-    def __post_init__(self):
-        self._deny_res = [re.compile(p, re.IGNORECASE) for p in self.deny_subjects]
-        self._report_res = [re.compile(p, re.IGNORECASE) for p in self.report_subjects]
+    Keep iff it is a thread head, addressed To an ASF security@ alias that is
+    NOT a project's specialized list, and not addressed (To/Cc) to a private@
+    list. A few pure-automation senders are dropped too. Whether kept mail is
+    actually a *new security report* is decided later by the agent, not here.
+    """
+    if (in_reply_to or "").strip():
+        return False, "reply"
+    if (from_addr or "").strip().lower() in AUTOMATION_SENDERS:
+        return False, "automation-sender"
+    to_l = (to or "").lower()
+    if not _SECURITY.search(to_l):
+        return False, "not-security-addressed"
+    if any(alias in to_l for alias in SPECIALIZED_LISTS):
+        return False, "specialized-pmc"
+    if _PRIVATE.search(f"{to or ''} {cc or ''}"):
+        return False, "pmc-private"
+    return True, "candidate"
 
-    @classmethod
-    def from_config(
-        cls,
-        data: dict | None,
-        *,
-        include_internal: bool = False,
-        require_signal: bool = True,
-    ) -> Rules:
-        data = data or {}
-        return cls(
-            deny_senders=tuple(
-                data.get("deny_sender_substrings", DEFAULT_DENY_SENDERS)
-            ),
-            internal_domains=tuple(
-                data.get("internal_domains", DEFAULT_INTERNAL_DOMAINS)
-            ),
-            deny_subjects=tuple(
-                data.get("deny_subject_regexes", DEFAULT_DENY_SUBJECTS)
-            ),
-            report_subjects=tuple(
-                data.get("report_subject_regexes", DEFAULT_REPORT_SUBJECTS)
-            ),
-            include_internal=include_internal,
-            require_signal=require_signal,
-        )
 
-    def classify(
-        self, from_email: str, subject: str, in_reply_to: str
-    ) -> tuple[bool, str]:
-        """Return (keep, reason). `reason` labels why, for run stats."""
-        if (in_reply_to or "").strip():
-            return False, "reply"
-        addr = (from_email or "").strip().lower()
-        if not addr:
-            return False, "no-sender"
-        if any(sub in addr for sub in self.deny_senders):
-            return False, "automation-sender"
-        domain = addr.rsplit("@", 1)[-1]
-        if not self.include_internal and any(
-            domain == d or domain.endswith("." + d) for d in self.internal_domains
-        ):
-            return False, "internal"
-        subject = subject or ""
-        if any(r.search(subject) for r in self._deny_res):
-            return False, "noise-subject"
-        if self.require_signal and not any(r.search(subject) for r in self._report_res):
-            return False, "no-report-signal"
-        return True, "candidate"
+def pmc_from_to(to: str) -> str | None:
+    """The PMC slug from a security@<pmc> address in To (not the central list).
+
+    Returns the single per-PMC slug when exactly one is present, else None
+    (e.g. addressed only to security@apache.org)."""
+    pmcs = {m.lower() for m in _SECURITY_PMC.findall(to or "")}
+    pmcs.discard("apache")
+    return next(iter(pmcs)) if len(pmcs) == 1 else None

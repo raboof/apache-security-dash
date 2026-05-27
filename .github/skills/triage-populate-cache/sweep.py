@@ -7,36 +7,35 @@
 # ///
 """Sweep new security reports off a Ponymail list into report-cache/_inbox/.
 
-The heavy-I/O, fully-deterministic step of the triage-populate-cache SKILL.
-It talks to the Ponymail HTTP API directly (reusing the ponymail-mcp session
-cookie) and writes message bodies + attachments to disk. The only thing it
-prints is a compact funnel + table, so message bytes never enter the
-model's context.
+The deterministic, token-light step of the triage-populate-cache SKILL. It
+talks to the Ponymail HTTP API directly (reusing the ponymail-mcp cookie) and
+writes message bodies + attachments to disk; only a compact funnel + table is
+printed, so message bytes never enter the model's context.
 
-Why a classifier: `security@apache.org` is a firehose (~1000 thread
-heads/week) of spam, CVE-workflow automation, SVN/GitHub notifications and
-outbound announcements around a small core of genuine inbound reports. One
-cheap `stats` call returns every message's metadata + a body snippet;
-classify.py keeps only external, non-automation thread heads whose subject
-looks like a report (security/Apache keywords). Full bodies + attachments
-are then fetched only for the survivors, where the To/Cc headers drop any
-report already in a PMC's hands (private@<pmc> recipient) and auto-assign
-the PMC from a security@<pmc> recipient.
+Selection is by objective header facts only (see classify.py), no content
+heuristics: a message is downloaded iff it is a thread head, addressed To a
+known ASF security@ list, and not addressed (To/Cc) to a project private@ list
+(plus a tiny automation-sender denylist). Whether a downloaded message is
+actually a *new security report* is decided downstream by the triager reading
+the text, not here.
 
-Incremental by default: a .sweep-state.json watermark + .seen.json index
-mean each run only pulls messages newer than the last sweep. Use --full to
-reclassify the whole --since window (dedup still prevents re-download).
+The cheap stats call gives From + In-Reply-To for the whole window, so replies
+and automation senders are dropped without fetching; the To/Cc check needs the
+per-message fetch, done only for the remaining thread heads.
 
-Downloads land in <cache>/_inbox/<slug>/ (report.txt, meta.yaml,
-attachments/); a separate filing SKILL later promotes a bundle to its
-canonical <date>/<pmc>/<keywords>/ path. See SKILL.md for the full
-report-cache layout, which downstream SKILLs reuse.
+Incremental by default: a .sweep-state.json watermark + .seen.json index mean
+each run only pulls messages newer than the last sweep (heads rejected on
+To/Cc are recorded too, so they are not re-fetched). Use --full to rescan the
+whole --since window.
+
+Downloads land in <cache>/_inbox/<slug>/ (report.txt, meta.yaml, attachments/);
+a separate filing SKILL promotes a bundle to its canonical
+<date>/<pmc>/<keywords>/ path. See SKILL.md for the full report-cache layout.
 
 Examples:
     ./sweep.py                          # new reports since last sweep (2d window)
-    ./sweep.py --since 7d --full        # reclassify a full week (catch-up)
-    ./sweep.py --since 7d --dry-run     # preview, write nothing
-    ./sweep.py --no-keyword-filter      # denylist only (see the spam residue)
+    ./sweep.py --since 7d --full        # rescan a week (catch-up)
+    ./sweep.py --from someone@example.com --since 7d
 """
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from classify import Rules  # noqa: E402
+from classify import AUTOMATION_SENDERS, pmc_from_to, select  # noqa: E402
 from ponymail_api import (  # noqa: E402
     PonymailClient,
     PonymailError,
@@ -94,9 +93,9 @@ def load_json(path: Path, default):
 
 
 def load_seen(cache: Path) -> set[str]:
-    """Ponymail ids already downloaded. .seen.json is the source of truth;
-    we also union ids found in existing meta.yaml so a lost index never
-    causes a duplicate download."""
+    """Ponymail ids already processed. .seen.json is the source of truth; we
+    also union ids found in existing meta.yaml so a lost index never causes a
+    duplicate download."""
     seen: set[str] = set(load_json(cache / SEEN_FILE, {}).get("ids", []))
     for meta in cache.rglob("meta.yaml"):
         try:
@@ -106,39 +105,6 @@ def load_seen(cache: Path) -> set[str]:
         if pid:
             seen.add(str(pid))
     return seen
-
-
-def build_reply_index(emails: list[dict]) -> dict[str, list[dict]]:
-    """Map a Message-ID to the messages that reply to it (by In-Reply-To)."""
-    idx: dict[str, list[dict]] = {}
-    for e in emails:
-        irt = (e.get("in-reply-to") or "").strip()
-        if irt:
-            idx.setdefault(irt, []).append(e)
-    return idx
-
-
-def thread_has_answer(root_msgid: str, reporter: str, reply_index: dict) -> bool:
-    """True if the report's thread already has a reply from someone other than
-    the reporter, i.e. a team member already triaged it (a reporter's own
-    follow-ups don't count). Walks the In-Reply-To chain within the window."""
-    root_msgid = (root_msgid or "").strip()
-    reporter = (reporter or "").lower()
-    if not root_msgid:
-        return False
-    seen_ids, stack = set(), [root_msgid]
-    while stack:
-        for reply in reply_index.get(stack.pop(), []):
-            cid = (reply.get("message-id") or "").strip()
-            if cid in seen_ids:
-                continue
-            seen_ids.add(cid)
-            _, addr = parse_from(reply.get("from"))
-            if addr and addr.lower() != reporter:
-                return True
-            if cid:
-                stack.append(cid)
-    return False
 
 
 def safe_attachment_name(name: str, fallback: str) -> str:
@@ -228,49 +194,29 @@ def build_args():
         "--cache-dir",
         type=Path,
         default=DEFAULT_CACHE,
-        help=f"Cache root (default: {DEFAULT_CACHE})",
+        help=f"Cache root ({DEFAULT_CACHE})",
     )
     ap.add_argument(
         "--limit",
         type=int,
         default=0,
-        help="Max new reports to download this run (0 = no limit)",
-    )
-    ap.add_argument(
-        "--filter-config",
-        type=Path,
-        default=None,
-        help="YAML overriding the classifier rules (see classify.py)",
-    )
-    ap.add_argument(
-        "--include-internal",
-        action="store_true",
-        help="Keep @apache.org senders (CVE workflow, announcements)",
-    )
-    ap.add_argument(
-        "--no-keyword-filter",
-        action="store_true",
-        help="Disable the report-subject signal (denylist only)",
-    )
-    ap.add_argument(
-        "--full",
-        action="store_true",
-        help="Reclassify the whole window, ignoring the watermark",
-    )
-    ap.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Fetch + classify, but write nothing to disk",
+        help="Max new reports to download (0 = no limit)",
     )
     ap.add_argument(
         "--from",
         dest="from_addr",
         default=None,
-        help="Only cache reports from this sender address (case-insensitive). "
-        "Applied after the full window is fetched, so the already-answered "
-        "check still sees other senders' replies in each thread. Implies "
-        "--no-keyword-filter: a named sender is a trusted scope, so the "
-        "spam/false-positive keyword filter is skipped.",
+        help="Only cache reports from this sender address (e.g. triage one reporter)",
+    )
+    ap.add_argument(
+        "--full",
+        action="store_true",
+        help="Rescan the whole window, ignore the watermark",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Select + fetch, but write nothing to disk",
     )
     ap.add_argument("--base-url", default=None, help="Override Ponymail base URL")
     return ap.parse_args()
@@ -289,15 +235,6 @@ def main() -> int:
         )
         return 2
 
-    rules = Rules.from_config(
-        yaml.safe_load(args.filter_config.read_text()) if args.filter_config else None,
-        include_internal=args.include_internal,
-        # A specific --from sender is an explicit, trusted scope, so don't apply
-        # the spam/false-positive keyword filter (it would drop genuine reports
-        # whose subject lacks a security keyword, e.g. "XML Bomb (Billion
-        # Laughs) DoS ..."). Reply / already-answered / recipient filters stay.
-        require_signal=not args.no_keyword_filter and not args.from_addr,
-    )
     client = PonymailClient(cookie=cookie, base_url=args.base_url)
     base_url = client.base_url
     cache = args.cache_dir
@@ -313,70 +250,61 @@ def main() -> int:
     state = load_json(cache / STATE_FILE, {})
     watermark = 0 if args.full else int(state.get("last_epoch") or 0)
     seen = load_seen(cache)
+    sender = (args.from_addr or "").lower()
 
     emails = emails_list(stats)
-    reply_index = build_reply_index(emails)
     max_epoch = watermark
     funnel: dict[str, int] = {}
-    survivors = []
-    sender = (args.from_addr or "").lower()
+    # Cheap pass: From + In-Reply-To are in the stats summary, so drop replies
+    # and automation senders without fetching. To/Cc need the per-message fetch.
+    heads = []
     for e in emails:
         epoch = int(e.get("epoch") or 0)
         max_epoch = max(max_epoch, epoch)
         _, addr = parse_from(e.get("from"))
-        # --from restricts which reports we cache, but only after the reply
-        # index (built from the whole window) is in place, so the
-        # already-answered check still sees other senders' replies.
-        if sender and addr.lower() != sender:
+        if (e.get("in-reply-to") or "").strip():
+            funnel["reply"] = funnel.get("reply", 0) + 1
             continue
-        keep, reason = rules.classify(
-            addr, e.get("subject") or "", e.get("in-reply-to") or ""
-        )
-        # A report whose thread already drew a reply was triaged by another
-        # team member; leave it to them.
-        if keep and thread_has_answer(e.get("message-id"), addr, reply_index):
-            keep, reason = False, "already-answered"
-        funnel[reason] = funnel.get(reason, 0) + 1
-        if not keep:
+        if addr.lower() in AUTOMATION_SENDERS:
+            funnel["automation-sender"] = funnel.get("automation-sender", 0) + 1
+            continue
+        if sender and addr.lower() != sender:
             continue
         mid = str(e.get("mid") or e.get("id") or "")
         if not mid or mid in seen or epoch <= watermark:
             continue
-        survivors.append((epoch, mid, addr, e.get("subject") or ""))
+        heads.append((epoch, mid, e.get("subject") or ""))
 
-    survivors.sort()
-    if args.limit:
-        survivors = survivors[: args.limit]
-
+    heads.sort()
     rows = []
-    skipped_private = 0
-    for epoch, mid, addr, subject in survivors:
+    for _epoch, mid, subject in heads:
+        if args.limit and len(rows) >= args.limit:
+            break
         try:
             msg = client.email(mid)
         except PonymailError as exc:
             print(f"  ! fetch {mid} failed: {exc}", file=sys.stderr)
             continue
-        # Recipient rule: a report also addressed to a project's private@ list
-        # is the PMC's to handle, not ours. (Verified from To/Cc headers.)
-        if not msg.needs_triage:
-            skipped_private += 1
-            funnel["pmc-private"] = funnel.get("pmc-private", 0) + 1
+        keep, reason = select(
+            msg.reporter_email, msg.to_addr, msg.cc_addr, msg.in_reply_to
+        )
+        funnel[reason] = funnel.get(reason, 0) + 1
+        if not keep:
             if not args.dry_run:
-                seen.add(mid)
+                seen.add(mid)  # headers won't change; don't re-fetch
             continue
-        pmc = msg.pmc_recipients[0] if len(msg.pmc_recipients) == 1 else None
+        pmc = pmc_from_to(msg.to_addr)
         if not args.dry_run:
             write_bundle(cache, client, msg, base_url, pmc=pmc)
             seen.add(mid)
-        natt = len(msg.attachments)
         subj = (subject[:54] + "...") if len(subject) > 57 else subject
         rows.append(
             (
                 slugify(mid)[:14],
                 (msg.date or "")[:16],
-                (addr or "?")[:24],
+                (msg.reporter_email or "?")[:24],
                 (pmc or "-")[:14],
-                str(natt),
+                str(len(msg.attachments)),
                 subj,
             )
         )
@@ -393,12 +321,11 @@ def main() -> int:
     verb = "Would download" if args.dry_run else "Downloaded"
     print(
         f"Swept {args.list} ({args.since}{', full' if args.full else ''}): "
-        f"{len(emails)} messages scanned."
+        f"{len(emails)} messages scanned, {len(heads)} thread heads fetched."
     )
     print("  funnel: " + ", ".join(f"{k}={v}" for k, v in sorted(funnel.items())))
     print(
         f"{verb} {len(rows)} new report(s)"
-        + (f", skipped {skipped_private} already with a PMC" if skipped_private else "")
         + ("" if args.dry_run else f" to {cache / INBOX}")
         + "."
     )
@@ -414,8 +341,8 @@ def main() -> int:
             )
         print()
         print(
-            f"Next: review each report.txt under {cache / INBOX}/, then file it "
-            "with the triage filing SKILL (promotes to <date>/<pmc>/<keywords>/)."
+            f"Next: have the agent read each report.txt under {cache / INBOX}/ to decide "
+            "if it is a new security report, then file it with the triage filing SKILL."
         )
     return 0
 
