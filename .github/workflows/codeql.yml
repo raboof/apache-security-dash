@@ -48,6 +48,11 @@ jobs:
       contents: read
       security-events: write
       packages: read
+      # Required by github/codeql-action/init for the
+      # overlay-database caching path on PR runs — without it
+      # the action fails with "Resource not accessible by
+      # integration" against the workflow-runs API.
+      actions: read
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
