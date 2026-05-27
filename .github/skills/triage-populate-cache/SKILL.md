@@ -77,6 +77,7 @@ shebang. Useful flags:
 | `--include-internal` | Keep `@apache.org` senders (CVE workflow, announcements) |
 | `--no-keyword-filter` | Disable the report-subject signal (denylist only) |
 | `--filter-config FILE` | YAML overriding the classifier rules (see `classify.py`) |
+| `--from ADDR` | Only cache reports from this sender (e.g. triage one reporter); applied client-side so the already-answered check still sees other senders' replies. Implies `--no-keyword-filter` (a named sender is a trusted scope, so the spam/false-positive keyword filter is skipped) |
 | `--list ADDR` | Sweep a different list (default `security@apache.org`) |
 
 Only the funnel + a one-line-per-report table reach the model. To read a

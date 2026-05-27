@@ -262,6 +262,16 @@ def build_args():
         action="store_true",
         help="Fetch + classify, but write nothing to disk",
     )
+    ap.add_argument(
+        "--from",
+        dest="from_addr",
+        default=None,
+        help="Only cache reports from this sender address (case-insensitive). "
+        "Applied after the full window is fetched, so the already-answered "
+        "check still sees other senders' replies in each thread. Implies "
+        "--no-keyword-filter: a named sender is a trusted scope, so the "
+        "spam/false-positive keyword filter is skipped.",
+    )
     ap.add_argument("--base-url", default=None, help="Override Ponymail base URL")
     return ap.parse_args()
 
@@ -282,7 +292,11 @@ def main() -> int:
     rules = Rules.from_config(
         yaml.safe_load(args.filter_config.read_text()) if args.filter_config else None,
         include_internal=args.include_internal,
-        require_signal=not args.no_keyword_filter,
+        # A specific --from sender is an explicit, trusted scope, so don't apply
+        # the spam/false-positive keyword filter (it would drop genuine reports
+        # whose subject lacks a security keyword, e.g. "XML Bomb (Billion
+        # Laughs) DoS ..."). Reply / already-answered / recipient filters stay.
+        require_signal=not args.no_keyword_filter and not args.from_addr,
     )
     client = PonymailClient(cookie=cookie, base_url=args.base_url)
     base_url = client.base_url
@@ -305,10 +319,16 @@ def main() -> int:
     max_epoch = watermark
     funnel: dict[str, int] = {}
     survivors = []
+    sender = (args.from_addr or "").lower()
     for e in emails:
         epoch = int(e.get("epoch") or 0)
         max_epoch = max(max_epoch, epoch)
         _, addr = parse_from(e.get("from"))
+        # --from restricts which reports we cache, but only after the reply
+        # index (built from the whole window) is in place, so the
+        # already-answered check still sees other senders' replies.
+        if sender and addr.lower() != sender:
+            continue
         keep, reason = rules.classify(
             addr, e.get("subject") or "", e.get("in-reply-to") or ""
         )
