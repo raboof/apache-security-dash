@@ -116,9 +116,11 @@ heuristics. The funnel, printed each run, is:
 - **candidate** - downloaded into `_inbox/`.
 
 `SPECIALIZED_LISTS` is hardcoded on purpose (only lists that actually
-exist count); refresh it from project-coordinates.json when projects
-gain or lose a dedicated team. A `security@<pmc>` address in To also
-**auto-identifies the PMC** (recorded in the front-matter `pmc:` field).
+exist count); refresh it from apache/security-site's
+[`project-coordinates.json`](https://raw.githubusercontent.com/apache/security-site/refs/heads/main/scripts/project-coordinates.json)
+when projects gain or lose a dedicated team. A `security@<pmc>` address
+in To also **auto-identifies the PMC** (recorded in the front-matter
+`pmc:` field).
 Because To/Cc are not in the stats summary, the sweep fetches each
 surviving thread head to read them; for the normal incremental window
 that is a handful of fetches, a full rescan over a long window is
@@ -160,9 +162,11 @@ For each bundle in `report-cache/_inbox/`:
   Use the PMC slug (`spark`, `httpd`, `commons`, …).
 - **Keywords** - **at most three** short, lowercase, single-word terms
   capturing the issue (vuln class + component), e.g.
-  `xxe digester file-read` or `auth admin topology`. Each keyword must
-  match `[a-z0-9_]+` (no hyphens inside a keyword - the directory name
-  uses `-` to join keywords). `file.py` enforces the cap and the
+  `xxe digester file_read` or `auth admin topology`. Each keyword must
+  match `[a-z0-9_]+`: no `-` inside a keyword (use `_` if you must join
+  two parts, e.g. `file_read`, not `file-read`). The directory name is
+  the hyphen-join of the keywords, so the tag's space-separated form
+  roundtrips without ambiguity. `file.py` enforces both the cap and the
   character set, so if it rejects your keywords, simplify them.
 
 ### Helper commands

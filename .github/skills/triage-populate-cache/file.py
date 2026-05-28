@@ -26,8 +26,8 @@ Operates only on the local cache; never talks to Ponymail, never sends. The
 workflow marker is NOT set here; it belongs to a later actioning phase.
 
 Examples:
-    ./file.py g3pt8531 --keywords "xxe digester file-read"   # pmc auto-detected
-    ./file.py to82voon --pmc spark --keywords "info-disclosure rest api"
+    ./file.py g3pt8531 --keywords "xxe digester file_read"   # pmc auto-detected
+    ./file.py to82voon --pmc spark --keywords "info_disclosure rest api"
     ./file.py 0dys652d --remove --reason "phishing (account-update)"
 """
 
