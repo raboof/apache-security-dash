@@ -28,9 +28,10 @@ each run only pulls messages newer than the last sweep (heads rejected on
 To/Cc are recorded too, so they are not re-fetched). Use --full to rescan the
 whole --since window.
 
-Downloads land in <cache>/_inbox/<slug>/ (report.txt, meta.yaml, attachments/);
-a separate filing SKILL promotes a bundle to its canonical
-<date>/<pmc>/<keywords>/ path. See SKILL.md for the full report-cache layout.
+Downloads land in <cache>/_inbox/<slug>/ as a single `report.md` (YAML
+front-matter + body) plus an `attachments/` dir. The same SKILL (`file.py`)
+then promotes a bundle to its canonical <date>/<pmc>/<keywords>/ path with a
+≤3-word keyword tag. See SKILL.md for the full report-cache layout.
 
 Examples:
     ./sweep.py                          # new reports since last sweep (2d window)
@@ -48,8 +49,6 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from classify import AUTOMATION_SENDERS, pmc_from_to, select  # noqa: E402
 from ponymail_api import (  # noqa: E402
@@ -60,6 +59,7 @@ from ponymail_api import (  # noqa: E402
     parse_from,
     slugify,
 )
+from report_md import BUNDLE_FILE, read as read_md, write as write_md  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CACHE = REPO_ROOT / "report-cache"
@@ -94,14 +94,15 @@ def load_json(path: Path, default):
 
 def load_seen(cache: Path) -> set[str]:
     """Ponymail ids already processed. .seen.json is the source of truth; we
-    also union ids found in existing meta.yaml so a lost index never causes a
-    duplicate download."""
+    also union ids found in existing report.md front-matter so a lost index
+    never causes a duplicate download."""
     seen: set[str] = set(load_json(cache / SEEN_FILE, {}).get("ids", []))
-    for meta in cache.rglob("meta.yaml"):
+    for bundle in cache.rglob(BUNDLE_FILE):
         try:
-            pid = yaml.safe_load(meta.read_text()).get("ponymail_id")
-        except (ValueError, AttributeError):
+            meta, _ = read_md(bundle)
+        except (OSError, ValueError):
             continue
+        pid = meta.get("ponymail_id")
         if pid:
             seen.add(str(pid))
     return seen
@@ -127,7 +128,6 @@ def write_bundle(
 ) -> Path:
     bundle = unique_dir(cache / INBOX, slugify(msg.ponymail_id))
     (bundle / "attachments").mkdir(parents=True, exist_ok=True)
-    (bundle / "report.txt").write_text(msg.body, encoding="utf-8")
 
     att_meta = []
     for att in msg.attachments:
@@ -171,8 +171,7 @@ def write_bundle(
             timespec="seconds"
         ),
     }
-    with (bundle / "meta.yaml").open("w", encoding="utf-8") as fh:
-        yaml.safe_dump(meta, fh, sort_keys=False, allow_unicode=True, width=100)
+    write_md(bundle / BUNDLE_FILE, meta, msg.body)
     return bundle
 
 
@@ -341,8 +340,8 @@ def main() -> int:
             )
         print()
         print(
-            f"Next: have the agent read each report.txt under {cache / INBOX}/ to decide "
-            "if it is a new security report, then file it with the triage filing SKILL."
+            f"Next: read each report.md under {cache / INBOX}/, then file the genuine "
+            "reports (./file.py <id> --keywords '...') or dismiss the rest (--remove)."
         )
     return 0
 
