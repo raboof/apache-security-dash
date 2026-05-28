@@ -43,7 +43,7 @@ Run this **before** `git push`, not after. The hooks catch:
 - **Generic safety** (`pre-commit-hooks`): merge-conflict markers, accidentally-committed private keys, trailing whitespace, mixed line endings, missing trailing newline.
 - **Markdown structure** (`markdownlint-cli2` against `.markdownlint.json`): broken anchors (`MD051`), dangling link references (`MD053`). Style rules are off — the existing docs settled those.
 - **Typos** (`typos` against `.typos.toml`): fast spell-checker. Project-specific terms (`Glasswing`, `Mythos`, PMC names) are allowlisted; common English misspellings are caught.
-- **Python lint + format** (`ruff` against every `.py` under `.github/skills/` and `tools/`). Both `ruff check` and `ruff format --check` run. Today that covers `sheets_writer.py` plus the `tools/jira_writer/`, `tools/whimsy_lookup/`, and `tools/form_submitter/` packages + tests.
+- **Python lint + format** (`ruff` against every `.py` under `.github/skills/` and `tools/`). Both `ruff check` and `ruff format --check` run. Today that covers the `tools/jira_writer/`, `tools/whimsy_lookup/`, `tools/form_submitter/`, and `tools/sheets_writer/` packages + tests.
 
 If a hook fails, fix the underlying issue rather than bypassing — `--no-verify` is not a convention here. The hooks are fast (single-digit seconds for a clean run); running them locally before pushing is the expected workflow.
 
@@ -96,7 +96,7 @@ Cross-references between SKILLs (e.g. "per `glasswing-scan-response` hard rule 5
 
 ## Live spreadsheet writes
 
-The Glasswing program coordinates state in a Google Sheet that lives outside this repo (the `mythos-tracker` user-scope memory entry holds its ID + URL). SKILLs that mutate the sheet go through `.github/skills/glasswing-scan-update/sheets_writer.py`, which authenticates via per-user OAuth (`~/.config/asf-security/glasswing/`).
+The Glasswing program coordinates state in a Google Sheet that lives outside this repo (the `mythos-tracker` user-scope memory entry holds its ID + URL). SKILLs that mutate the sheet go through [`tools/sheets_writer/`](tools/sheets_writer/) — invoked as `uv run --project tools/sheets_writer sheets-writer <subcommand>`. The helper authenticates via per-user OAuth (`~/.config/asf-security/glasswing/`).
 
 Spreadsheet writes are out-of-band relative to git — they're applied at SKILL invocation time, not at PR-merge time. If a SKILL PR depends on a new column or renamed column, **apply the schema change to the live sheet FIRST** (via `insert-column` / `add-columns` / `rename-column`) so the SKILL doc can reference the live cell layout accurately. Don't let a schema reference in a merged SKILL doc race ahead of the live sheet.
 
@@ -110,7 +110,7 @@ Per the user's CLAUDE.md, sandbox-bypass proposals must be **visually loud** (`!
 
 - `git push` / `git commit` (SSH signing reads `~/.ssh`)
 - `gh pr create` / `gh gist create` / other `gh api` (macOS cert-chain issue against `api.github.com`)
-- `uv run sheets_writer.py` (reads OAuth state from `~/.config/asf-security/glasswing/`, writes to `sheets.googleapis.com`)
+- `uv run --project tools/sheets_writer sheets-writer …` (reads OAuth state from `~/.config/asf-security/glasswing/`, writes to `sheets.googleapis.com`)
 - `uv run --project tools/jira_writer jira-writer …` (reads the PAT from `~/.config/asf-security/jira/token`, writes to `issues.apache.org`)
 - Reading `~/.config/asf-security/{glasswing,jira}/` files (sandbox denies those paths by default)
 

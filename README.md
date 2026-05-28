@@ -24,7 +24,7 @@ team's tooling, not the public reporting entry point.
 ├── glasswing-scan-response/        — handles inbound [GLASSWING] requests
 ├── glasswing-model-verify/         — pre-flight model assessment
 ├── glasswing-scan-update/          — all writes to the Mythos tracker
-│   └── sheets_writer.py            — OAuth-authenticated Sheets helper
+│                                      (writes go through tools/sheets_writer/)
 ├── glasswing-scan-status/          — status / rollup view
 ├── glasswing-scan-submit/          — operator-gated dual-email submission flow
 │                                      (Email 1 to vendor, Email 2 to PMC)
@@ -38,6 +38,8 @@ tools/                              — small Python projects with pyproject.tom
 │                                      see tools/jira_writer/README.md
 ├── form_submitter/                 — Playwright-driven vendor-form filler;
 │                                      see tools/form_submitter/README.md
+├── sheets_writer/                  — Google Sheets writer for the tracker;
+│                                      see tools/sheets_writer/README.md
 └── whimsy_lookup/                  — Deterministic Whimsy/LDAP lookups for
                                       Gate 2 + Gate 3 identity checks;
                                       see tools/whimsy_lookup/README.md
@@ -53,13 +55,14 @@ content.
 
 The repo distinguishes between two scales of Python helper:
 
-- **Inline scripts inside a SKILL directory** (e.g.
-  `.github/skills/glasswing-scan-update/sheets_writer.py`) — single
-  files using PEP 723 inline metadata via `uv run`. No `pyproject.toml`,
-  no test suite, no CI. Right for narrow helpers a single SKILL owns
-  end-to-end.
-- **Standalone projects under `tools/`** (e.g. `tools/jira_writer/`,
-  `tools/whimsy_lookup/`, `tools/form_submitter/`) — proper Python projects with `pyproject.toml`,
+- **Inline scripts inside a SKILL directory** — single files using
+  PEP 723 inline metadata via `uv run`. No `pyproject.toml`, no test
+  suite, no CI. Right for narrow helpers a single SKILL owns
+  end-to-end. The repo currently has none of these — every Python
+  helper has been promoted to `tools/`.
+- **Standalone projects under `tools/`** (`tools/jira_writer/`,
+  `tools/whimsy_lookup/`, `tools/form_submitter/`,
+  `tools/sheets_writer/`) — proper Python projects with `pyproject.toml`,
   unit tests, CI. Right for helpers that **multiple** SKILLs need (or
   expect to soon), have non-trivial logic worth test-covering, or
   interact with a system where regressions are expensive (e.g. JIRA
@@ -271,7 +274,7 @@ sequenceDiagram
    - Drop `oauth_client_secret.json` in
      `~/.config/asf-security/glasswing/` — **outside the repo**
      by deliberate choice; per-user, no shared service account.
-   - Run `sheets_writer.py setup` once to mint a refresh token.
+   - Run `uv run --project tools/sheets_writer sheets-writer setup` once to mint a refresh token.
    - Make sure you have Editor access to the workbook.
 
 4. **Authenticate to ponymail** the first time you do a sweep
@@ -386,7 +389,7 @@ own model.
 
 → Use [`glasswing-scan-update`](.github/skills/glasswing-scan-update/SKILL.md)
 directly (the other SKILLs hand off to it). The bundled
-helper (`sheets_writer.py`) has subcommands for every write
+helper ([`tools/sheets_writer/`](tools/sheets_writer/)) has subcommands for every write
 shape: `apply` for row updates, `init-canned-tab` /
 `append-canned` for the canned-responses tab,
 `insert-column` / `add-columns` / `rename-column` for schema

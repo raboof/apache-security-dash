@@ -84,3 +84,21 @@ updates:
       semver-major-days: 14
       semver-minor-days: 7
       semver-patch-days: 3
+
+  # tools/sheets_writer — Google Sheets writer for the Glasswing tracker.
+  - package-ecosystem: pip
+    directory: "/tools/sheets_writer"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(sheets_writer)"
+    labels:
+      - dependencies
+      - python
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3

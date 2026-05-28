@@ -12,7 +12,7 @@ OAuth credentials.
 
 The write path is needed because the Claude Workspace Google Drive
 MCP only exposes read tools (no `values.update` / `batchUpdate`).
-The helper script (`sheets_writer.py` in this directory) calls the
+The helper (`sheets-writer` CLI in [`tools/sheets_writer/`](../../../tools/sheets_writer/)) calls the
 Google Sheets API v4 directly.
 
 ## When to invoke
@@ -142,7 +142,7 @@ the code folder.
 7. **Run the OAuth flow once**:
 
    ```
-   uv run .github/skills/glasswing-scan-update/sheets_writer.py setup
+   uv run --project tools/sheets_writer sheets-writer setup
    ```
 
    This opens a browser, asks the user to grant
@@ -232,7 +232,7 @@ private mailing-list bouncer creds, etc.). The
 4. **Dry-run the helper.** Invoke from the project root:
 
    ```
-   uv run .github/skills/glasswing-scan-update/sheets_writer.py apply \
+   uv run --project tools/sheets_writer sheets-writer apply \
        --spreadsheet-id "<id from memory>" \
        --updates "$TMPDIR/glasswing-update-<timestamp>.json" \
        --dry-run
@@ -263,7 +263,7 @@ private mailing-list bouncer creds, etc.). The
 6. **Apply.** Re-run the same command without `--dry-run`:
 
    ```
-   uv run .github/skills/glasswing-scan-update/sheets_writer.py apply \
+   uv run --project tools/sheets_writer sheets-writer apply \
        --spreadsheet-id "<id from memory>" \
        --updates "$TMPDIR/glasswing-update-<timestamp>.json"
    ```
@@ -280,13 +280,7 @@ private mailing-list bouncer creds, etc.). The
 
 ## Helper script reference
 
-`sheets_writer.py` is a self-contained Python script using PEP
-723 inline metadata. It declares its own dependencies
-(`google-api-python-client`, `google-auth`,
-`google-auth-oauthlib`), so `uv run` resolves and runs it without
-a separate virtualenv setup. If `uv` is unavailable, fall back
-to a regular `pip install` of the three packages in an
-appropriate env and then `python sheets_writer.py …`.
+`sheets-writer` is a packaged Python project at [`tools/sheets_writer/`](../../../tools/sheets_writer/). It declares its runtime dependencies (`google-api-python-client`, `google-auth`, `google-auth-oauthlib`) in its `pyproject.toml`, so `uv run --project tools/sheets_writer` resolves and runs it without a separate virtualenv setup. If `uv` is unavailable, fall back to a regular `pip install` from the project directory and then `python -m sheets_writer …`. Full reference (setup gotchas, all subcommands, security notes) in [`tools/sheets_writer/README.md`](../../../tools/sheets_writer/README.md). Unit tests at `tools/sheets_writer/tests/` cover the pure-function layer (column math, row matching, state machine, apply diff builder, canned/PMC row builders, CLI argparse).
 
 Subcommands:
 
@@ -379,7 +373,7 @@ it verbatim or with light edits.
    exists):
 
    ```
-   uv run .github/skills/glasswing-scan-update/sheets_writer.py \
+   uv run --project tools/sheets_writer sheets-writer \
        init-canned-tab --spreadsheet-id "<id from memory>"
    ```
 
@@ -387,7 +381,7 @@ it verbatim or with light edits.
    SKILL fragments. The seed file ships in this directory:
 
    ```
-   uv run .github/skills/glasswing-scan-update/sheets_writer.py \
+   uv run --project tools/sheets_writer sheets-writer \
        append-canned --spreadsheet-id "<id from memory>" \
        --entries .github/skills/glasswing-scan-update/seed_canned_responses.json \
        --dry-run
@@ -423,7 +417,7 @@ saving for reuse, build a one-element entries file at
 Then dry-run the append, show the user, and on approval apply:
 
 ```
-uv run .github/skills/glasswing-scan-update/sheets_writer.py \
+uv run --project tools/sheets_writer sheets-writer \
     append-canned --spreadsheet-id "<id from memory>" \
     --entries "$TMPDIR/canned-add-<timestamp>.json" \
     --dry-run
