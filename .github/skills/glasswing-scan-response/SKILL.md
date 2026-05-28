@@ -146,27 +146,56 @@ If any of those are missing or empty, list the missing items
 specifically — don't ask "could you fill in the rest", name them.
 
 **Result-destination validation (hard policy):** every
-results-destination address must be `@apache.org`-rooted:
+results-destination address must be `@apache.org`-rooted.
+The three acceptable shapes, in order of preference:
 
-- personal `@apache.org` addresses (`<id>@apache.org`),
-- per-project aliases (`private@<pmc>.apache.org`,
-  `security@<pmc>.apache.org`).
+1. **Personal `@apache.org` addresses** (`<id>@apache.org`) —
+   the preferred default. Silently accepted; no push-back.
+2. **Project aliases** (`private@<pmc>.apache.org`,
+   `security@<pmc>.apache.org`) — acceptable **on explicit
+   PMC confirmation only**. If the PMC nominates a project
+   alias on the first request, ask them to confirm they
+   really want list-based delivery before accepting; don't
+   silently accept on first mention. Once confirmed, treat
+   it as a valid destination.
+3. **Nothing else** — non-Apache addresses (personal Gmail,
+   employer address, third-party forum, etc.) are
+   unconditionally rejected, even when the requester
+   explicitly asks for them.
 
-**Not acceptable** — even when the requester explicitly asks for
-a personal address (`@gmail.com`, employer address, etc.). The
-hard policy lives in
-[`feedback_apache_only_result_destinations`](../../..) memory; two
-reasons: (1) the `@apache.org` rooting is the cheapest verification
-that the recipient is still an ASF member with rights to see
-pre-disclosure findings; (2) the vendor (Alpha-Omega) expects
-ASF-anchored recipient addresses as the trust boundary.
+Why ask-to-confirm on project aliases rather than silent
+accept? Three reasons we want the PMC to consciously choose
+the list-delivery path:
 
-If a request lists a personal address in the results destinations,
-don't silently accept it — propose the equivalent `@apache.org`
-address (or the `private@<pmc>` list) as the replacement and note
-that the member can configure their Apache address to forward
-wherever they want. Same goes if the requester *later* asks for
-results to be sent to a personal inbox — push back politely.
+1. **Pre-disclosure scope discipline.** Scan reports contain
+   pre-disclosure vulnerability candidates. Personal
+   recipients tie the disclosure scope to named individuals
+   at a known point in time; project lists deliver to
+   whoever's subscribed at delivery time and whoever joins
+   later. Both are fine if the PMC has thought about it;
+   the ask-to-confirm step is what surfaces "did you mean
+   personal or list?" as an explicit decision rather than a
+   default.
+2. **Concrete triage accountability.** Personal recipients
+   have names against the triage work; a list has only a
+   collective inbox. Some PMCs prefer the list (broader
+   visibility); others prefer named individuals (clear
+   ownership). Either is valid — we surface the choice.
+3. **Vendor trust boundary.** Our scan vendor partner expects
+   ASF-anchored recipient addresses. Both personal
+   `@apache.org` and project-list `@<pmc>.apache.org`
+   addresses satisfy that requirement; the trust-boundary
+   constraint is just "must be ASF-rooted", not "must be
+   personal". (Internal note — the vendor here is
+   Alpha-Omega; do *not* name them in the PMC-facing reply
+   fragment below per Hard Rule 5.)
+
+If a request lists a non-Apache address (Gmail, employer
+address, etc.), reject with the corresponding reply fragment
+below. If a request lists a project alias, send the
+ask-to-confirm reply fragment. If a request lists only
+personal `@apache.org` addresses, no push-back is needed on
+this gate.
 
 Reply fragment (missing fields):
 
@@ -178,18 +207,25 @@ Reply fragment (missing fields):
 >
 > Once we have those we'll continue with the verification steps.
 
-Reply fragment (results-destination is a personal address):
+Reply fragment (results-destination is non-personal-`@apache.org`
+— a project list, personal Gmail, employer address, etc.).
+This is the *default push-back* fragment; if the PMC comes
+back and explicitly confirms they want the project alias
+(typically chair-sanctioned with a known-bounded membership),
+accept it on that second pass — the canned response's NOTES
+column documents the established exceptions (Fineract, plus
+historically Tapestry / Thrift / Commons / JSPWiki).
 
-> One adjustment on the results destination. Scan reports
-> contain pre-disclosure vulnerability candidates and we send
-> them only to `@apache.org`-rooted addresses — that's both an
-> internal-trust boundary on our side and an Alpha-Omega
-> vendor expectation. So instead of `<personal address>` we'd
-> send results to `<candidate @apache.org address>` (or to
-> `private@<pmc>.apache.org`, your call). You can set your
-> Apache address up to forward to whatever inbox you prefer
-> — that part lives entirely on your side and we don't see
-> the forwarding rule.
+> A small adjustment on the results destination. Scan reports
+> contain pre-disclosure vulnerability candidates, and we
+> deliver them only to personal `@apache.org` addresses — not
+> to project lists — so the disclosure scope stays tight (a
+> list's membership can drift over time; a personal address
+> is one named recipient). Instead of
+> `<list / non-apache address>` we'd send results to
+> `<primary @apache.org>` and `<backup @apache.org>`. You can
+> configure either address to forward wherever you prefer on
+> your side.
 
 ### Gate 2 — Sender identity is apache.org-rooted
 
