@@ -9,14 +9,18 @@ description: >-
   high-confidence false positive or hardening suggestion, draft a non-assertive
   note to the reporter (they may take it to the public tracker). If it is
   plausible, draft a forward to the PMC (templates/forward.md) plus a receipt
-  to the reporter (templates/receipt.md). The final non-issue / hardening / CVE
-  call always belongs to the PMC, so drafts never use assertive language and
-  the skill never sends. A deterministic helper (draft.py) fills the templates
-  and stamps the bundle's report.md front-matter; the model supplies the
-  judgement, summary, and reply text. Use whenever the team says "assess the
-  cached reports", "triage report
-  X against its threat model", "draft the forwards/replies", or after filing to
-  work through report-cache. Project source is read from a --workspace dir
+  to the reporter (templates/receipt.md). Before drafting, look up prior
+  reports for the same PMC in the local `email-classification/` archive
+  (a worktree of the `email-classification` branch, created automatically by
+  `archive_lookup.py` on first use) so duplicates and repeat reporters are
+  surfaced and Ponymail context can be passed to the PMC. The final
+  non-issue / hardening / CVE call always belongs to the PMC, so drafts never
+  use assertive language and the skill never sends. A deterministic helper
+  (draft.py) fills the templates and stamps the bundle's report.md
+  front-matter; the model supplies the judgement, summary, and reply text.
+  Use whenever the team says "assess the cached reports", "triage report
+  X against its threat model", "draft the forwards/replies", or after filing
+  to work through report-cache. Project source is read from a --workspace dir
   (default ~/workspace/<pmc>).
 ---
 
@@ -43,7 +47,7 @@ sends**.
    PMC's to handle (no triage) **only if it was sent `To: security@<pmc>`**
    (its own security list). A report that reached the central
    `security@apache.org` list needs triage and a forward **even if the PMC runs
-   its own security team** — the central list is where we add value. This is a
+   its own security team** - the central list is where we add value. This is a
    recipient test (the bundle's `to` header / `pmc_candidates`), NOT the
    `specialized` flag. `draft.py track` enforces it and refuses a
    central-addressed report.
@@ -69,6 +73,19 @@ sends**.
   the summary (do not auto-clone).
 - **Templates** `templates/forward.md`, `templates/receipt.md`, and
   `templates/receipt-specialized.md` (repo root).
+- **`email-classification/` archive** (a worktree of the
+  `email-classification` branch, created automatically by `archive_lookup.py`
+  if missing): per-PMC archive of every previously triaged report's tag, one
+  `.json` per report under `<pmc>/`, `zzz-non-issue/<pmc>/`,
+  `zzz-resolved/<pmc>/`, or `archive/.../<pmc>/`. The filename is the tag
+  (space-separated keywords, often prefixed by a CVE id or date); each file
+  lists the thread's messages (`mailtime`, `subj`, `from`, `to`,
+  `message_id`). Used by `archive_lookup.py` to find prior reports with the
+  same shape. **Privacy:** the archive holds third-party reporter PII
+  (subject, from, to, message_id). Surface it only to the PMC (forward
+  summaries, Ponymail lookups for context) and never to the reporter, unless
+  the matched archive is from the *same* reporter (i.e. an explicit
+  "you reported this before" follow-up).
 
 ## Workflow
 
@@ -79,13 +96,26 @@ For each filed bundle (`status: filed`) under `report-cache/`:
      Done (status `tracked`); the PMC already has it.
    - `To: security@apache.org` (central) -> assess (below), even for a PMC that
      runs its own team. `draft.py track` will refuse these.
-2. **Assess.** Read the bundle's `report.md` (+ `attachments/`). Pull the
+2. **Find prior similar reports.** Run
+   `archive_lookup.py --pmc <pmc> --keywords "<tag-keywords>"` to surface
+   archived reports for this PMC whose tag keywords overlap with the current
+   one. Use the output to:
+   - **Spot duplicates** the team has already answered (open / non-issue /
+     resolved). When found, the PMC summary should reference the prior
+     thread (subject + `message_id` + date) so the PMC can look it up in
+     Ponymail; you may also reuse the team's earlier reasoning in the draft.
+   - **Recognize repeat reporters.** If the matched archive's `from` matches
+     the current bundle's `reporter`, the reply may say so explicitly (e.g.
+     "thanks for the follow-up, this looks related to your previous report
+     on \<subject\>"). Otherwise the archive PII is for the PMC's eyes only
+     (see Inputs).
+3. **Assess.** Read the bundle's `report.md` (+ `attachments/`). Pull the
    project's threat model from the `threat_model` link (WebFetch it; if null,
    fall back to the project's `SECURITY.md` / general ASF expectations and note
    the gap). Read the relevant code under `<workspace>/<pmc>` if present.
    Judge: is the reported behaviour in scope and plausibly a vulnerability, or
    a false positive / hardening item?
-3. **Draft.**
+4. **Draft.**
    - **High-confidence false positive or hardening** -> write your
      non-assertive note to a temp file and run
      `draft.py reply <id> --body-file <file> [--kind false-positive|hardening]`.
@@ -97,11 +127,11 @@ For each filed bundle (`status: filed`) under `report-cache/`:
      welcome to raise hardening ideas on the project's public issue tracker.
      **Exception:** when the project's own threat model explicitly documents
      the reported behaviour as expected / out of scope, cite that statement
-     directly — that is a high-confidence false positive and the push-back can
+     directly - that is a high-confidence false positive and the push-back can
      be correspondingly firm (still grounded in the project's words, not our
      opinion). `draft.py reply` classifies the report by prefixing its tag with
      `zzz-non-issue/` (which sorts it out of the active queue and *replaces* a
-     `wf: non-issue-feedback` marker — a report is never both), and wraps the
+     `wf: non-issue-feedback` marker - a report is never both), and wraps the
      body with `Hi <reporter>,` and a `Best regards, <triager>` sign-off into
      `draft-reply.md`.
    - **Plausible (or not high-confidence)** -> write a concise PMC summary to a
@@ -118,7 +148,7 @@ For each filed bundle (`status: filed`) under `report-cache/`:
      a "this is probably not a security issue, but we forwarded it" hint when
      you lean non-issue but still want the PMC's call), and `--wf <marker>` to
      stamp the tag.
-4. **Review.** Open the draft(s); the leading `To:`/`Subject:` comment is a
+5. **Review.** Open the draft(s); the leading `To:`/`Subject:` comment is a
    hint for whoever sends them.
 
 ## Helper commands
@@ -126,10 +156,19 @@ For each filed bundle (`status: filed`) under `report-cache/`:
 ```bash
 A=.github/skills/triage-assess
 $A/build_coordinates.py                       # (re)generate coordinates.yaml
+$A/archive_lookup.py --pmc <pmc> --keywords "<words>"   # prior reports for this PMC
 $A/draft.py track   <id>
 $A/draft.py forward <id> --summary-file SUM.md  [--reporter-note NOTE.md] [--wf MARKER] [--triager "Name"] [--model "..."]
 $A/draft.py reply   <id> --body-file REPLY.md   [--kind hardening] [--triager "Name"]
 ```
+
+`archive_lookup.py` creates the `email-classification/` worktree on first
+run if missing, then ranks archived `.json` files (one per past report)
+under `<pmc>/`, `zzz-non-issue/<pmc>/`, `zzz-resolved/<pmc>/`, and
+`archive/.../<pmc>/` by keyword overlap with the query. The output is for
+the triager and the PMC; the archive's `from`/`to`/`message_id` fields
+must not leak into reporter-facing drafts (see Inputs for the privacy
+rule).
 
 `reply` always classifies the report `zzz-non-issue/` (no `wf` marker).
 `forward`'s `--wf` is one of `reporter`, `cve-allocation`, `non-issue-docs`
@@ -142,15 +181,16 @@ the forward template's "generated by AI using ..." disclaimer.
 
 ## Status values this SKILL sets
 
-- `tracked` — specialized PMC; the Security team only tracks it.
-- `drafted-forward` — `draft-forward.md` + `draft-receipt.md` written.
-- `drafted-reply` — `draft-reply.md` written (false-positive / hardening).
+- `tracked` - specialized PMC; the Security team only tracks it.
+- `drafted-forward` - `draft-forward.md` + `draft-receipt.md` written.
+- `drafted-reply` - `draft-reply.md` written (false-positive / hardening).
 
 `handled` stays `false` until a human actually sends the drafted mail.
 
 ## Scope
 
-- Reads `report-cache/`, `coordinates.yaml`, templates, and project source.
+- Reads `report-cache/`, `coordinates.yaml`, templates, project source, and
+  the `email-classification/` archive (which it may create as a worktree).
 - May WebFetch threat-model links on `*.apache.org` / `github.com`.
 - Writes only draft Markdown + `report.md` front-matter status inside the bundle.
 - Never sends, never edits the provenance block, never touches Ponymail.
