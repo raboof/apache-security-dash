@@ -133,6 +133,19 @@ straight to `glasswing-scan-response`).
    That makes the sweep's findings durable for anyone else
    on the team to read.
 
+6. **Never claim "draft queued / not sent" without calling
+   `list_drafts` in the same sweep.** Session memory of "I
+   created draft X earlier" is not evidence X is still
+   pending — Gmail's `create_draft` returns a draft ID
+   immediately, but the operator may have already opened
+   Gmail and clicked Send between then and now. The only
+   trustworthy signal that a draft is still pending is a
+   live `mcp__claude_ai_Gmail__list_drafts` call returning
+   the draft. A sweep that asserts "N drafts queued"
+   without that call is making things up — that's how the
+   2026-05-28 sweep falsely reported 6 drafts pending when
+   all 6 had already been sent.
+
 ## Procedure
 
 ### Step 1 — Email sweep
@@ -154,6 +167,20 @@ Filter out noise (the announcement-thread `+1`s, the git push
 emails, the GitHub PR-review notifications, MAILER-DAEMON
 bounces). These typically arrive in volume; skipping them
 keeps the action list useful.
+
+**Draft-folder enumeration** (mandatory — see hard rule 6).
+After the thread sweep, call
+`mcp__claude_ai_Gmail__list_drafts` with
+`query="subject:GLASSWING"` and `pageSize=50` and capture
+the result as `{thread_id, draft_id, draft_subject}` for
+each returned row. This is the *only* trustworthy signal
+that a draft is still pending in Drafts vs. already sent —
+session memory of "I created draft X earlier in this
+session" is not evidence (the operator may have manually
+clicked Send between draft-create and sweep). If
+`list_drafts` returns empty, every PMC thread classified
+in earlier steps as "we replied last" is in
+`awaiting-pmc-reply`, not in `draft-pending-manual-send`.
 
 ### Step 2 — Spreadsheet read
 
@@ -216,7 +243,8 @@ classification:
 | --- | --- | --- |
 | `new-request-untouched` | Inbound `[GLASSWING]` request exists; no row in the sheet for that PMC yet, or the row has no `Request date`. | Run `glasswing-scan-response` gates 1–4. |
 | `pmc-reply-awaiting-action` | PMC has sent a newer message than our last reply / sheet write. | Read the new message; run `glasswing-scan-response` if it raises questions; run `glasswing-model-verify` if they nominated a model; run `glasswing-scan-update` if it confirms scope / dates. |
-| `awaiting-pmc-reply` | We've replied last; nothing new from PMC. | Wait; nothing to do unless time-overdue (see below). |
+| `draft-pending-manual-send` | A Gmail draft exists in Drafts for this PMC's thread that the operator hasn't sent yet. **Detection signal: `list_drafts` (Step 1) returned a draft on this thread — not session memory of having created one.** | Surface for operator action — the operator reviews in the Gmail UI and clicks Send. No SKILL re-invocation needed. |
+| `awaiting-pmc-reply` | We've replied last; nothing new from PMC. **Confirm via the thread's latest message having a `SENT` label, and confirm no draft is pending in `list_drafts` output.** | Wait; nothing to do unless time-overdue (see below). |
 | `model-verify-pending` | Model nominated but not yet assessed for completeness + per-repo discoverability. | Run `glasswing-model-verify`. |
 | `pre-flight-passed-pitch-not-sent` | `Security model verified` set; `Expedite Claude OSS Requests` cell empty; no pre-flight-pass OSS-expedite pitch has gone out yet on the PMC thread. | Run `glasswing-scan-response`'s pre-flight-pass template (OSS-expedite pitch + ready-to-scan notification). Does **not** trigger `glasswing-scan-submit` directly — `submit` is now operator-gated. |
 | `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
@@ -245,6 +273,12 @@ Output format:
 - <new requests / new PMC replies> with thread refs
 
 ## Ready to act on (per stage)
+
+### draft-pending-manual-send (N)
+- <PMC> — draft <draft_id>; on thread <thread_id>. Next:
+  operator reviews in Gmail UI and clicks Send. **Listed
+  here only if `list_drafts` returned the draft in this
+  sweep — never from session memory.**
 
 ### new-request-untouched (N)
 - <PMC> — <thread id> — next: glasswing-scan-response
