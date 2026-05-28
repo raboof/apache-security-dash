@@ -26,6 +26,9 @@ Mirko = "Mirko"
 Svilus = "Svilus"
 ponymail = "ponymail"
 Whimsy = "Whimsy"
+# Spreadsheet A1 column letters — `BA` is column 53. typos otherwise
+# flags it as a misspelling of `BY` / `BE`.
+BA = "BA"
 
 [default.extend-identifiers]
 # Commit SHA fragments referenced in SKILL doc provenance sections.
