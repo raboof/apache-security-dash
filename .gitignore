@@ -1,0 +1,5 @@
+# JetBrainz IDEs
+/.idea/
+*.iml
+# Caches
+/report-cache/
