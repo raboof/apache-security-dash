@@ -14,19 +14,25 @@ printed, so message bytes never enter the model's context.
 
 Selection is by objective header facts only (see classify.py), no content
 heuristics: a message is downloaded iff it is a thread head, addressed To a
-known ASF security@ list, and not addressed (To/Cc) to a project private@ list
-(plus a tiny automation-sender denylist). Whether a downloaded message is
-actually a *new security report* is decided downstream by the triager reading
-the text, not here.
+known ASF security@ list, not addressed (To/Cc) to a project private@ list,
+and its thread has no reply yet in the window (any reply on the private
+archive is the strongest signal that triage has already started). Plus a
+tiny automation-sender denylist. Whether a downloaded message is actually a
+*new security report* is decided downstream by the triager reading the text,
+not here.
 
-The cheap stats call gives From + In-Reply-To for the whole window, so replies
-and automation senders are dropped without fetching; the To/Cc check needs the
-per-message fetch, done only for the remaining thread heads.
+The cheap stats call gives From + In-Reply-To for the whole window plus the
+thread_struct forest, so replies, automation senders, and already-triaged
+threads are dropped without fetching; the To/Cc check needs the per-message
+fetch, done only for the remaining thread heads.
 
 Incremental by default: a .sweep-state.json watermark + .seen.json index mean
 each run only pulls messages newer than the last sweep (heads rejected on
-To/Cc are recorded too, so they are not re-fetched). Use --full to rescan the
-whole --since window.
+To/Cc are recorded too, so they are not re-fetched). Already-triaged heads
+are NOT recorded -- the thread can grow new replies or be re-opened, so
+`--full` is the documented way to re-pull them. Use --full to rescan the
+whole --since window, ignoring both the watermark and the already-triaged
+filter.
 
 Downloads land in <cache>/_inbox/<slug>/ as a single `report.md` (YAML
 front-matter + body) plus an `attachments/` dir. The same SKILL (`file.py`)
@@ -57,6 +63,7 @@ from ponymail_api import (  # noqa: E402
     emails_list,
     load_cookie,
     parse_from,
+    replied_thread_heads,
     slugify,
 )
 from report_md import BUNDLE_FILE, read as read_md, write as write_md  # noqa: E402
@@ -252,6 +259,11 @@ def main() -> int:
     sender = (args.from_addr or "").lower()
 
     emails = emails_list(stats)
+    # Thread heads whose thread already has a reply in the window. On a
+    # private security archive any reply is a strong signal that someone has
+    # already engaged with the report, so we treat the head as "already-triaged"
+    # and skip it. `--full` bypasses this so a catch-up rescan can still re-pull.
+    replied = set() if args.full else replied_thread_heads(stats)
     max_epoch = watermark
     funnel: dict[str, int] = {}
     # Cheap pass: From + In-Reply-To are in the stats summary, so drop replies
@@ -271,6 +283,12 @@ def main() -> int:
             continue
         mid = str(e.get("mid") or e.get("id") or "")
         if not mid or mid in seen or epoch <= watermark:
+            continue
+        if mid in replied:
+            funnel["already-triaged"] = funnel.get("already-triaged", 0) + 1
+            # Deliberately NOT added to `seen`: the thread's reply state can
+            # change over the lifetime of the cache, and `--full` is the
+            # documented escape hatch for re-pulling it.
             continue
         heads.append((epoch, mid, e.get("subject") or ""))
 

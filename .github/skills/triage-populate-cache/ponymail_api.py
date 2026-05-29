@@ -103,6 +103,26 @@ def emails_list(stats: dict) -> list[dict]:
     return list(emails)
 
 
+def replied_thread_heads(stats: dict) -> set[str]:
+    """Head mids whose thread has at least one reply in the stats window.
+
+    Ponymail's `thread_struct` is a forest: top-level nodes are heads, replies
+    live under `children`. A non-empty `children` on a root means somebody
+    engaged with the report on the list, which on a private security archive
+    is the strongest signal we have that triage has already started. Returns
+    an empty set when `thread_struct` is absent so callers can treat that as
+    "no signal, fall through".
+    """
+    replied: set[str] = set()
+    for node in stats.get("thread_struct") or []:
+        if not isinstance(node, dict):
+            continue
+        mid = node.get("tid") or node.get("mid") or node.get("id")
+        if mid and (node.get("children") or []):
+            replied.add(str(mid))
+    return replied
+
+
 # Recipient routing. A report reaches the central security@apache.org archive
 # either addressed directly or auto-forwarded from a per-PMC security@<pmc>
 # alias (projects with a custom contact in apache/security-site's

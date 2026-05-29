@@ -85,7 +85,7 @@ shebang. Useful flags:
 | Flag | Effect |
 |------|--------|
 | `--since` | Query window: `<N>d`, `yyyy-mm`, or a raw Ponymail `d` value (default `2d`) |
-| `--full` | Rescan the whole window, ignoring the incremental watermark |
+| `--full` | Rescan the whole window, ignoring both the incremental watermark and the `already-triaged` skip |
 | `--limit N` | Stop after N new downloads (handy for a quick look) |
 | `--dry-run` | Select + fetch, write nothing |
 | `--from ADDR` | Only cache reports from this sender (e.g. triage one reporter) |
@@ -105,6 +105,12 @@ heuristics. The funnel, printed each run, is:
   denylist (e.g. `notifications@github.com`) that never carries a report.
   Also dropped without fetch. Kept deliberately tiny so real mail is
   never missed.
+- **already-triaged** - thread head, but the stats response's
+  `thread_struct` shows the thread already has at least one reply in the
+  window. On a private security archive any reply is the strongest
+  signal that someone has already started triage. Skipped without fetch.
+  Not recorded in `.seen.json` -- the thread can grow further activity
+  or be re-opened, so `--full` is the documented way to re-pull these.
 - **not-security-addressed** - the To header is not any ASF `security@`
   alias (the message reached the archive by some other path). Checked
   after fetch (To/Cc are not in the summary).
