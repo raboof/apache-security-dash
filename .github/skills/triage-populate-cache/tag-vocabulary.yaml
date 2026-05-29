@@ -1,0 +1,551 @@
+# tag-vocabulary.yaml -- canonical short keywords used in report-cache tags.
+#
+# Built from a snapshot of the apache/security-team email-classification
+# archive (sibling worktree under repo root). Tags in that archive do NOT
+# evolve over time, so the vocabulary below is a stable reference: when a
+# new report comes in, prefer an existing keyword from this file over a
+# fresh synonym so that historical and new reports cluster under the same
+# tag.
+#
+# Hard rules (also enforced by file.py):
+#   * keyword charset: [a-z0-9_]+  (no '-' inside a keyword; use '_')
+#   * the hyphen-joined directory slug is capped at 60 chars
+#   * the directory name is the hyphen-join of the keywords
+#
+# Soft rules (this file):
+#   * prefer the canonical form on the LEFT over any `aliases:` form
+#   * order keywords from MOST SPECIFIC to MOST GENERIC, so similar
+#     reports are distinguished by the start of the tag. A typical
+#     order is: (1) PMC subproject / component, (2) vuln class,
+#     (3) optional modifier or narrower component.
+#     Example: `digester xxe file_read`, NOT `xxe file_read digester`.
+#   * for PMC subprojects/components, prefer the per-PMC list below
+#     over a globally-generic word
+#     (e.g. commons `compress 7z` over commons `archive zip`)
+#   * if the report is purely a vuln-class report with no meaningful
+#     subproject, the vuln class can lead (e.g. `deser jdbc h2`)
+
+global:
+
+  # ---- Vulnerability classes ---------------------------------------------
+  # The bread-and-butter of the cache. One of these is almost always the
+  # first keyword on a real report.
+
+  vuln_class:
+    bypass:
+      description: security control bypass (auth, allowlist, sandbox, filter)
+    crlf:
+      description: CRLF injection / header injection
+    csrf:
+      description: cross-site request forgery
+    deser:
+      description: unsafe object deserialization (Java / Hessian / Kryo / pickle)
+      aliases: [deserialization, deserialize]
+    disclosure:
+      description: information disclosure (response leak, error message)
+    dos:
+      description: denial of service / availability impact
+    enumeration:
+      description: account / resource enumeration
+    escalation:
+      description: privilege escalation (also `privesc`)
+    fixation:
+      description: session fixation
+    idor:
+      description: insecure direct object reference
+    injection:
+      description: generic injection (use a more specific class when possible)
+    jndi:
+      description: JNDI lookup abuse (log4j-style RCE)
+    ldap:
+      description: LDAP injection / bind abuse
+    leak:
+      description: secret / data / memory leak (use with a what-leaks word)
+    oob:
+      description: out-of-bounds read or write (native code)
+    ognl:
+      description: OGNL expression evaluation (Struts-family)
+    oom:
+      description: out-of-memory via attacker-controlled allocation
+    overflow:
+      description: buffer / integer overflow (native code)
+    privesc:
+      description: privilege escalation (alt of `escalation`)
+    race:
+      description: TOCTOU / concurrency race
+    rce:
+      description: remote code execution (generic; pair with a vector keyword)
+    redirect:
+      description: open redirect
+    redos:
+      description: regex catastrophic-backtracking DoS
+    smuggling:
+      description: HTTP request smuggling
+    spoofing:
+      description: identity / origin / hostname spoofing
+    sqli:
+      description: SQL injection
+      aliases: [sql]
+    ssrf:
+      description: server-side request forgery
+    ssti:
+      description: server-side template injection
+    timing:
+      description: timing side-channel
+    traversal:
+      description: path traversal / directory traversal
+    uaf:
+      description: use-after-free (native code)
+    xss:
+      description: cross-site scripting (reflected / stored / DOM)
+    xxe:
+      description: XML external entity expansion
+
+  # ---- Affected components / contexts ------------------------------------
+  # Usually the SECOND keyword. Names the surface that gets attacked.
+
+  component:
+    acl:
+      description: access-control-list check
+    admin:
+      description: admin UI / admin endpoint
+    api:
+      description: public API surface (REST / RPC)
+    auth:
+      description: authentication / authorization code
+    aws:
+      description: AWS SDK / IMDS metadata
+    buffer:
+      description: byte-buffer handling (native code)
+    cache:
+      description: caching layer
+    cluster:
+      description: cluster / replication channel
+    config:
+      description: configuration parsing / hot-reload
+    cookie:
+      description: cookie scoping / parsing / smuggling
+    db:
+      description: database driver / pool
+    docker:
+      description: Docker image / socket handling
+    docs:
+      description: documentation / security page (use with wf non-issue-docs)
+    file:
+      description: filesystem read/write/upload sink
+    ftp:
+      description: FTP client / server
+    grpc:
+      description: gRPC service
+    groovy:
+      description: Groovy script evaluation
+    h2:
+      description: H2 database driver (frequent JDBC-RCE vector)
+    header:
+      description: HTTP header parsing / injection
+      aliases: [headers]
+    heap:
+      description: heap corruption / heap exhaustion
+    http:
+      description: HTTP/1.1 protocol code path
+    http2:
+      description: HTTP/2 protocol code path
+    jaas:
+      description: JAAS login module
+    jdbc:
+      description: JDBC driver URL / connection abuse
+    jexl:
+      description: Apache Commons JEXL expression evaluation
+    jmx:
+      description: JMX management endpoint
+    json:
+      description: JSON parser / Jackson / Gson
+    jwt:
+      description: JWT parsing / signature verification
+    k8s:
+      description: Kubernetes API / manifest handling
+    log:
+      description: log output / log injection / log4j
+    mcp:
+      description: Model Context Protocol server / client
+    memory:
+      description: memory disclosure / corruption
+    metadata:
+      description: cloud metadata endpoint (169.254.169.254)
+    mysql:
+      description: MySQL driver / dialect
+    oauth:
+      description: OAuth 2.0 / OIDC flow
+    path:
+      description: path manipulation (pair with traversal / read / write)
+    pickle:
+      description: Python pickle deserialization
+    plugin:
+      description: plugin / extension loading
+    proxy:
+      description: forward / reverse proxy code path
+    regex:
+      description: regular-expression engine (pair with redos)
+    request:
+      description: HTTP request parsing / routing
+    rest:
+      description: REST endpoint
+    rpc:
+      description: RPC channel (gRPC / Dubbo / Thrift)
+    s3:
+      description: S3 client / bucket policy
+    sasl:
+      description: SASL authentication
+    script:
+      description: script engine (Groovy / JEXL / OGNL / JS)
+    session:
+      description: HTTP session storage / replication
+    sql:
+      description: raw SQL query construction
+    ssh:
+      description: SSH protocol / known_hosts handling
+    stack:
+      description: stack overflow / stack trace exposure
+      aliases: [stackoverflow]
+    template:
+      description: template engine (FreeMarker / Velocity / Jinja)
+    tls:
+      description: TLS handshake / certificate verification
+    token:
+      description: bearer / refresh / CSRF / JWT token
+    upload:
+      description: file upload endpoint
+    xml:
+      description: XML parser / SAX / DOM
+    xslt:
+      description: XSL transformation engine
+    yaml:
+      description: YAML parser (SnakeYAML / PyYAML)
+
+  # ---- Modifiers / qualifiers --------------------------------------------
+  # Optional third keyword that narrows the report further.
+
+  modifier:
+    arbitrary:
+      description: attacker fully controls input (vs partial)
+    default:
+      description: default credential / default config
+    hardcoded:
+      description: secret / key compiled into source
+    insecure:
+      description: weakened default / config
+    post:
+      description: requires authenticated POST
+    pre_auth:
+      description: exploitable without authentication
+    read:
+      description: read-only impact (e.g. `file_read`)
+    reflected:
+      description: payload echoed back in response
+    sandbox:
+      description: sandbox escape (script engine, JVM)
+    stored:
+      description: payload persisted (vs reflected)
+    unsafe:
+      description: lacks validation / allowlist
+    untrusted:
+      description: input crosses a trust boundary
+    weak:
+      description: weak crypto / weak hash
+    write:
+      description: write impact (file/db/etc.)
+
+# ---------------------------------------------------------------------------
+# Per-PMC vocabulary
+# ---------------------------------------------------------------------------
+# Words that are common WITHIN a project but not general vuln vocabulary.
+# Usually a subproject, component, or distinct attack surface specific to
+# the PMC. Combine ONE of these with a global vuln-class keyword.
+
+per_pmc:
+
+  activemq:
+    artemis:
+      description: Apache ActiveMQ Artemis (next-gen broker)
+    classic:
+      description: ActiveMQ Classic (5.x broker, vs Artemis)
+    jms:
+      description: JMS protocol surface
+    jolokia:
+      description: Jolokia JMX-over-HTTP endpoint exposed by the broker
+    queue:
+      description: broker queue handling
+    selector:
+      description: JMS message selector expression engine
+
+  airflow:
+    conn:
+      description: Airflow Connection (credential storage)
+    dag:
+      description: DAG definition / DAG-file rendering
+    fab:
+      description: Flask-AppBuilder UI (Airflow's webserver)
+    kwargs:
+      description: operator kwargs templating
+    operator:
+      description: Airflow operator (Bash / Python / SSH / KubernetesPod ...)
+    plugins:
+      description: Airflow plugin loading
+    sftp:
+      description: SFTP provider / hook
+    xcom:
+      description: XCom inter-task data passing
+
+  arrow:
+    cpp:
+      description: arrow-cpp implementation
+    flight:
+      description: Arrow Flight RPC
+    ipc:
+      description: Arrow IPC file / stream format
+    parquet:
+      description: parquet-cpp / parquet-mr reader
+    partitioning:
+      description: dataset partitioning logic
+    rust:
+      description: arrow-rs implementation
+
+  camel:
+    couchdb:
+      description: camel-couchdb component
+    cxf:
+      description: camel-cxf component
+
+  cassandra:
+    cloud_metadata:
+      description: cloud metadata exposure via Cassandra config
+
+  commons:
+    7z:
+      description: 7-Zip archive parser inside commons-compress
+    bcel:
+      description: commons-bcel bytecode toolkit
+    codec:
+      description: commons-codec
+    compress:
+      description: commons-compress (tar / zip / 7z / cpio / pack200 / ar)
+    configuration:
+      description: commons-configuration (1.x / 2.x)
+    cpio:
+      description: CPIO archive parser inside commons-compress
+    digester:
+      description: commons-digester XML-to-bean mapping
+    fileupload:
+      description: commons-fileupload (multipart parser)
+    jexl:
+      description: commons-jexl expression language
+    lang:
+      description: commons-lang(3)
+    net:
+      description: commons-net (FTP / Telnet / SMTP clients)
+    pack200:
+      description: Pack200 parser inside commons-compress (deprecated)
+    tar:
+      description: TAR archive parser inside commons-compress
+    text:
+      description: commons-text (StringSubstitutor / lookups)
+
+  cordova:
+    webview:
+      description: WebView bridge surface
+
+  dubbo:
+    router:
+      description: Dubbo cluster router (script / condition / mesh)
+    triple:
+      description: Dubbo Triple (gRPC-compatible) transport
+
+  flink:
+    rpc:
+      description: Flink Akka / Pekko RPC channel (cluster-internal)
+
+  groovy:
+    sandbox:
+      description: SecureASTCustomizer / Groovy sandbox
+
+  guacamole:
+    webview:
+      description: guacd protocol surface
+
+  hadoop:
+    hdfs:
+      description: HDFS NameNode / DataNode
+    webhdfs:
+      description: WebHDFS REST endpoint
+    yarn:
+      description: YARN ResourceManager / NodeManager
+
+  hertzbeat:
+    monitor:
+      description: HertzBeat monitor definition
+    monitoring:
+      description: HertzBeat monitoring config
+
+  hive:
+    udf:
+      description: Hive UDF loading
+
+  httpd:
+    h2:
+      description: mod_http2
+    libapreq2:
+      description: libapreq2 request parsing library
+    mod_dav:
+      description: mod_dav WebDAV
+      aliases: [dav]
+    mod_md:
+      description: mod_md (ACME / Let's Encrypt integration)
+      aliases: [md]
+    mod_proxy:
+      description: mod_proxy / mod_proxy_* family
+      aliases: [proxy]
+    mod_ssl:
+      description: mod_ssl
+      aliases: [ssl]
+    mod_substitute:
+      description: mod_substitute output filter
+      aliases: [substitute]
+    overread:
+      description: buffer over-read in C code
+    php:
+      description: PHP-FPM integration
+
+  iceberg:
+    credential:
+      description: Iceberg credential vending
+      aliases: [cred]
+    rest:
+      description: Iceberg REST catalog
+
+  iotdb:
+    grafana:
+      description: Grafana datasource integration
+    last:
+      description: IoTDB last-query path
+    rest:
+      description: IoTDB REST endpoint
+    trigger:
+      description: IoTDB trigger engine
+
+  kafka:
+    bearer:
+      description: SASL OAUTHBEARER mechanism
+    trogdor:
+      description: Trogdor test framework
+
+  logging:
+    log4cxx:
+      description: log4cxx (C++)
+    log4j:
+      description: log4j 1.x (end-of-life)
+    log4j2:
+      description: log4j 2.x core
+    patternlayout:
+      description: PatternLayout converter
+
+  lucene:
+    solr:
+      description: Solr-side Lucene bug (cross-PMC)
+
+  nifi:
+    flow:
+      description: NiFi flow / processor
+
+  ofbiz:
+    ecommerce:
+      description: ecommerce application
+    webtools:
+      description: webtools application
+
+  openoffice:
+    aoo:
+      description: Apache OpenOffice (full suite)
+    calc:
+      description: Calc spreadsheet
+    uno:
+      description: UNO bridge
+      aliases: [UNO]
+
+  parquet:
+    avro:
+      description: parquet-avro reader
+
+  pulsar:
+    function:
+      description: Pulsar Function runtime
+
+  qpid:
+    protonj:
+      description: Qpid Proton-J AMQP library
+
+  rocketmq:
+    hessian2:
+      description: Hessian2 deserialization in controller / NameSrv
+
+  solr:
+    extract:
+      description: ExtractingRequestHandler (Tika integration)
+    posttool:
+      description: bin/post / SimplePostTool CLI
+    zkhost:
+      description: zkHost parameter (cross-instance config)
+      aliases: [zkHost]
+
+  spark:
+    connect:
+      description: Spark Connect remote API
+    pyspark:
+      description: PySpark Python entry points
+
+  struts:
+    action:
+      description: action mapping / parameter binding
+
+  superset:
+    chart:
+      description: chart definition / chart export
+    dataset:
+      description: dataset definition
+    jinja:
+      description: Jinja templating
+    rls:
+      description: row-level security
+
+  thrift:
+    cpp:
+      description: thrift-cpp generated code
+
+  tomcat:
+    examples:
+      description: examples webapp (off-by-default)
+    h2:
+      description: HTTP/2 connector
+    hpack:
+      description: HPACK header compression (HTTP/2)
+    jk:
+      description: mod_jk / AJP connector
+    tribes:
+      description: Tribes cluster channel
+    xbytebuffer:
+      description: XByteBuffer (cluster serialization)
+
+  trafficserver:
+    ats:
+      description: ATS core proxy
+
+  velocity:
+    urlresourceloader:
+      description: URLResourceLoader (operator-configured)
+
+  zeppelin:
+    interpreter:
+      description: Zeppelin interpreter (Spark / JDBC / Shell / ...)
+
+  zookeeper:
+    hashtable:
+      description: legacy Hashtable serialization

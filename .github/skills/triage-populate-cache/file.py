@@ -11,10 +11,12 @@ The agent-driven half of the triage-populate-cache SKILL. After `sweep.py`
 spools candidate threads, the agent reads each bundle's `report.md` and calls
 this script for each one:
 
-  file:     ./file.py <id> [--pmc <slug>] --keywords "<up-to-3 words>"
+  file:     ./file.py <id> [--pmc <slug>] --keywords "<space-separated words>"
             Moves the bundle to its canonical
             report-cache/<date>/<pmc>/<keywords>/ home and stamps the tag
-            (<pmc>/<date> <keywords>) into the front-matter.
+            (<pmc>/<date> <keywords>) into the front-matter. Keywords run
+            most-specific to most-generic so similar reports are
+            distinguished by the start of the tag.
 
   dismiss:  ./file.py <id> --remove [--reason "<why>"]
             For a false positive (spam/phishing/not-a-report that the
@@ -50,7 +52,7 @@ INBOX = "_inbox"
 SEEN_FILE = ".seen.json"
 DISMISSED_FILE = ".dismissed.json"
 
-MAX_KEYWORDS = 3
+MAX_TAG_LEN = 60  # length of the hyphen-joined keyword slug (the dir name)
 KEYWORD_RE = re.compile(r"^[a-z0-9_]+$")
 
 
@@ -108,16 +110,17 @@ def parse_keywords(raw: str) -> list[str]:
     tokens = (raw or "").split()
     if not tokens:
         raise SystemExit("--keywords must contain at least one word.")
-    if len(tokens) > MAX_KEYWORDS:
-        raise SystemExit(
-            f"--keywords accepts at most {MAX_KEYWORDS} words "
-            f"(got {len(tokens)}: {tokens!r}). Simplify the tag."
-        )
     bad = [t for t in tokens if not KEYWORD_RE.fullmatch(t)]
     if bad:
         raise SystemExit(
             f"Each keyword must be a single lowercase word ([a-z0-9_]+); "
             f"reject: {bad!r}."
+        )
+    slug_len = len("-".join(tokens))
+    if slug_len > MAX_TAG_LEN:
+        raise SystemExit(
+            f"--keywords slug is {slug_len} chars (max {MAX_TAG_LEN}): "
+            f"{tokens!r}. Drop or shorten a keyword."
         )
     return tokens
 
@@ -213,7 +216,11 @@ def main() -> int:
     ap.add_argument("--pmc", help="PMC slug (defaults to the sweep-detected pmc field)")
     ap.add_argument(
         "--keywords",
-        help=f"Space-separated tag keywords (1-{MAX_KEYWORDS}, [a-z0-9_]+ each)",
+        help=(
+            "Space-separated tag keywords, each [a-z0-9_]+, ordered "
+            f"most-specific to most-generic. Hyphen-joined slug capped at "
+            f"{MAX_TAG_LEN} chars."
+        ),
     )
     ap.add_argument(
         "--remove",
