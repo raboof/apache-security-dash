@@ -274,10 +274,10 @@ def main() -> int:
     # reply
     if not args.body_file:
         raise SystemExit("reply needs --body-file")
-    body = args.body_file.read_text(encoding="utf-8").strip()
+    reply_body = args.body_file.read_text(encoding="utf-8").strip()
     name = meta.get("reporter_name") or "there"
     out = header(meta.get("reporter") or "(reporter)", f"Re: {subject}")
-    out += f"Hi {name},\n\n{body}\n\nBest regards,\n\n{triager}\n"
+    out += f"Hi {name},\n\n{reply_body}\n\nBest regards,\n\n{triager}\n"
     (bundle / "draft-reply.md").write_text(out, encoding="utf-8")
     meta.update(
         {
