@@ -4,3 +4,4 @@
 # Caches
 /report-cache/
 /email-classification/
+__pycache__/
