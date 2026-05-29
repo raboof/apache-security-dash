@@ -27,7 +27,12 @@ import json
 import re
 import urllib.request
 
-from whimsy_lookup import COMMITTEE_INFO_URL, LDAP_PEOPLE_URL, REQ_TIMEOUT_S
+from whimsy_lookup import (
+    COMMITTEE_INFO_URL,
+    LDAP_PEOPLE_URL,
+    REQ_TIMEOUT_S,
+    SECURITY_COORDINATES_URL,
+)
 
 
 class FetchError(Exception):
@@ -61,6 +66,19 @@ def fetch_ldap_people(timeout: float = REQ_TIMEOUT_S) -> dict:
 def fetch_committee_info(timeout: float = REQ_TIMEOUT_S) -> dict:
     """GET the public Whimsy committee-info JSON dump."""
     return fetch_json(COMMITTEE_INFO_URL, timeout=timeout)
+
+
+def fetch_security_coordinates(timeout: float = REQ_TIMEOUT_S) -> dict:
+    """GET the apache/security-site project-coordinates.json.
+
+    The file is the authoritative source for whether a PMC has a
+    project-scoped ``security@<pmc>.apache.org`` mail alias. Maps
+    PMC slug to a small object whose ``contact`` field is either a
+    project-scoped alias (``security@<pmc>.apache.org``) or the
+    foundation-wide ``security@apache.org`` fallback. PMCs absent
+    from the file have not registered an alias.
+    """
+    return fetch_json(SECURITY_COORDINATES_URL, timeout=timeout)
 
 
 def normalize_name(s: str) -> str:
