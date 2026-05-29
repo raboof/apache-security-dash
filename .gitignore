@@ -3,3 +3,4 @@
 *.iml
 # Caches
 /report-cache/
+/email-classification/
