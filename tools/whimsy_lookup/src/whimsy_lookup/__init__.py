@@ -35,10 +35,14 @@ CLI:
     whimsy-lookup resolve-id "<full name>"
     whimsy-lookup pmc-info <slug>
     whimsy-lookup check-pmc-member <slug> <apache-id> [<apache-id> ...]
+    whimsy-lookup check-security-alias <slug>
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 LDAP_PEOPLE_URL = "https://whimsy.apache.org/public/public_ldap_people.json"
 COMMITTEE_INFO_URL = "https://whimsy.apache.org/public/committee-info.json"
+SECURITY_COORDINATES_URL = (
+    "https://raw.githubusercontent.com/apache/security-site/main/scripts/project-coordinates.json"
+)
 REQ_TIMEOUT_S = 30

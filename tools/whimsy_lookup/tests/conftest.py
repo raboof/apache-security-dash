@@ -83,6 +83,40 @@ COMMITTEE_INFO_SAMPLE = {
 }
 
 
+# Sample security-site project-coordinates JSON. Tomcat has a project-
+# scoped alias (security@tomcat.apache.org); Cassandra is the
+# observed-bounce case — entry missing from coordinates entirely. Hop
+# has an entry but ``contact`` is the foundation-wide fallback, which
+# means the per-PMC alias still doesn't exist. APISIX is contact-null
+# (some entries omit the field entirely) and must classify the same
+# way as "generic".
+SECURITY_COORDINATES_SAMPLE = {
+    "tomcat": {
+        "name": "Apache Tomcat",
+        "link": "https://tomcat.apache.org/security.html",
+        "contact": "security@tomcat.apache.org",
+    },
+    "hop": {
+        "name": "Apache Hop",
+        "link": None,
+        "contact": "security@apache.org",
+    },
+    "apisix": {
+        "name": "Apache APISIX",
+        "link": "https://github.com/apache/apisix/blob/master/THREAT_MODEL.md",
+        "contact": None,
+    },
+    # Mixed-case in the JSON (real entries are observed lowercase but
+    # the classifier normalises so a stray mixed-case entry shouldn't
+    # break detection).
+    "kafka": {
+        "name": "Apache Kafka",
+        "link": "https://kafka.apache.org/security",
+        "contact": "Security@Kafka.Apache.Org",
+    },
+}
+
+
 @pytest.fixture
 def ldap_people() -> dict:
     """Sample ``public_ldap_people.json`` payload."""
@@ -93,6 +127,12 @@ def ldap_people() -> dict:
 def committee_info() -> dict:
     """Sample ``committee-info.json`` payload."""
     return COMMITTEE_INFO_SAMPLE
+
+
+@pytest.fixture
+def security_coordinates() -> dict:
+    """Sample ``project-coordinates.json`` payload from security-site."""
+    return SECURITY_COORDINATES_SAMPLE
 
 
 @pytest.fixture
@@ -123,9 +163,11 @@ def urlopen_failing(exc: Exception) -> MagicMock:
 __all__ = [
     "COMMITTEE_INFO_SAMPLE",
     "LDAP_PEOPLE_SAMPLE",
+    "SECURITY_COORDINATES_SAMPLE",
     "committee_info",
     "ldap_people",
     "mock_urlopen",
+    "security_coordinates",
     "urlopen_failing",
     "urlopen_returning",
 ]

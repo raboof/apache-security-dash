@@ -22,8 +22,14 @@ import argparse
 import sys
 
 from whimsy_lookup.committee import PMCNotFound, chair_of, check_membership, pmc_entry
-from whimsy_lookup.fetch import FetchError, fetch_committee_info, fetch_ldap_people
+from whimsy_lookup.fetch import (
+    FetchError,
+    fetch_committee_info,
+    fetch_ldap_people,
+    fetch_security_coordinates,
+)
 from whimsy_lookup.ldap import resolve_ids
+from whimsy_lookup.security_alias import classify_security_alias
 
 
 def cmd_resolve_id(args: argparse.Namespace) -> int:
@@ -79,6 +85,35 @@ def cmd_check_pmc_member(args: argparse.Namespace) -> int:
     return 1 if any_missing else 0
 
 
+def cmd_check_security_alias(args: argparse.Namespace) -> int:
+    """Verify whether security@<slug>.apache.org exists per coordinates.json.
+
+    Exit codes:
+
+      * 0 — alias is present (contact matches ``security@<slug>.apache.org``);
+        safe to CC the alias on PMC-facing email.
+      * 1 — alias is NOT present (slug missing from coordinates.json,
+        OR contact is the foundation-wide ``security@apache.org``);
+        do NOT CC the per-PMC alias — qmail will bounce.
+    """
+    coordinates = fetch_security_coordinates()
+    status, contact = classify_security_alias(coordinates, args.slug)
+    expected = f"security@{args.slug}.apache.org"
+    if status == "present":
+        print(f"{args.slug:24} PRESENT  ({expected})")
+        return 0
+    if status == "generic":
+        print(
+            f"{args.slug:24} ABSENT   (coordinates contact = "
+            f"{contact!r}, not {expected!r}). Do NOT CC the alias."
+        )
+        return 1
+    print(
+        f"{args.slug:24} ABSENT   (no entry in project-coordinates.json). Do NOT CC {expected!r}."
+    )
+    return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="whimsy-lookup",
@@ -116,6 +151,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="One or more Apache IDs to check against the PMC roster.",
     )
 
+    p_alias = sub.add_parser(
+        "check-security-alias",
+        help=(
+            "Verify whether security@<pmc>.apache.org exists per the "
+            "security-site project-coordinates.json. Exit 0 = present "
+            "(safe to CC), exit 1 = absent (do NOT CC; qmail will bounce)."
+        ),
+    )
+    p_alias.add_argument("slug", help="PMC slug (e.g. 'tomcat', 'kafka').")
+
     return p
 
 
@@ -123,6 +168,7 @@ DISPATCH = {
     "resolve-id": cmd_resolve_id,
     "pmc-info": cmd_pmc_info,
     "check-pmc-member": cmd_check_pmc_member,
+    "check-security-alias": cmd_check_security_alias,
 }
 
 

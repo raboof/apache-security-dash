@@ -61,17 +61,39 @@ and sends. The SKILL never sends mail directly.
    current discussion.
 
 2. **Always CC `security@apache.org` on the reply, and CC the
-   project's own `security@<pmc>.apache.org` alias when one
-   exists.** The Foundation-level CC keeps the Security team's
-   audit trail; the per-project CC makes sure the PMC's collective
-   security team sees the thread regardless of which individual
-   reached out. Look up whether a project has a `security@<pmc>`
-   alias via
-   [`security.apache.org/projects/`](https://security.apache.org/projects/)
-   or its source-of-truth JSON at
-   [`apache/security-site/scripts/project-coordinates.json`](https://github.com/apache/security-site/blob/main/scripts/project-coordinates.json) —
-   not every project has one, in which case fall back to the
-   project's `private@<pmc>.apache.org` list.
+   project's own `security@<pmc>.apache.org` alias *only when
+   mechanically verified to exist*.** The Foundation-level CC
+   keeps the Security team's audit trail; the per-project CC
+   makes sure the PMC's collective security team sees the
+   thread regardless of which individual reached out.
+
+   **Mandatory mechanical verification of `security@<pmc>`
+   before adding it to CC.** Not every PMC has registered the
+   alias — qmail bounces (`#5.1.1 "Sorry, no mailbox here by
+   that name"`) on the ones that haven't. Confirmed bounces so
+   far: Cassandra (2026-05-28), Impala (2026-05-29). Many
+   silent bounces in earlier replies before the verification
+   was made mechanical.
+
+   Run, for every PMC, before constructing the CC list:
+
+       uv run --project tools/whimsy_lookup whimsy-lookup \
+         check-security-alias <pmc-slug>
+
+   - Exit 0 (`PRESENT`) → add `security@<pmc>.apache.org` to
+     CC.
+   - Exit 1 (`ABSENT`) → do **not** add the alias. Foundation-
+     level `security@apache.org` and the project's
+     `private@<pmc>.apache.org` list cover the audit trail
+     adequately.
+
+   The check consults `apache/security-site:scripts/project-
+   coordinates.json` (the authoritative source) and is the
+   only acceptable evidence — visual inspection of the JSON
+   is fine for one-offs but the CLI is the rule for SKILL
+   operations so the workflow is mechanical and not
+   memory-dependent. Do **not** WebFetch the URL: same
+   summarisation hazard as the LDAP / committee JSON.
 
    If the original thread was on a project's
    `private@<pmc>.apache.org` list, keep that list on To/CC
