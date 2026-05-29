@@ -1,13 +1,12 @@
 Dear \<PMC name> PMC,
 
-The security vulnerability report has been received by the Apache
-Security Team and is being passed to you for action.
+The following security vulnerability report has been received by the Apache Security Team and is being passed to you for resolution by the PMC.
 
 Please take careful note of the following:
 - This information is private and should be treated accordingly.
-  The issue must not be discussed on a public mailing list, it must not be added to a public bug tracker, etc.
+  While private, the issue must not be discussed on a public mailing list, it must not be added to a public bug tracker, etc.
 - The PMC is responsible for resolving this issue.
-  The security  team is here to provide help and advice but the responsibility to do the work lies with the PMC.
+  The security team is here to provide help and advice but the responsibility to do the work lies with the PMC.
 
 You may find the "ASF Project Security for Committers" [1] a useful reference.
 This e-mail represents step three of that process.
