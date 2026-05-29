@@ -101,9 +101,15 @@ For each filed bundle (`status: filed`) under `report-cache/`:
    archived reports for this PMC whose tag keywords overlap with the current
    one. Use the output to:
    - **Spot duplicates** the team has already answered (open / non-issue /
-     resolved). When found, the PMC summary should reference the prior
-     thread (subject + `message_id` + date) so the PMC can look it up in
-     Ponymail; you may also reuse the team's earlier reasoning in the draft.
+     resolved). When found, the PMC summary should reference the prior thread
+     by its **Ponymail thread URL** (`https://lists.apache.org/thread/<id>`) -
+     the standard way to point the PMC at an older message - not the raw
+     `message_id`. The archive `.json` stores only the `message_id`, so
+     resolve it to a permalink first: look the prior report up in Ponymail
+     (`search_list` on `security` / `apache.org` by subject, or `get_email`
+     by Message-Id) and cite the returned id as the thread URL, alongside the
+     subject + date. You may also reuse the team's earlier reasoning in the
+     draft.
    - **Recognize repeat reporters.** If the matched archive's `from` matches
      the current bundle's `reporter`, the reply may say so explicitly (e.g.
      "thanks for the follow-up, this looks related to your previous report
@@ -144,10 +150,12 @@ For each filed bundle (`status: filed`) under `report-cache/`:
      it and points them to the project's own address (and
      `https://security.apache.org/projects/`) for direct follow-up; otherwise
      it goes to `private@<pmc>` with the standard `templates/receipt.md`.
-     Add `--reporter-note <file>` to insert a paragraph into the receipt (e.g.
-     a "this is probably not a security issue, but we forwarded it" hint when
-     you lean non-issue but still want the PMC's call), and `--wf <marker>` to
-     stamp the tag.
+     Add `--reporter-note <file>` to insert a paragraph into the receipt:
+     when the report's fit with the project's security model is doubtful and
+     you lean non-issue but still want the PMC's call, tell the reporter
+     (non-assertively) that this is unlikely to be a security issue but has
+     been forwarded to the PMC for a final look. Use `--wf <marker>` to stamp
+     the tag.
 5. **Review.** Open the draft(s); the leading `To:`/`Subject:` comment is a
    hint for whoever sends them.
 
