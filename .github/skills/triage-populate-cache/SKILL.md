@@ -14,7 +14,8 @@ description: >-
   security reports (spam, marketing, phishing, automated bounces) via
   `./file.py <id> --remove`, and files each real report into its canonical
   `<date>/<pmc>/<keywords>/` home via `./file.py <id> --keywords "..."`. The
-  tag keywords are short single words, capped at three. Message bytes never
+  tag keywords are short single words ordered most-specific to most-generic,
+  with the hyphen-joined slug capped at 60 chars. Message bytes never
   enter the model's context during the sweep - only a compact funnel + table
   is printed. This SKILL is also the canonical reference for the
   `report-cache/` layout that downstream drafting and status SKILLs reuse. Use
@@ -84,7 +85,7 @@ shebang. Useful flags:
 | Flag | Effect |
 |------|--------|
 | `--since` | Query window: `<N>d`, `yyyy-mm`, or a raw Ponymail `d` value (default `2d`) |
-| `--full` | Rescan the whole window, ignoring the incremental watermark |
+| `--full` | Rescan the whole window, ignoring both the incremental watermark and the `already-triaged` skip |
 | `--limit N` | Stop after N new downloads (handy for a quick look) |
 | `--dry-run` | Select + fetch, write nothing |
 | `--from ADDR` | Only cache reports from this sender (e.g. triage one reporter) |
@@ -104,6 +105,12 @@ heuristics. The funnel, printed each run, is:
   denylist (e.g. `notifications@github.com`) that never carries a report.
   Also dropped without fetch. Kept deliberately tiny so real mail is
   never missed.
+- **already-triaged** - thread head, but the stats response's
+  `thread_struct` shows the thread already has at least one reply in the
+  window. On a private security archive any reply is the strongest
+  signal that someone has already started triage. Skipped without fetch.
+  Not recorded in `.seen.json` -- the thread can grow further activity
+  or be re-opened, so `--full` is the documented way to re-pull these.
 - **not-security-addressed** - the To header is not any ASF `security@`
   alias (the message reached the archive by some other path). Checked
   after fetch (To/Cc are not in the summary).
@@ -160,14 +167,69 @@ For each bundle in `report-cache/_inbox/`:
   `security@<pmc>` recipient; otherwise read the body to determine the
   project (the subject/body almost always name it, e.g. "Apache Spark").
   Use the PMC slug (`spark`, `httpd`, `commons`, …).
-- **Keywords** - **at most three** short, lowercase, single-word terms
-  capturing the issue (vuln class + component), e.g.
-  `xxe digester file_read` or `auth admin topology`. Each keyword must
-  match `[a-z0-9_]+`: no `-` inside a keyword (use `_` if you must join
-  two parts, e.g. `file_read`, not `file-read`). The directory name is
-  the hyphen-join of the keywords, so the tag's space-separated form
-  roundtrips without ambiguity. `file.py` enforces both the cap and the
-  character set, so if it rejects your keywords, simplify them.
+- **Keywords** - short, lowercase, single-word terms capturing the
+  issue. Each keyword must match `[a-z0-9_]+`: no `-` inside a keyword
+  (use `_` if you must join two parts, e.g. `file_read`, not
+  `file-read`). The directory name is the hyphen-join of the keywords,
+  so the tag's space-separated form roundtrips without ambiguity.
+  `file.py` enforces the character set and caps the hyphen-joined slug
+  at 60 chars (long enough for a handful of words, short enough to keep
+  paths and `ls` output legible). If `file.py` rejects your keywords,
+  drop the least informative one or shorten it.
+- **Keyword order: most specific to most generic.** The first keyword
+  is the strongest filter, so similar reports cluster by their tag
+  prefix. Concretely:
+  1. Most specific PMC subproject / component (from
+     `per_pmc.<pmc>` in [`tag-vocabulary.yaml`](tag-vocabulary.yaml),
+     or a global `component` entry if the project has no subproject
+     for this surface).
+  2. The vulnerability class (`vuln_class` in the vocabulary).
+  3. Optional further narrowing: a more specific component, a
+     `modifier`, or a CVE-vector keyword.
+
+  Examples: `digester xxe file_read` (commons-digester XXE leading to
+  file read), `tribes deser cluster` (Tomcat Tribes cluster-channel
+  deserialization), `dag operator rce` (Airflow operator-templating
+  RCE via DAG). When the report is squarely about a vuln class with no
+  meaningful subproject (e.g. a foundation-wide CVE intake), the vuln
+  class can lead: `deser jdbc h2`.
+
+### Pick keywords from the established vocabulary
+
+Before inventing a new keyword, consult
+[`tag-vocabulary.yaml`](tag-vocabulary.yaml) and **prefer an existing
+canonical keyword over a synonym**. New reports clustering under the
+same tag as historical ones is the whole point: the cache and the
+sibling `email-classification/` archive both become searchable by tag.
+
+The file has three sections:
+
+- `global.vuln_class` - the lead keyword for almost every report
+  (`rce`, `dos`, `deser`, `xss`, `ssrf`, `traversal`, `sqli`, `xxe`,
+  `bypass`, `injection`, …).
+- `global.component` - what the vuln hits (`file`, `path`, `session`,
+  `header`, `jdbc`, `jwt`, `xml`, `yaml`, `regex`, `template`, …).
+- `global.modifier` - optional third keyword to narrow (`read`,
+  `write`, `stored`, `reflected`, `pre_auth`, `default`, …).
+- `per_pmc.<pmc>` - subprojects / components specific to a PMC (e.g.
+  commons `compress`, `jexl`, `fileupload`; airflow `dag`, `operator`;
+  tomcat `tribes`, `hpack`; logging `log4j`, `log4j2`).
+
+Rules of thumb:
+
+1. **First keyword** is almost always a `vuln_class` entry. If the
+   report names a deserialization sink, use `deser` (the canonical
+   form), not `deserialization` or `deserialize`.
+2. **Second keyword** is a `component` entry or, if the PMC has a list
+   in `per_pmc`, an entry from there (subprojects sort the cache better
+   than generic component words).
+3. **Third keyword** (often omitted) is a `modifier` or a narrower
+   component pointer.
+4. If the report does not fit any existing keyword, a new one is fine -
+   just make sure the form matches the existing style (single lowercase
+   word, `_` not `-` for compounds). Mention the new keyword in your
+   filing proposal so the user can decide whether it belongs in the
+   vocabulary file.
 
 ### Helper commands
 
@@ -232,7 +294,8 @@ report-cache/
 - `<date>` is `yyyy-mm-dd` (the report's date).
 - `<pmc>` is the PMC slug (e.g. `tomcat`).
 - `<keywords>` is the hyphen-joined keyword set from the report tag
-  (up to three single words).
+  (single words, ordered most-specific to most-generic, slug capped at
+  60 chars).
 
 The report **tag** stamped on filing has the form:
 

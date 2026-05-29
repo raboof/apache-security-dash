@@ -103,6 +103,46 @@ def emails_list(stats: dict) -> list[dict]:
     return list(emails)
 
 
+def replied_thread_heads(stats: dict) -> set[str]:
+    """Ponymail mids of thread heads that have at least one reply in the window.
+
+    Ponymail's `thread_struct` would tell us this directly, but stats.lua for
+    private security lists returns an empty struct, so we reconstruct
+    threading from the flat `emails` list: each entry has its own RFC
+    `message-id`, Ponymail-internal `mid`, and `in-reply-to` (the parent's
+    RFC Message-Id). For every reply we climb the chain until we hit a head
+    (empty `in-reply-to`) or fall off the window, and mark the head's mid.
+    Replies whose chain exits the window contribute nothing -- the head is
+    not in the candidate set the sweep is choosing from anyway.
+    """
+    by_msgid: dict[str, dict] = {}
+    for e in emails_list(stats):
+        msgid = (e.get("message-id") or "").strip()
+        if msgid:
+            by_msgid[msgid] = e
+
+    replied: set[str] = set()
+    for e in emails_list(stats):
+        irt = (e.get("in-reply-to") or "").strip()
+        if not irt:
+            continue
+        cur = irt
+        walked: set[str] = set()
+        while cur and cur not in walked:
+            walked.add(cur)
+            parent = by_msgid.get(cur)
+            if not parent:
+                break  # parent's not in this window
+            parent_irt = (parent.get("in-reply-to") or "").strip()
+            if not parent_irt:
+                head_mid = str(parent.get("mid") or parent.get("id") or "")
+                if head_mid:
+                    replied.add(head_mid)
+                break
+            cur = parent_irt
+    return replied
+
+
 # Recipient routing. A report reaches the central security@apache.org archive
 # either addressed directly or auto-forwarded from a per-PMC security@<pmc>
 # alias (projects with a custom contact in apache/security-site's
