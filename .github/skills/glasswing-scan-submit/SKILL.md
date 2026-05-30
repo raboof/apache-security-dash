@@ -473,6 +473,21 @@ vendor's scan team has full context. Subsequent
 submissions are slimmer and point back to the headline
 submission for that context.
 
+A program-shape note for context.
+
+In parallel with the vendor-relay path above, the ASF Security,
+ASF Infrastructure, and ASF Tooling teams are jointly pursuing
+direct-access scanning of ASF projects without the third-party
+vendor relay. This is what we're currently working on at the
+ASF in parallel. Both paths feed the same internal queue; we
+work whichever lands fastest for any given PMC, to make the
+best use of the opportunities each party involved has made
+available. From the PMC's perspective the process is identical
+either way: pre-flight gate, scan, sanity-check, forward
+results to your named recipients. We mention it so you have
+the full picture of how the program is wired — nothing changes
+about what shows up in your inbox.
+
 You don't need to do anything until the results arrive
 — we'll sanity-check the vendor's report and forward it
 verbatim to your named scan-result recipients on a fresh

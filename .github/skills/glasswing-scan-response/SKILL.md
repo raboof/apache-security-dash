@@ -609,6 +609,21 @@ Ready to queue whenever you give the green light — we
 don't auto-submit. Typical end-to-end cycle is days to
 a couple of weeks depending on queue position.
 
+A program-shape note for context.
+
+In parallel with the vendor-relay path above, the ASF Security,
+ASF Infrastructure, and ASF Tooling teams are jointly pursuing
+direct-access scanning of ASF projects without the third-party
+vendor relay. This is what we're currently working on at the
+ASF in parallel. Both paths feed the same internal queue; we
+work whichever lands fastest for any given PMC, to make the
+best use of the opportunities each party involved has made
+available. From the PMC's perspective the process is identical
+either way: pre-flight gate, scan, sanity-check, forward
+results to your named recipients. We mention it so you have
+the full picture of how the program is wired — nothing changes
+about what shows up in your inbox.
+
 A separate offer for PMC members who'll be doing the
 triage work:
 
@@ -803,6 +818,16 @@ If the requester wants the specific model name for the run on *their*
 repo, point at the eventual scan-result markdown — it includes the
 model identifier as a header field. Don't pin a specific model in the
 reply unless the user has explicitly told you to.
+
+**Note on the dual-path program shape.** Beyond the vendor-relay
+path that uses Glasswing's currently-designated production model, the
+ASF Security, ASF Infrastructure, and ASF Tooling teams are jointly
+pursuing a parallel direct-access path that runs the scan without the
+third-party vendor relay (using ASF-side tooling). Both paths feed
+the same internal queue and produce the same shape of output for the
+PMC; the choice between them is an internal scheduling decision aimed
+at moving each PMC's scan through the queue as fast as possible. The
+PMC-facing process is identical either way.
 
 ### "What threat-modeling framework do you expect — STRIDE / LINDDUN /
 PASTA / something else?"
