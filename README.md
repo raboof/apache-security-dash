@@ -249,7 +249,7 @@ sequenceDiagram
         Sec->>Sec: Write addresses to<br/>'Expedite Claude OSS Requests' cell
     end
     Note over Sec: Wait for operator gate<br/>(explicit per-PMC go-ahead)
-    Sec->>V: scan-submit — one vendor enrollment<br/>form per repo (OSSF-criticality order;<br/>headline form carries maintainer roster<br/>+ expedite addresses if PMC nominated any)
+    Sec->>V: scan-submit — one vendor enrollment<br/>form per repo, in OSSF-criticality order.<br/>Headline form carries the maintainer roster<br/>and expedite addresses if the PMC nominated any
     Sec-->>PMC: PMC notification email<br/>(scan request submitted,<br/>results forthcoming,<br/>NO vendor identity in body)
     par OSS side flow (only if expedite asked)
         V->>A: Vendor relays expedite ask
@@ -263,6 +263,75 @@ sequenceDiagram
     end
     PMC->>PMC: Triage / CVE /<br/>coordinated disclosure
 ```
+
+## The inbound security-report triage process
+
+A second, separate workflow — operated by **Piotr Karwasz** — handles the
+inbound security reports that land on the foundation-wide
+`security@apache.org` alias. Where the Glasswing program is *outbound* (the
+team offers scans to PMCs), this one is *inbound*: reports arrive and have to
+be routed to the right PMC. Two SKILLs cover it —
+[`triage-populate-cache`](.github/skills/triage-populate-cache/SKILL.md) pulls
+and files reports, and
+[`triage-assess`](.github/skills/triage-assess/SKILL.md) assesses each report
+and drafts the response. Nothing is ever sent automatically, and the Security
+team does not make the call — the PMC owns the final disposition (real issue /
+non-issue / hardening / CVE).
+
+```mermaid
+flowchart TD
+    IN([Inbound report<br/>security@apache.org]):::ext --> SW{{triage-populate-cache<br/>sweep.py — deterministic<br/>Ponymail sweep}}:::skill
+    SW --> INBOX[(report-cache/_inbox/<br/>one report.md per bundle)]:::cache
+    INBOX --> CL{{agent reads + classifies<br/>each bundle}}:::skill
+    CL -->|spam / bounce / marketing| DIS([dismiss<br/>file.py --remove<br/>operator confirms]):::drop
+    CL -->|genuine report| FILE[(filed under<br/>date / pmc / keywords)]:::cache
+    FILE --> REC{Addressed to?}:::gate
+    REC -->|security@pmc<br/>own list| TRK([track only<br/>PMC already has it]):::done
+    REC -->|security@apache.org<br/>central| AS{{triage-assess<br/>read threat model + code,<br/>check archive for duplicates}}:::skill
+    AS --> J{In scope and<br/>plausible?}:::gate
+    J -->|false positive<br/>or hardening| RP([non-assertive reply<br/>to reporter<br/>draft.py reply]):::draft
+    J -->|plausible| FW([forward to PMC<br/>plus reporter receipt<br/>draft.py forward]):::draft
+    TRK --> H([human reviews + sends.<br/>PMC owns the final call]):::pmc
+    RP --> H
+    FW --> H
+
+    classDef ext fill:#fff3cd,stroke:#9a7d00,color:#553e00
+    classDef skill fill:#d4e6f9,stroke:#1f6feb,color:#0a2e5c
+    classDef gate fill:#ffcccc,stroke:#cc0000,color:#660000
+    classDef cache fill:#cfe9d7,stroke:#1f7a3a,color:#0a3a1c
+    classDef draft fill:#e2d6f9,stroke:#6f42c1,color:#3d2469
+    classDef done fill:#cfe9d7,stroke:#1f7a3a,color:#0a3a1c
+    classDef drop fill:#eeeeee,stroke:#888888,color:#333333
+    classDef pmc fill:#fff3cd,stroke:#9a7d00,color:#553e00
+```
+
+**Phase 1 — populate the cache**
+([`triage-populate-cache`](.github/skills/triage-populate-cache/SKILL.md)). A
+deterministic `sweep.py` queries the `security@apache.org` Ponymail archive
+incrementally (off a watermark), keeps only thread-head messages addressed to a
+triageable `security@` alias (not a project's own specialized security list, not
+Cc'd to a `private@` list), downloads each survivor's body + attachments
+straight off the Ponymail HTTP API, and writes one `report.md` (YAML
+front-matter + body) per bundle into a local `report-cache/_inbox/`. The agent
+then reads each bundle and either **files** a genuine report under
+`<date>/<pmc>/<keywords>/` or **dismisses** spam / marketing / bounces —
+dismissals are confirmed with the operator first, since they delete files. The
+`report-cache/` tree is local-only (not committed).
+
+**Phase 2 — assess and draft**
+([`triage-assess`](.github/skills/triage-assess/SKILL.md)). For each filed
+report: one addressed to a PMC's **own** `security@<pmc>` list is only
+**tracked** (the PMC already has it); one on the **central**
+`security@apache.org` is assessed — the agent pulls the project's threat model
+(or `SECURITY.md`), reads the relevant code, and checks the archive for
+duplicates and repeat reporters before judging whether the behaviour is an
+in-scope, plausible vulnerability. A high-confidence false positive or hardening
+item gets a **non-assertive reply to the reporter**; anything plausible gets a
+**forward to the PMC** (`private@<pmc>` or the project's specialized security
+list) plus a **receipt to the reporter**. Which PMCs are "specialized" (route to
+their own security list) comes from a committed `coordinates.yaml`, regenerated
+from the security-site project coordinates by `build_coordinates.py`. Every
+output is a draft for a human to review and send.
 
 ## How to use the SKILLs
 
