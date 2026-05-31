@@ -61,6 +61,7 @@ payload without contacting the API.
 | Subcommand | Purpose |
 | --- | --- |
 | `setup` | One-time OAuth installed-app flow. |
+| `dump --spreadsheet-id ID --sheet S [--objects] [--compact]` | **Read-only.** Print a whole sheet as JSON to stdout, straight off the Sheets API (no Drive-MCP ~80 KB truncation). Default shape is `{header, rows}`; `--objects` keys each row by header. Pipe to `jq` to read without pulling bytes into model context. |
 | `apply --spreadsheet-id ID --updates PATH [--dry-run]` | Apply row-level updates from a JSON file. Match step requires exactly one row per update. |
 | `init-canned-tab --spreadsheet-id ID [--dry-run]` | Create the `Canned Responses` sheet idempotently. |
 | `append-canned --spreadsheet-id ID --entries PATH [--dry-run]` | Append canned-response rows. Today's date auto-fills the `Date Added` column. |

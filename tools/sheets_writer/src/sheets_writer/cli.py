@@ -26,6 +26,7 @@ from sheets_writer import CANNED_SHEET, PMCS_SHEET
 from sheets_writer.apply import cmd_apply
 from sheets_writer.auth import AuthError, run_setup
 from sheets_writer.canned import cmd_append_canned, cmd_init_canned
+from sheets_writer.dump import cmd_dump
 from sheets_writer.pmcs import cmd_append_pmc
 from sheets_writer.schema import cmd_add_columns, cmd_insert_column, cmd_rename_column
 from sheets_writer.status import cmd_build_status_tab
@@ -46,6 +47,23 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("setup", help="Run OAuth installed-app flow once.")
+
+    dump_p = sub.add_parser(
+        "dump",
+        help="Read a sheet and print it as JSON to stdout (read-only; no truncation).",
+    )
+    dump_p.add_argument("--spreadsheet-id", required=True)
+    dump_p.add_argument("--sheet", required=True, help="Sheet name (e.g. 'PMCs').")
+    dump_p.add_argument(
+        "--objects",
+        action="store_true",
+        help="Emit a list of row objects keyed by header instead of {header, rows}.",
+    )
+    dump_p.add_argument(
+        "--compact",
+        action="store_true",
+        help="Single-line JSON instead of indented.",
+    )
 
     apply_p = sub.add_parser("apply", help="Apply row updates from a JSON file.")
     apply_p.add_argument("--spreadsheet-id", required=True)
@@ -141,6 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 DISPATCH = {
     "setup": cmd_setup,
+    "dump": cmd_dump,
     "apply": cmd_apply,
     "init-canned-tab": cmd_init_canned,
     "append-canned": cmd_append_canned,
