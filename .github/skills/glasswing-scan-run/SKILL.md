@@ -146,6 +146,33 @@ straight to `glasswing-scan-response`).
    2026-05-28 sweep falsely reported 6 drafts pending when
    all 6 had already been sent.
 
+7. **Never trust a thread-search result's "last message" —
+   resolve the true latest message per-thread with
+   `get_thread`.** `mcp__claude_ai_Gmail__search_threads`
+   caps the `messages` array it returns at ~5 per thread,
+   and those 5 are **not** guaranteed to be the newest —
+   it has been observed returning the *oldest* 5 on
+   `newer_than:` / paginated queries. So `messages[-1]`
+   from a search result is a reliable "last message" ONLY
+   for threads with ≤5 messages total; for any thread at
+   the 5-message cap it is stale. This cuts both ways and
+   both failure modes are real: the 2026-05-31 sweep
+   **undercounted** (six older PMC threads — Grails, APISIX,
+   Dubbo, Fineract, Hop, Directory — had recent PMC replies
+   sitting past the cap, so they looked quiet when they were
+   actually awaiting us) **and overcounted** (DB and Struts
+   were flagged "awaiting us" when we had in fact already
+   replied past the cap). The only trustworthy
+   "who sent the last message, and is it ours?" signal is a
+   per-thread `get_thread` (MINIMAL format is enough — it
+   returns every message's `sender`, `labelIds` (look for
+   `SENT`), and `date`). Step 1 below makes this mechanical
+   and cheap via a thread-state cache so you don't re-pull
+   every thread every sweep — but when the cache says a
+   thread changed, or when you're about to assert a thread's
+   awaiting-state, the verdict must come from `get_thread`,
+   never from the search snippet.
+
 ## Procedure
 
 ### Step 1 — Email sweep
@@ -167,6 +194,66 @@ Filter out noise (the announcement-thread `+1`s, the git push
 emails, the GitHub PR-review notifications, MAILER-DAEMON
 bounces). These typically arrive in volume; skipping them
 keeps the action list useful.
+
+**Per-thread true-last-message resolution (mandatory — see
+hard rule 7).** The search above tells you *which* threads
+exist; it does **not** reliably tell you who sent the last
+message (it caps each thread at ~5 messages and may return
+the oldest). Whether a thread is `awaiting-pmc-reply` vs
+`pmc-reply-awaiting-action` therefore must be decided from a
+per-thread `get_thread` (MINIMAL format), never from the
+search snippet. For each non-noise thread, the resolved
+record is:
+
+```
+{ thread_id, subject, msg_count, latest_msg_id,
+  latest_msg_date, latest_from, latest_is_ours, awaiting }
+```
+
+where `latest_is_ours = (latest message's labelIds contains
+"SENT")`, and `awaiting` is `us` (last message is the PMC's),
+`pmc` (last message is ours), or `none` (closed/submitted).
+Only after this record is built do you classify the thread in
+Step 4.
+
+**Thread-state cache (do this so you don't re-pull every
+thread every sweep).** Email is append-only: a message, once
+sent, is immutable and a thread's message list only ever
+*grows*. So a thread whose newest message hasn't changed
+since the last sweep keeps its previously-resolved verdict —
+there is nothing new to read. Exploit that:
+
+1. **Cache file:**
+   `~/.cache/asf-security/glasswing/thread-state.json`
+   (sandbox-writable; create the dir if missing). Shape:
+   `{ "last_sweep": "<ISO8601>", "threads": { "<tid>": <record above> } }`.
+2. **Load** the cache at sweep start (empty `{}` on first run).
+3. **Find the changed set** with one bounded search:
+   `mcp__claude_ai_Gmail__search_threads` with
+   `query="subject:GLASSWING after:YYYY/MM/DD"`, where the
+   date is `last_sweep` minus a 1-day safety buffer. Every
+   `thread_id` it returns is a thread that gained ≥1 message
+   since the last sweep (new PMC requests show up here too).
+4. **Refresh only the changed set + any thread absent from
+   the cache:** call `get_thread` (MINIMAL) on each, rebuild
+   its record, and overwrite the cache entry. Threads in the
+   cache but *not* in the changed set are unchanged — reuse
+   their cached record verbatim (no `get_thread`).
+5. **Save** the cache with `last_sweep` set to the start time
+   of this sweep (pass the timestamp in; do not call
+   `Date.now()` inside a helper that must stay deterministic).
+
+The cache is a *speed + correctness aid*, never the source of
+truth — Gmail and the spreadsheet are. If a record looks
+stale, contradictory, or you're about to act on it, re-pull
+the thread. The first sweep (cold cache) resolves every
+active thread once; every later sweep only re-reads the
+handful of threads that actually moved.
+
+Note: `get_thread` here is **MINIMAL** — you only need
+direction, not bodies. Fetch `FULL_CONTENT` only later, in
+the per-task SKILL, when you actually draft a reply to a
+specific thread.
 
 **Draft-folder enumeration** (mandatory — see hard rule 6).
 After the thread sweep, call
@@ -481,6 +568,14 @@ unbidden.
   end. The Status sheet is the team's shared view; a
   sweep that only reports in chat leaves the rest of the
   team out of date.
+- A sweep that reads "who replied last" off the
+  thread-search snippet instead of `get_thread` (hard rule
+  7). For any thread past the ~5-message search cap the
+  snippet's last message is stale — this both buries PMC
+  replies we owe answers to and invents "awaiting us" items
+  we already answered. Resolve the latest message per-thread
+  with `get_thread` (MINIMAL), cached against last sweep so
+  it stays cheap.
 
 ## Provenance
 
