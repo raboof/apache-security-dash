@@ -35,8 +35,9 @@ CLI subcommands:
   append-pmc --spreadsheet-id ID --entries PATH [--dry-run]
       Append new PMC rows; aborts on duplicate slug.
   build-status-tab --spreadsheet-id ID [--dry-run]
-      Refresh the 'Status' tab with in-flight + completed tables +
-      timeline data, color-coded by pipeline state.
+      Refresh three tabs from the PMCs sheet: 'Status in progress'
+      (colour legend + grouped program totals + in-flight table),
+      'Completed', and 'Timeline' — colour-coded by pipeline state.
   rename-column --spreadsheet-id ID --sheet S --old H --new NEW [--dry-run]
   insert-column --spreadsheet-id ID --sheet S --after H --header NEW [--dry-run]
   add-columns --spreadsheet-id ID --sheet S --headers H... [--dry-run]
@@ -65,6 +66,12 @@ PMCS_SHEET = "PMCs"
 PMCS_REQUIRED_FIELDS = ("PMC Name", "PMC Slug")
 
 STATUS_SHEET = "Status"
+# build-status-tab now writes three tabs: the in-flight view, the completed
+# view, and the date-milestone timeline (each was a block in the old single
+# "Status" tab). The in-flight tab is the renamed successor of "Status".
+IN_PROGRESS_SHEET = "Status in progress"
+COMPLETED_SHEET = "Completed"
+TIMELINE_SHEET = "Timeline"
 
 # Pipeline states in progression order. Order matters: the state-detection
 # function picks the latest applicable state, and colors render red->green
@@ -84,6 +91,12 @@ STATE_COLOR = {
     "Triaging": {"red": 0.62, "green": 0.86, "blue": 0.62},  # medium green
     "Delivered": {"red": 0.40, "green": 0.74, "blue": 0.42},  # dark green
 }
+
+# Orange, sitting between Pre-flight red and Ready yellow: a Pre-flight PMC
+# whose model is already Nominated (exists, pending verification) is further
+# along than one whose model is still Missing, so its row gets this shade
+# instead of the flat Pre-flight red.
+NOMINATED_COLOR = {"red": 1.00, "green": 0.85, "blue": 0.55}
 
 MODEL_COLOR = {
     "Verified": {"red": 0.70, "green": 0.90, "blue": 0.70},

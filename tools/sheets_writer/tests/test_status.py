@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from sheets_writer.status import compute_pmc_status
+from sheets_writer.status import classify_model_origin, compute_pmc_status
 
 
 def _row(header: list[str], **overrides) -> tuple[list[str], dict[str, int]]:
@@ -151,3 +151,39 @@ def test_compute_pmc_status_tolerant_to_missing_columns() -> None:
     del col_idx["Notes"]
     result = compute_pmc_status(row, col_idx)
     assert result["notes"] == ""
+
+
+def test_classify_model_origin_none() -> None:
+    assert classify_model_origin("", "") == "none"
+    assert classify_model_origin("   ", "some notes") == "none"
+
+
+def test_classify_model_origin_security_team() -> None:
+    assert classify_model_origin("https://x.org/tm", "Path 3 — we drafted it") == "security-team"
+    assert classify_model_origin("drafted via threat-model-producer", "") == "security-team"
+
+
+def test_classify_model_origin_pmc_scovetta() -> None:
+    assert classify_model_origin("PMC is writing one", "path 2") == "pmc-scovetta"
+    assert (
+        classify_model_origin("fresh model per the Apache Security threat-model rubric", "")
+        == "pmc-scovetta"
+    )
+
+
+def test_classify_model_origin_reviewed() -> None:
+    assert classify_model_origin("https://x.org/model", "discoverability PR opened") == "reviewed"
+    assert classify_model_origin("existing model", "we added §11a additions") == "reviewed"
+
+
+def test_classify_model_origin_existing() -> None:
+    # Has a model, no correction/path markers → accepted as-is.
+    assert classify_model_origin("https://x.org/threat-model.md", "looks complete") == "existing"
+
+
+def test_compute_pmc_status_sets_model_origin() -> None:
+    row, col_idx = _row(
+        HEADER,
+        **{"PMC Slug": "x", "Security Model": "https://x.org", "Notes": "Path 3 — we drafted it"},
+    )
+    assert compute_pmc_status(row, col_idx)["model_origin"] == "security-team"
