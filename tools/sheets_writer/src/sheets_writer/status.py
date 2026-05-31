@@ -35,6 +35,7 @@ from sheets_writer import (
     TIMELINE_SHEET,
 )
 from sheets_writer.columns import col_letter
+from sheets_writer.dashboard import render_dashboard, update_dashboard_gist
 from sheets_writer.prs import parse_pr_urls, query_pr_states
 from sheets_writer.sheets_api import fetch_sheet_grid, get_service
 
@@ -737,6 +738,25 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         ("Delivered", state_counts["Delivered"], STATE_COLOR["Delivered"]),
     ]
 
+    # Aggregate counts for the private dashboard gist (no PMC names / no vendor).
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{args.spreadsheet_id}/edit"
+    dashboard_data = {
+        "total_pmcs": total_pmcs,
+        "state_counts": state_counts,
+        "nominated": nominated_count,
+        "results_back": results_back,
+        "has_model": has_model,
+        "repos": (total_repos_submitted, repos_not_submitted, total_repos_requested),
+        "prs": (total_open, total_merged, total_closed, total_prs),
+        "models": {
+            "counts": origin_counts,
+            "in_progress": origin_in_progress,
+            "complete": origin_complete,
+            "origins": MODEL_ORIGINS,
+        },
+        "funnel": funnel,
+    }
+
     # Funnel over time: for each milestone date, how many PMCs were in each
     # pipeline state as of that date (state = the latest milestone reached). ISO
     # date strings compare lexically, so plain <= works.
@@ -1081,6 +1101,8 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
             + "."
         )
+        print("\n----- dashboard gist preview (not pushed in --dry-run) -----\n")
+        print(render_dashboard(today, sheet_url, dashboard_data))
         return
 
     # 7. Ensure our tabs exist (migrating the old single 'Status' tab into
@@ -1150,3 +1172,11 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."
     )
+
+    # Overwrite the private dashboard gist with the latest aggregate totals. A
+    # gist failure must not fail the (already-applied) sheet refresh.
+    try:
+        url = update_dashboard_gist(render_dashboard(today, sheet_url, dashboard_data))
+        print(f"Dashboard gist updated: {url}")
+    except Exception as exc:  # noqa: BLE001 — best-effort side channel
+        print(f"WARNING: dashboard gist not updated ({exc}).", file=sys.stderr)
