@@ -229,6 +229,7 @@ class _Tab:
         self.values: list[list] = []
         self.colors: list[tuple[int, dict, int]] = []
         self.cell_colors: list[tuple[int, int, dict]] = []
+        self.cell_text_colors: list[tuple[int, int, dict]] = []
         self.headers: list[int] = []  # bold + distinct background fill
         self.bolds: list[int] = []  # bold only (e.g. section totals)
         self.borders: list[tuple[int, int, int, int]] = []
@@ -256,6 +257,10 @@ class _Tab:
     def cell_color(self, row: int, col: int, color: dict) -> None:
         """Colour a single cell's background (row/col are 0-based)."""
         self.cell_colors.append((row, col, color))
+
+    def cell_text_color(self, row: int, col: int, color: dict) -> None:
+        """Colour a single cell's text/foreground (row/col are 0-based)."""
+        self.cell_text_colors.append((row, col, color))
 
     def border(self, r0: int, r1: int, c0: int, c1: int) -> None:
         """Outer border around the block rows [r0, r1) × cols [c0, c1)."""
@@ -443,6 +448,23 @@ def _write_tab(
                     "range": _range(r, r + 1, col_offset + c, col_offset + c + 1),
                     "cell": {"userEnteredFormat": {"backgroundColor": color}},
                     "fields": "userEnteredFormat.backgroundColor",
+                }
+            }
+        )
+    for r, c, color in tab.cell_text_colors:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(r, r + 1, col_offset + c, col_offset + c + 1),
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {"foregroundColor": color, "bold": True}
+                        }
+                    },
+                    "fields": (
+                        "userEnteredFormat.textFormat.foregroundColor,"
+                        "userEnteredFormat.textFormat.bold"
+                    ),
                 }
             }
         )
@@ -811,7 +833,13 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     # 4. Build the "Program totals" tab: one bordered section per group, each
     #    with a filled+bold heading, a bold total, status-coloured number cells,
     #    and a "% of total" column. A funnel chart sits to the right.
-    green, yellow, red = MODEL_COLOR["Verified"], MODEL_COLOR["Nominated"], MODEL_COLOR["Missing"]
+    green, yellow = MODEL_COLOR["Verified"], MODEL_COLOR["Nominated"]
+    # Saturated *text* colours for the status-style tables (Pull requests,
+    # Threat/security models). These read as a different kind of signal than the
+    # background-filled pipeline / repositories / funnel cells.
+    tgreen = {"red": 0.11, "green": 0.46, "blue": 0.20}
+    tamber = {"red": 0.72, "green": 0.43, "blue": 0.0}
+    tred = {"red": 0.70, "green": 0.0, "blue": 0.0}
     pt = _Tab()
     pt.row([f"Glasswing scan pipeline — Program totals · as of {today}"], header=True)
     pt.row([""])
@@ -867,20 +895,20 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     # --- Pull requests (merged = green, open = yellow, closed = red) ---
     s = pt.row(["Pull requests", "PRs", "% of all PRs"], color=HEADING_FILL, span=3, header=True)
     r = pt.row(["  Open (not yet merged)", total_open, _pct(total_open, total_prs)])
-    pt.cell_color(r, 1, yellow)
-    pt.cell_color(r, 2, yellow)
+    pt.cell_text_color(r, 1, tamber)
+    pt.cell_text_color(r, 2, tamber)
     r = pt.row(["  Merged", total_merged, _pct(total_merged, total_prs)])
-    pt.cell_color(r, 1, green)
-    pt.cell_color(r, 2, green)
+    pt.cell_text_color(r, 1, tgreen)
+    pt.cell_text_color(r, 2, tgreen)
     if total_closed:
         r = pt.row(["  Closed without merge", total_closed, _pct(total_closed, total_prs)])
-        pt.cell_color(r, 1, red)
-        pt.cell_color(r, 2, red)
+        pt.cell_text_color(r, 1, tred)
+        pt.cell_text_color(r, 2, tred)
     t = pt.row(["  Total", total_prs, "100%"], bold=True)
     pt.border(s, t + 1, 0, 3)
     pt.row([""])
 
-    # --- Threat / security models (In progress = yellow, Complete = green) ---
+    # --- Threat / security models (status = coloured TEXT, not background) ---
     s = pt.row(
         ["Threat / security models", "All", "In progress", "Complete", "% complete"],
         color=HEADING_FILL,
@@ -891,7 +919,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         if key == "none":
             # No model to complete — percentage is not applicable.
             r = pt.row([f"  {label}", origin_counts[key], "—", "—", "—"])
-            pt.cell_color(r, 1, red)
+            pt.cell_text_color(r, 1, tred)
         else:
             r = pt.row(
                 [
@@ -902,8 +930,8 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
                     _pct(origin_complete[key], origin_counts[key]),
                 ]
             )
-            pt.cell_color(r, 2, yellow)
-            pt.cell_color(r, 3, green)
+            pt.cell_text_color(r, 2, tamber)
+            pt.cell_text_color(r, 3, tgreen)
     t = pt.row(
         [
             "  Total",
@@ -914,8 +942,8 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         ],
         bold=True,
     )
-    pt.cell_color(t, 2, yellow)
-    pt.cell_color(t, 3, green)
+    pt.cell_text_color(t, 2, tamber)
+    pt.cell_text_color(t, 3, tgreen)
     pt.border(s, t + 1, 0, 5)
     pt.row([""])
 
