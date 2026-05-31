@@ -30,15 +30,17 @@ uv tool install prek
 prek install
 ```
 
-`prek install` writes a `.git/hooks/pre-commit` shim that fires the hooks automatically on `git commit`. You only run it once per fresh checkout.
+`prek install` writes **two** shims into `.git/hooks/` — `pre-commit` and `pre-push` — because `.pre-commit-config.yaml` sets `default_install_hook_types: [pre-commit, pre-push]`. The `pre-commit` shim fires on `git commit`; the `pre-push` shim fires on `git push` and **blocks the push if any hook fails**. You only run `prek install` once per fresh checkout. (If you cloned before this was added, re-run `prek install` to pick up the pre-push shim.)
 
 ### Before pushing
+
+With the pre-push shim installed, `git push` runs the hooks for you and refuses to push on failure — so prek **always** runs before a push lands. Run the full sweep yourself first anyway, so you fix issues before the push round-trip rather than during it:
 
 ```bash
 prek run --all-files    # runs every hook against every file
 ```
 
-Run this **before** `git push`, not after. The hooks catch:
+The hooks catch:
 
 - **Generic safety** (`pre-commit-hooks`): merge-conflict markers, accidentally-committed private keys, trailing whitespace, mixed line endings, missing trailing newline.
 - **Markdown structure** (`markdownlint-cli2` against `.markdownlint.json`): broken anchors (`MD051`), dangling link references (`MD053`). Style rules are off — the existing docs settled those.
@@ -63,7 +65,7 @@ If a hook fails, fix the underlying issue rather than bypassing — `--no-verify
 
 ## Pull requests
 
-**Prerequisite check before pushing**: confirm `prek` is installed and the hooks pass (see [Pre-commit hooks](#pre-commit-hooks) above). If `prek install` has not run on this checkout yet, do that first — the git pre-commit hook needs to be in place so future commits stay clean automatically.
+**Prerequisite check before pushing**: confirm `prek` is installed and the hooks pass (see [Pre-commit hooks](#pre-commit-hooks) above). If `prek install` has not run on this checkout yet, do that first — it installs both the pre-commit and the pre-push git hooks, so future commits stay clean automatically and every push is gated on the hooks passing.
 
 **Always use `gh pr create --web`** so the browser opens for the human to review the PR description + click Submit themselves. The agent drafts; the human submits.
 
