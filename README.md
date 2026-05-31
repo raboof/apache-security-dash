@@ -20,17 +20,22 @@ team's tooling, not the public reporting entry point.
 ```
 .github/skills/                     — canonical home of all SKILLs
 ├── README.md                       — per-SKILL index + contribution notes
+│   # Glasswing scan-outreach program
 ├── glasswing-scan-run/             — periodic-sweep umbrella
 ├── glasswing-scan-response/        — handles inbound [GLASSWING] requests
 ├── glasswing-model-verify/         — pre-flight model assessment
 ├── glasswing-scan-update/          — all writes to the Mythos tracker
 │                                      (writes go through tools/sheets_writer/)
 ├── glasswing-scan-status/          — status / rollup view
-├── glasswing-scan-submit/          — operator-gated dual-email submission flow
-│                                      (Email 1 to vendor, Email 2 to PMC)
+├── glasswing-scan-submit/          — operator-gated form-then-email submission
+│                                      (one vendor form per repo, then PMC email)
 ├── glasswing-scan-forward/         — sanity-check + forward results to PMC verbatim
-└── threat-model-producer/          — model-authoring rubric (imported from
-                                      Scovetta's gist)
+│   # Inbound security-report triage (foundation-wide security@apache.org)
+├── triage-populate-cache/          — pull new reports into the local report-cache/
+├── triage-assess/                  — assess cached reports + draft PMC/reporter replies
+│   # Shared
+└── threat-model-producer/          — model-authoring rubric, used by both
+                                      areas (imported from Scovetta's gist)
 
 tools/                              — small Python projects with pyproject.toml,
                                       tests, and CI; invoked from SKILLs
@@ -40,12 +45,20 @@ tools/                              — small Python projects with pyproject.tom
 │                                      see tools/form_submitter/README.md
 ├── sheets_writer/                  — Google Sheets writer for the tracker;
 │                                      see tools/sheets_writer/README.md
+├── model_pr/                       — opens AGENTS.md→SECURITY.md→model
+│                                      discoverability PRs on PMC repos;
+│                                      see tools/model_pr/README.md
 └── whimsy_lookup/                  — Deterministic Whimsy/LDAP lookups for
                                       Gate 2 + Gate 3 identity checks;
                                       see tools/whimsy_lookup/README.md
 
 .claude/skills/                     — symlinks so Claude Code finds the SKILLs
 ```
+
+The SKILLs cover two programs: the **Glasswing scan-outreach** pipeline
+(PMC opt-in → pre-flight → vendor submit → forward) and **inbound
+security-report triage** (pulling `security@apache.org` reports into a
+local cache and drafting responses). `threat-model-producer` is shared.
 
 Adding a new agent-runtime convention later means adding another
 symlink under that runtime's expected location — never duplicating
@@ -62,7 +75,7 @@ The repo distinguishes between two scales of Python helper:
   helper has been promoted to `tools/`.
 - **Standalone projects under `tools/`** (`tools/jira_writer/`,
   `tools/whimsy_lookup/`, `tools/form_submitter/`,
-  `tools/sheets_writer/`) — proper Python projects with `pyproject.toml`,
+  `tools/sheets_writer/`, `tools/model_pr/`) — proper Python projects with `pyproject.toml`,
   unit tests, CI. Right for helpers that **multiple** SKILLs need (or
   expect to soon), have non-trivial logic worth test-covering, or
   interact with a system where regressions are expensive (e.g. JIRA
@@ -105,7 +118,7 @@ flowchart LR
     V --> P{{scan-response<br/>pre-flight-pass template<br/>pitch + OSS-tooling offer}}:::skill
     P --> PR([PMC reply<br/>expedite list / 'none' /<br/>scoping]):::pmc
     PR --> G{{Operator gate<br/>explicit per-PMC<br/>go-ahead}}:::gate
-    G --> S{{scan-submit<br/>Email 1: vendor request<br/>Email 2: PMC notification}}:::skill
+    G --> S{{scan-submit<br/>vendor enrollment form per repo<br/>+ PMC notification email}}:::skill
     S --> M[(Mirko @<br/>Alpha-Omega<br/>runs the scan)]:::vendor
     M --> F{{scan-forward<br/>sanity check<br/>catastrophic errors only}}:::skill
     F --> A[(Archive to scans/<br/>md + .json + .notes.md<br/>committed to private repo)]:::archive
@@ -182,13 +195,13 @@ stateDiagram-v2
     BlockedDiscoverability --> ModelVerifyPending: PRs merged<br/>or scope narrowed
     PreFlightPassedPitchNotSent --> PreFlightPassedAwaitingPmcPitchReply: pitch sent<br/>(scan-response pre-flight-pass<br/>template, OSS-tooling offer)
     PreFlightPassedAwaitingPmcPitchReply --> PmcPitchRepliedAwaitingOperatorDecision: PMC replies<br/>(expedite list / 'none' /<br/>scoping clarification)
-    PmcPitchRepliedAwaitingOperatorDecision --> Submitted: operator says "submit"<br/>(scan-submit dual-email flow:<br/>Email 1 vendor + Email 2 PMC)
+    PmcPitchRepliedAwaitingOperatorDecision --> Submitted: operator says "submit"<br/>(scan-submit: vendor form per repo<br/>+ PMC notification email)
     Submitted --> Triaging: vendor returns report
     Triaging --> ArchivedForwarded: pre-forward sanity check +<br/>commit to scans/ +<br/>forwarding email sent
     ArchivedForwarded --> [*]: PMC triages normally
 ```
 
-The colors in the Status tab map onto this progression
+The colors in the Status-in-progress tab map onto this progression
 (light-red Pre-flight → light-red ModelVerifyPending →
 yellow PreFlightPassed* (three sub-states) →
 light-green Submitted → medium-green Triaging →
@@ -205,7 +218,7 @@ an automatic trigger for submission. Instead, the
 (raising the OSS-tooling offer + asking for scoping
 follow-up), the PMC replies, then the Security team
 operator decides per-PMC whether to invoke
-`scan-submit`'s two-email flow. The OSS subscription
+`scan-submit`'s form-then-email flow. The OSS subscription
 expedite ask travels through a parallel side flow (see
 the pipeline diagram above) and does not gate the scan
 itself.
@@ -236,8 +249,8 @@ sequenceDiagram
         Sec->>Sec: Write addresses to<br/>'Expedite Claude OSS Requests' cell
     end
     Note over Sec: Wait for operator gate<br/>(explicit per-PMC go-ahead)
-    Sec->>V: Email 1 — scan-submit<br/>(mirko@alpha-omega.dev,<br/>CC security@apache.org only,<br/>body includes expedite addresses<br/>if PMC nominated any)
-    Sec-->>PMC: Email 2 — PMC notification<br/>(scan request submitted,<br/>results forthcoming,<br/>NO vendor identity in body)
+    Sec->>V: scan-submit — one vendor enrollment<br/>form per repo (OSSF-criticality order;<br/>headline form carries maintainer roster<br/>+ expedite addresses if PMC nominated any)
+    Sec-->>PMC: PMC notification email<br/>(scan request submitted,<br/>results forthcoming,<br/>NO vendor identity in body)
     par OSS side flow (only if expedite asked)
         V->>A: Vendor relays expedite ask
         A-->>Sec: Subscription grant confirmation
@@ -349,28 +362,39 @@ This SKILL does **not** auto-trigger `scan-submit`.
 Pre-flight passing means we're ready to submit; the
 operator decides per-PMC whether to actually queue.
 
-### When the operator says "submit X to Mirko"
+### When the operator says "submit X for scan"
 
 → Use [`glasswing-scan-submit`](.github/skills/glasswing-scan-submit/SKILL.md).
-Drafts the **two-email submission flow** for a PMC the
+Drafts the **form-then-email submission flow** for a PMC the
 operator has explicitly green-lit:
 
-  - **Email 1** to `mirko@alpha-omega.dev`, CC
-    `security@apache.org` only (no PMC people, no
-    `private@<pmc>`, no `security@<pmc>`). Body includes
-    repos to scan + threat-model URL + (if the PMC
-    nominated expedite addresses) a block asking Mirko to
-    relay the expedite ask to Anthropic.
-  - **Email 2** to the PMC primary, CC backup + named
-    contacts + `private@<pmc>` + `security@<pmc>` alias
-    (if exists) + `security@apache.org`. Notifies the PMC
-    the scan has been queued. **Body redacts vendor
-    identity** — "the scan pipeline" / "our vendor
-    partner" generic phrasing.
+  - **One vendor enrollment-form submission per repo** in
+    scope, ordered by OSSF Criticality Score (highest
+    first). The headline (top-criticality) form carries the
+    maintainer roster + threat-model URL + the OSS-expedite
+    addresses + the "I'm interested in Claude Max 20x"
+    checkbox; later forms are slimmer and point back to it.
+    Repos with no discoverability anchor (`AGENTS.md` /
+    `SECURITY.md` / `security.txt`) are auto-skipped and
+    surfaced for a later batch. Form filling runs through
+    [`tools/form_submitter/`](tools/form_submitter/) (a
+    Playwright persistent profile; one-time Google sign-in
+    via `form-submitter setup`). The operator approves a
+    `--dry-run` plan before anything is submitted live.
+  - **A PMC notification email** to the PMC primary, CC
+    backup + named contacts + `private@<pmc>` +
+    `security@<pmc>` alias (if exists) + `security@apache.org`
+    + the `@apache.org` scan-result recipients. Notifies the
+    PMC the scan has been queued. **Body redacts vendor
+    identity** — "the scan pipeline" / "our vendor partner"
+    generic phrasing.
 
-Output is two Gmail drafts; you click Send on each.
+Output is the live form submissions (after dry-run approval)
+plus a Gmail draft for the PMC email; you click Send. After
+send, hand off to `glasswing-scan-update` to set
+`Date scan requested` + `Repositories submitted`.
 
-### When a scan report comes back from Mirko
+### When a scan report comes back from the vendor
 
 → Use [`glasswing-scan-forward`](.github/skills/glasswing-scan-forward/SKILL.md).
 Runs a **pre-forward sanity check** on the vendor's report —
@@ -393,21 +417,23 @@ helper ([`tools/sheets_writer/`](tools/sheets_writer/)) has subcommands for ever
 shape: `apply` for row updates, `init-canned-tab` /
 `append-canned` for the canned-responses tab,
 `insert-column` / `add-columns` / `rename-column` for schema
-changes, `build-status-tab` to refresh the auto-generated
-Status view.
+changes, `build-status-tab` to rebuild the auto-generated
+`Status in progress` / `Completed` / `Timeline` tabs, and
+`dump` for a read-only grid export.
 
 ## Operational rules encoded in the SKILLs
 
 - **CC discipline.** `security@apache.org` on every
   Glasswing reply. PMC-facing replies (from
   `scan-response`, `scan-forward`, and `scan-submit`'s
-  Email 2) also CC the PMC's `private@<pmc>.apache.org`
-  and `security@<pmc>.apache.org` alias (when one exists,
-  looked up via <https://security.apache.org/projects/>).
-  **Exception:** `scan-submit`'s **Email 1** — the
-  vendor-facing scan request — CC's `security@apache.org`
-  **only**, with no PMC recipients of any kind. The
-  vendor and PMC threads are kept separate.
+  PMC notification email) also CC the PMC's
+  `private@<pmc>.apache.org` and `security@<pmc>.apache.org`
+  alias (when one exists, looked up via
+  <https://security.apache.org/projects/>). The
+  vendor-facing scan request is no longer an email at all —
+  it's a per-repo submission to the vendor's enrollment form
+  — so it carries no CC list and keeps the vendor and PMC
+  threads separate by construction.
 - **PMC-facing vendor opacity.** Emails that go to PMC
   audiences (any of the four PMC-facing SKILLs above)
   never name the scan vendor. Canonical wordings: "our
@@ -476,6 +502,13 @@ go under `.github/skills/<short-name>/SKILL.md` with the YAML
 frontmatter (`name`, `description`) the SKILL loaders expect.
 See [`.github/skills/README.md`](.github/skills/README.md) for
 the per-SKILL conventions and the PR description shape.
+
+The `tools/` projects target **Python 3.13** and run a `prek`
+pre-commit/pre-push hook plus a CI matrix; `main` requires the
+`prek`, `tests-ok`, and `allowlist` status checks to pass before
+merge. The toolchain conventions (prek setup, commit-message
+trailer, sandbox-bypass etiquette) live in
+[`AGENTS.md`](AGENTS.md).
 
 ## License
 
