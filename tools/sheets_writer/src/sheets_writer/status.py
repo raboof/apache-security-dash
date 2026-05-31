@@ -823,6 +823,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         r = pt.row([f"  {label}", n, _pct(n, total_pmcs)])
         if color is not None:
             pt.cell_color(r, 1, color)
+            pt.cell_color(r, 2, color)  # % cell matches the value cell
 
     _pipe(
         "Pre-flight (model not yet verified)", state_counts["Pre-flight"], STATE_COLOR["Pre-flight"]
@@ -849,6 +850,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         ]
     )
     pt.cell_color(r, 1, green)
+    pt.cell_color(r, 2, green)
     r = pt.row(
         [
             "  Not yet submitted",
@@ -857,6 +859,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         ]
     )
     pt.cell_color(r, 1, yellow)
+    pt.cell_color(r, 2, yellow)
     t = pt.row(["  Total — requested across PMCs", total_repos_requested, "100%"], bold=True)
     pt.border(s, t + 1, 0, 3)
     pt.row([""])
@@ -865,11 +868,14 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     s = pt.row(["Pull requests", "PRs", "% of all PRs"], color=HEADING_FILL, span=3, header=True)
     r = pt.row(["  Open (not yet merged)", total_open, _pct(total_open, total_prs)])
     pt.cell_color(r, 1, yellow)
+    pt.cell_color(r, 2, yellow)
     r = pt.row(["  Merged", total_merged, _pct(total_merged, total_prs)])
     pt.cell_color(r, 1, green)
+    pt.cell_color(r, 2, green)
     if total_closed:
         r = pt.row(["  Closed without merge", total_closed, _pct(total_closed, total_prs)])
         pt.cell_color(r, 1, red)
+        pt.cell_color(r, 2, red)
     t = pt.row(["  Total", total_prs, "100%"], bold=True)
     pt.border(s, t + 1, 0, 3)
     pt.row([""])
@@ -918,14 +924,25 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     for stage, n, color in funnel:
         r = pt.row([stage, n, _pct(n, total_pmcs)])
         pt.cell_color(r, 1, color)
+        pt.cell_color(r, 2, color)  # % cell matches the value cell
     pt.border(fs, len(pt.values), 0, 3)
     pt.row([""])
 
     # Chart-data strip: one series per stage (each a single cell) so the bar
     # chart can colour every stage differently. One header row (series names) +
-    # one data row (counts), laid out horizontally.
-    hh = pt.row(["funnel chart data", *[stage for stage, _, _ in funnel]])
+    # one data row (counts), laid out horizontally and formatted as a small
+    # table with per-stage coloured count cells.
+    ncol = 1 + len(funnel)
+    hh = pt.row(
+        ["Funnel chart data", *[stage for stage, _, _ in funnel]],
+        color=HEADING_FILL,
+        span=ncol,
+        header=True,
+    )
     hd = pt.row(["PMCs", *[n for _, n, _ in funnel]])
+    for i, (_, _, color) in enumerate(funnel):
+        pt.cell_color(hd, i + 1, color)
+    pt.border(hh, hd + 1, 0, ncol)
     pt.chart(
         title="PMC funnel",
         chart_type="BAR",
