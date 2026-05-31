@@ -278,6 +278,25 @@ private mailing-list bouncer creds, etc.). The
    the same updates JSON — it should now show every cell as
    `'<value>' -> '<value>'`, i.e. nothing to change).
 
+8. **Refresh the derived views + dashboard.** A write to the
+   PMCs sheet leaves the read-only derived tabs and the dashboard
+   gist stale. After a confirmed apply, run `build-status-tab`
+   (live, no `--dry-run`) so they reflect the new rows:
+
+   ```
+   uv run --project tools/sheets_writer sheets-writer \
+       build-status-tab --spreadsheet-id "<id from memory>"
+   ```
+
+   This regenerates the `Status in progress`, `Program totals`,
+   `Completed`, `Timeline`, and `README` tabs from the source
+   rows **and** overwrites the private dashboard gist (see the
+   [`glasswing-dashboard`](../glasswing-dashboard/SKILL.md)
+   SKILL). It is idempotent — run it after every write that
+   touches a field the views derive from (state dates, model
+   status, repos, PR/Issues). Skip only for pure-metadata edits
+   the views don't read (e.g. a `Submission notes` tweak).
+
 ## Helper script reference
 
 `sheets-writer` is a packaged Python project at [`tools/sheets_writer/`](../../../tools/sheets_writer/). It declares its runtime dependencies (`google-api-python-client`, `google-auth`, `google-auth-oauthlib`) in its `pyproject.toml`, so `uv run --project tools/sheets_writer` resolves and runs it without a separate virtualenv setup. If `uv` is unavailable, fall back to a regular `pip install` from the project directory and then `python -m sheets_writer …`. Full reference (setup gotchas, all subcommands, security notes) in [`tools/sheets_writer/README.md`](../../../tools/sheets_writer/README.md). Unit tests at `tools/sheets_writer/tests/` cover the pure-function layer (column math, row matching, state machine, apply diff builder, canned/PMC row builders, CLI argparse).
@@ -294,7 +313,7 @@ Subcommands:
 | `insert-column --spreadsheet-id ID --sheet S --after H --header NEW [--dry-run]` | Insert a new column at a specific position in a sheet (right after the column with header `H`). Idempotent. |
 | `add-columns --spreadsheet-id ID --sheet S --headers H1 H2 ... [--dry-run]` | Append new column headers to the end of a sheet. Idempotent per header. |
 | `rename-column --spreadsheet-id ID --sheet S --old H --new NEW [--dry-run]` | Rename the header text at row 1 of a sheet's column. |
-| `build-status-tab --spreadsheet-id ID [--dry-run]` | Create or refresh the `Status` derived view: an in-flight table (color-coded by pipeline state), a completed table (with end-to-end days), and a wide-format timeline block ready for a Sheets chart. See `glasswing-scan-status` SKILL for the state taxonomy + color scheme. Idempotent; overwrites existing Status sheet contents. |
+| `build-status-tab --spreadsheet-id ID [--dry-run]` | Rebuild the derived-view tabs from the PMCs sheet — `Status in progress` (in-flight table), `Program totals` (grouped rollup + PMC-funnel bar chart), `Completed`, `Timeline` (milestone dates + funnel-over-time stacked chart), and `README` (auto tab-overview + colour legend) — then overwrite the private dashboard gist with a markdown rendering of the program totals (see the [`glasswing-dashboard`](../glasswing-dashboard/SKILL.md) SKILL). Colour-coded by pipeline state; idempotent; overwrites the existing tab contents and chart(s). `--dry-run` prints the dashboard preview and pushes nothing. |
 
 Safety properties baked into the helper:
 
