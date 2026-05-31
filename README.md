@@ -30,6 +30,7 @@ team's tooling, not the public reporting entry point.
 ├── glasswing-scan-submit/          — operator-gated form-then-email submission
 │                                      (one vendor form per repo, then PMC email)
 ├── glasswing-scan-forward/         — sanity-check + forward results to PMC verbatim
+├── glasswing-dashboard/            — refresh tracker tabs + a private gist dashboard
 │   # Inbound security-report triage (foundation-wide security@apache.org)
 ├── triage-populate-cache/          — pull new reports into the local report-cache/
 ├── triage-assess/                  — assess cached reports + draft PMC/reporter replies
