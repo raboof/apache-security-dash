@@ -229,16 +229,27 @@ class _Tab:
         self.values: list[list] = []
         self.colors: list[tuple[int, dict, int]] = []
         self.cell_colors: list[tuple[int, int, dict]] = []
-        self.headers: list[int] = []
+        self.headers: list[int] = []  # bold + distinct background fill
+        self.bolds: list[int] = []  # bold only (e.g. section totals)
         self.borders: list[tuple[int, int, int, int]] = []
 
-    def row(self, cells: list, *, color: dict | None = None, span: int = 11, header: bool = False):
+    def row(
+        self,
+        cells: list,
+        *,
+        color: dict | None = None,
+        span: int = 11,
+        header: bool = False,
+        bold: bool = False,
+    ):
         i = len(self.values)
         self.values.append(cells)
         if color is not None:
             self.colors.append((i, color, span))
         if header:
             self.headers.append(i)
+        if bold:
+            self.bolds.append(i)
         return i
 
     def cell_color(self, row: int, col: int, color: dict) -> None:
@@ -297,24 +308,44 @@ def _ensure_sheet(service, spreadsheet_id, title, by_title, rename_from=None) ->
     return sid
 
 
-def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=None) -> None:
-    """Clear ``title``, write the tab's values, and apply formatting (bold
-    headers, row background colors, optional text-wrap on one column)."""
+def _write_tab(
+    service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=None, col_offset=0, frozen=(0, 0)
+) -> None:
+    """Clear ``title``, write the tab's values, and apply formatting.
+
+    Header rows are bold + given a distinct fill; bold-only rows (section
+    totals) are bold without the fill. ``col_offset`` inserts that many empty
+    margin columns on the left (narrowed) so section borders don't sit flush
+    against the sheet edge. The current freeze (``frozen`` = (rows, cols)) is
+    preserved — never reset — and those frozen header rows/columns are re-bolded.
+    """
     service.spreadsheets().values().clear(
         spreadsheetId=spreadsheet_id, range=f"'{title}'"
     ).execute()
     ncols = max((len(r) for r in tab.values), default=1)
-    end_col = col_letter(ncols - 1)
+    nrows = max(len(tab.values), 1)
+    content_end = col_offset + ncols
+    end_col = col_letter(content_end - 1)
+    values = [[""] * col_offset + r for r in tab.values]
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range=f"'{title}'!A1:{end_col}{max(len(tab.values), 1)}",
+        range=f"'{title}'!A1:{end_col}{nrows}",
         valueInputOption="RAW",
-        body={"values": tab.values},
+        body={"values": values},
     ).execute()
 
-    # Clear formatting first, then re-apply (bold → colors → wrap). Also unfreeze
-    # the sheet so there is no fixed no-scroll header block (older tabs were
-    # created with a frozen first row; this clears it on every refresh).
+    def _range(r0, r1, c0, c1):
+        return {
+            "sheetId": sheet_id,
+            "startRowIndex": r0,
+            "endRowIndex": r1,
+            "startColumnIndex": c0,
+            "endColumnIndex": c1,
+        }
+
+    # Clear cell formatting first, then re-apply. Note: clearing userEnteredFormat
+    # does NOT touch the sheet's frozen rows/cols (a gridProperties setting), so
+    # the current freeze is preserved without us setting it.
     requests: list[dict] = [
         {
             "repeatCell": {
@@ -322,30 +353,36 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
                 "cell": {"userEnteredFormat": {}},
                 "fields": "userEnteredFormat",
             }
-        },
-        {
-            "updateSheetProperties": {
-                "properties": {
-                    "sheetId": sheet_id,
-                    "gridProperties": {"frozenRowCount": 0, "frozenColumnCount": 0},
-                },
-                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
-            }
-        },
+        }
     ]
+
+    colored_rows = {r for r, _, _ in tab.colors}
+    bold_fmt = {"textFormat": {"bold": True}}
+    bold_fields = "userEnteredFormat.textFormat.bold"
     for r in sorted(set(tab.headers)):
+        # Header rows: bold + a distinct background fill, unless the row already
+        # carries an explicit fill (e.g. a Program-totals section heading).
+        if r in colored_rows:
+            cell, fields = bold_fmt, bold_fields
+        else:
+            cell = {"textFormat": {"bold": True}, "backgroundColor": HEADING_FILL}
+            fields = "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
         requests.append(
             {
                 "repeatCell": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "startRowIndex": r,
-                        "endRowIndex": r + 1,
-                        "startColumnIndex": 0,
-                        "endColumnIndex": ncols,
-                    },
-                    "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
-                    "fields": "userEnteredFormat.textFormat.bold",
+                    "range": _range(r, r + 1, col_offset, content_end),
+                    "cell": {"userEnteredFormat": cell},
+                    "fields": fields,
+                }
+            }
+        )
+    for r in sorted(set(tab.bolds)):
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(r, r + 1, col_offset, content_end),
+                    "cell": {"userEnteredFormat": bold_fmt},
+                    "fields": bold_fields,
                 }
             }
         )
@@ -353,13 +390,7 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
         requests.append(
             {
                 "repeatCell": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "startRowIndex": r,
-                        "endRowIndex": r + 1,
-                        "startColumnIndex": 0,
-                        "endColumnIndex": span,
-                    },
+                    "range": _range(r, r + 1, col_offset, col_offset + span),
                     "cell": {"userEnteredFormat": {"backgroundColor": color}},
                     "fields": "userEnteredFormat.backgroundColor",
                 }
@@ -369,13 +400,7 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
         requests.append(
             {
                 "repeatCell": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "startRowIndex": r,
-                        "endRowIndex": r + 1,
-                        "startColumnIndex": c,
-                        "endColumnIndex": c + 1,
-                    },
+                    "range": _range(r, r + 1, col_offset + c, col_offset + c + 1),
                     "cell": {"userEnteredFormat": {"backgroundColor": color}},
                     "fields": "userEnteredFormat.backgroundColor",
                 }
@@ -386,17 +411,34 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
         requests.append(
             {
                 "updateBorders": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "startRowIndex": r0,
-                        "endRowIndex": r1,
-                        "startColumnIndex": c0,
-                        "endColumnIndex": c1,
-                    },
+                    "range": _range(r0, r1, col_offset + c0, col_offset + c1),
                     "top": _border,
                     "bottom": _border,
                     "left": _border,
                     "right": _border,
+                }
+            }
+        )
+    # Re-bold whatever rows/columns are currently frozen, so the preserved freeze
+    # keeps its header styling after the format clear.
+    frozen_rows, frozen_cols = frozen
+    if frozen_rows:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(0, frozen_rows, 0, content_end),
+                    "cell": {"userEnteredFormat": bold_fmt},
+                    "fields": bold_fields,
+                }
+            }
+        )
+    if frozen_cols:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(0, nrows, 0, frozen_cols),
+                    "cell": {"userEnteredFormat": bold_fmt},
+                    "fields": bold_fields,
                 }
             }
         )
@@ -406,11 +448,26 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
                 "repeatCell": {
                     "range": {
                         "sheetId": sheet_id,
-                        "startColumnIndex": wrap_col,
-                        "endColumnIndex": wrap_col + 1,
+                        "startColumnIndex": wrap_col + col_offset,
+                        "endColumnIndex": wrap_col + col_offset + 1,
                     },
                     "cell": {"userEnteredFormat": {"wrapStrategy": "WRAP"}},
                     "fields": "userEnteredFormat.wrapStrategy",
+                }
+            }
+        )
+    if col_offset:
+        requests.append(
+            {
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": col_offset,
+                    },
+                    "properties": {"pixelSize": 30},
+                    "fields": "pixelSize",
                 }
             }
         )
@@ -437,6 +494,14 @@ def _build_readme(today: str, tab_titles: list[str]) -> _Tab:
             "SKILLs in the apache/security private repo."
         ]
     )
+    rd.row([""])
+
+    # Legend: each entry is a single cell — its description text on the swatch
+    # colour — placed above the data-source notes.
+    rd.row(["Legend in Status and Program Totals"], header=True)
+    for label, color in LEGEND_ENTRIES:
+        i = rd.row([label])
+        rd.cell_color(i, 0, color)
     rd.row([""])
 
     rd.row(["Data sources"], header=True)
@@ -467,12 +532,6 @@ def _build_readme(today: str, tab_titles: list[str]) -> _Tab:
             "member available to help any PMC meet the necessary boundary conditions."
         ]
     )
-    rd.row([""])
-
-    rd.row(["Legend", "swatch colour = pipeline state"], header=True)
-    for label, color in LEGEND_ENTRIES:
-        i = rd.row(["", label])
-        rd.cell_color(i, 0, color)
     return rd
 
 
@@ -653,7 +712,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         STATE_COLOR["Delivered"],
     )
     _pipe("Results back (Triaging + Delivered)", results_back, results_back_engaged)
-    t = pt.row(["  Total — PMCs opted in", total_pmcs, total_engaged], header=True)
+    t = pt.row(["  Total — PMCs opted in", total_pmcs, total_engaged], bold=True)
     pt.border(s, t + 1, 0, 3)
     pt.row([""])
 
@@ -661,7 +720,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     s = pt.row(["Repositories", "Repos"], color=HEADING_FILL, span=2, header=True)
     pt.row(["  Submitted to vendor", total_repos_submitted])
     pt.row(["  Not yet submitted", repos_not_submitted])
-    t = pt.row(["  Total — requested across PMCs", total_repos_requested], header=True)
+    t = pt.row(["  Total — requested across PMCs", total_repos_requested], bold=True)
     pt.border(s, t + 1, 0, 2)
     pt.row([""])
 
@@ -671,7 +730,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     pt.row(["  Merged", total_merged])
     if total_closed:
         pt.row(["  Closed without merge", total_closed])
-    t = pt.row(["  Total", total_prs], header=True)
+    t = pt.row(["  Total", total_prs], bold=True)
     pt.border(s, t + 1, 0, 2)
     pt.row([""])
 
@@ -694,7 +753,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             pt.cell_color(r, 3, MODEL_COLOR["Verified"])
     t = pt.row(
         ["  Total", total_pmcs, sum(origin_in_progress.values()), sum(origin_complete.values())],
-        header=True,
+        bold=True,
     )
     pt.cell_color(t, 2, MODEL_COLOR["Nominated"])
     pt.cell_color(t, 3, MODEL_COLOR["Verified"])
@@ -789,16 +848,37 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     tl_id = _ensure_sheet(service, args.spreadsheet_id, TIMELINE_SHEET, by_title)
     rd_id = _ensure_sheet(service, args.spreadsheet_id, README_SHEET, by_title)
 
-    # Re-read the (now-complete) tab list, in sheet order, for the README overview.
+    # Re-read the (now-complete) tab list, in sheet order, for the README overview,
+    # and capture each sheet's current freeze so we can preserve it.
     final_meta = service.spreadsheets().get(spreadsheetId=args.spreadsheet_id).execute()
     tab_titles = [s["properties"]["title"] for s in final_meta.get("sheets", [])]
+    frozen_by_id = {}
+    for s in final_meta.get("sheets", []):
+        gp = s["properties"].get("gridProperties", {})
+        frozen_by_id[s["properties"]["sheetId"]] = (
+            gp.get("frozenRowCount", 0),
+            gp.get("frozenColumnCount", 0),
+        )
     rd = _build_readme(today, tab_titles)
 
-    _write_tab(service, args.spreadsheet_id, IN_PROGRESS_SHEET, ip_id, ip, wrap_col=10)
-    _write_tab(service, args.spreadsheet_id, PROGRAM_TOTALS_SHEET, pt_id, pt)
-    _write_tab(service, args.spreadsheet_id, COMPLETED_SHEET, cp_id, cp)
-    _write_tab(service, args.spreadsheet_id, TIMELINE_SHEET, tl_id, tl)
-    _write_tab(service, args.spreadsheet_id, README_SHEET, rd_id, rd)
+    def _fz(sid):
+        return frozen_by_id.get(sid, (0, 0))
+
+    _write_tab(
+        service, args.spreadsheet_id, IN_PROGRESS_SHEET, ip_id, ip, wrap_col=10, frozen=_fz(ip_id)
+    )
+    _write_tab(
+        service,
+        args.spreadsheet_id,
+        PROGRAM_TOTALS_SHEET,
+        pt_id,
+        pt,
+        col_offset=1,
+        frozen=_fz(pt_id),
+    )
+    _write_tab(service, args.spreadsheet_id, COMPLETED_SHEET, cp_id, cp, frozen=_fz(cp_id))
+    _write_tab(service, args.spreadsheet_id, TIMELINE_SHEET, tl_id, tl, frozen=_fz(tl_id))
+    _write_tab(service, args.spreadsheet_id, README_SHEET, rd_id, rd, frozen=_fz(rd_id))
 
     print(
         f"Refreshed: '{IN_PROGRESS_SHEET}' ({len(in_flight)} in flight), "
