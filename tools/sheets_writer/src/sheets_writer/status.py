@@ -270,12 +270,14 @@ class _Tab:
         series: list[tuple[int, int, int]],
         anchor: tuple[int, int],
         stacked: bool = False,
+        series_colors: list[dict] | None = None,
         width: int = 460,
         height: int = 280,
     ) -> None:
         """Record an embedded basic chart. ``domain``/``series`` entries are
         (row_start, row_end, col) in logical (pre-offset) coordinates and
-        include the header row; ``anchor`` is the (row, col) top-left cell."""
+        include the header row; ``anchor`` is the (row, col) top-left cell.
+        ``series_colors`` optionally gives each series its own colour."""
         self.charts.append(
             {
                 "title": title,
@@ -283,6 +285,7 @@ class _Tab:
                 "stacked": stacked,
                 "domain": domain,
                 "series": series,
+                "series_colors": series_colors,
                 "anchor": anchor,
                 "width": width,
                 "height": height,
@@ -517,8 +520,10 @@ def _write_tab(
         # BAR (horizontal) charts measure on the bottom axis; everything else
         # (COLUMN/AREA/LINE) measures on the left axis.
         value_axis = "BOTTOM_AXIS" if ch["type"] == "BAR" else "LEFT_AXIS"
-        series_specs = [
-            {
+        series_colors = ch.get("series_colors")
+        series_specs = []
+        for idx, (sr0, sr1, sc) in enumerate(ch["series"]):
+            spec = {
                 "series": {
                     "sourceRange": {
                         "sources": [_range(sr0, sr1, sc + col_offset, sc + col_offset + 1)]
@@ -526,8 +531,9 @@ def _write_tab(
                 },
                 "targetAxis": value_axis,
             }
-            for sr0, sr1, sc in ch["series"]
-        ]
+            if series_colors:
+                spec["color"] = series_colors[idx]
+            series_specs.append(spec)
         multi = ch["stacked"] or len(ch["series"]) > 1
         basic = {
             "chartType": ch["type"],
@@ -690,20 +696,23 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     def _pct(n: int, total: int) -> str:
         return f"{round(100 * n / total)}%" if total else "—"
 
-    # Cumulative funnel of PMC numbers (monotonically narrowing), for the chart.
+    # Cumulative funnel of PMC numbers (monotonically narrowing): (stage, count,
+    # swatch colour). The colour also drives the chart's per-stage bar colours.
     funnel = [
-        ("Opted in", total_pmcs),
-        ("Has a model", has_model),
+        ("Opted in", total_pmcs, STATE_COLOR["Pre-flight"]),
+        ("Has a model", has_model, NOMINATED_COLOR),
         (
             "Model verified",
             sum(state_counts[s] for s in ("Ready", "Submitted", "Triaging", "Delivered")),
+            STATE_COLOR["Ready"],
         ),
         (
             "Submitted to vendor",
             sum(state_counts[s] for s in ("Submitted", "Triaging", "Delivered")),
+            STATE_COLOR["Submitted"],
         ),
-        ("Results back", results_back),
-        ("Delivered", state_counts["Delivered"]),
+        ("Results back", results_back, STATE_COLOR["Triaging"]),
+        ("Delivered", state_counts["Delivered"], STATE_COLOR["Delivered"]),
     ]
 
     # Funnel over time: for each milestone date, how many PMCs were in each
@@ -867,15 +876,15 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
 
     # --- Threat / security models (In progress = yellow, Complete = green) ---
     s = pt.row(
-        ["Threat / security models", "All", "In progress", "Complete", "% of all"],
+        ["Threat / security models", "All", "In progress", "Complete", "% complete"],
         color=HEADING_FILL,
         span=5,
         header=True,
     )
     for key, label in MODEL_ORIGINS:
-        pct = _pct(origin_counts[key], total_pmcs)
         if key == "none":
-            r = pt.row([f"  {label}", origin_counts[key], "—", "—", pct])
+            # No model to complete — percentage is not applicable.
+            r = pt.row([f"  {label}", origin_counts[key], "—", "—", "—"])
             pt.cell_color(r, 1, red)
         else:
             r = pt.row(
@@ -884,7 +893,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
                     origin_counts[key],
                     origin_in_progress[key],
                     origin_complete[key],
-                    pct,
+                    _pct(origin_complete[key], origin_counts[key]),
                 ]
             )
             pt.cell_color(r, 2, yellow)
@@ -895,7 +904,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             total_pmcs,
             sum(origin_in_progress.values()),
             sum(origin_complete.values()),
-            "100%",
+            _pct(sum(origin_complete.values()), total_pmcs),
         ],
         bold=True,
     )
@@ -904,17 +913,25 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     pt.border(s, t + 1, 0, 5)
     pt.row([""])
 
-    # --- Funnel data block (drives the embedded chart) ---
-    fs = pt.row(["PMC funnel (chart data)", "PMCs"], color=HEADING_FILL, span=2, header=True)
-    for stage, n in funnel:
-        pt.row([stage, n])
-    funnel_end = len(pt.values)
-    pt.border(fs, funnel_end, 0, 2)
+    # --- PMC funnel (readable table: coloured count cell + % of opted-in) ---
+    fs = pt.row(["PMC funnel", "PMCs", "% of opted-in"], color=HEADING_FILL, span=3, header=True)
+    for stage, n, color in funnel:
+        r = pt.row([stage, n, _pct(n, total_pmcs)])
+        pt.cell_color(r, 1, color)
+    pt.border(fs, len(pt.values), 0, 3)
+    pt.row([""])
+
+    # Chart-data strip: one series per stage (each a single cell) so the bar
+    # chart can colour every stage differently. One header row (series names) +
+    # one data row (counts), laid out horizontally.
+    hh = pt.row(["funnel chart data", *[stage for stage, _, _ in funnel]])
+    hd = pt.row(["PMCs", *[n for _, n, _ in funnel]])
     pt.chart(
         title="PMC funnel",
         chart_type="BAR",
-        domain=(fs, funnel_end, 0),
-        series=[(fs, funnel_end, 1)],
+        domain=(hh, hd + 1, 0),
+        series=[(hh, hd + 1, i + 1) for i in range(len(funnel))],
+        series_colors=[c for _, _, c in funnel],
         anchor=(1, 6),
         width=480,
         height=320,
