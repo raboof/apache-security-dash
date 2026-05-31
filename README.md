@@ -286,8 +286,8 @@ flowchart TD
     CL -->|spam / bounce / marketing| DIS([dismiss<br/>file.py --remove<br/>operator confirms]):::drop
     CL -->|genuine report| FILE[(filed under<br/>date / pmc / keywords)]:::cache
     FILE --> REC{Addressed to?}:::gate
-    REC -->|security@pmc<br/>own list| TRK([track only<br/>PMC already has it]):::done
-    REC -->|security@apache.org<br/>central| AS{{triage-assess<br/>read threat model + code,<br/>check archive for duplicates}}:::skill
+    REC -->|PMC's own<br/>security list| TRK([track only<br/>PMC already has it]):::done
+    REC -->|central<br/>security list| AS{{triage-assess<br/>read threat model + code,<br/>check archive for duplicates}}:::skill
     AS --> J{In scope and<br/>plausible?}:::gate
     J -->|false positive<br/>or hardening| RP([non-assertive reply<br/>to reporter<br/>draft.py reply]):::draft
     J -->|plausible| FW([forward to PMC<br/>plus reporter receipt<br/>draft.py forward]):::draft
