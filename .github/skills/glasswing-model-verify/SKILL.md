@@ -726,6 +726,34 @@ gh issue create \
 
 ### Opening a PR (small structural fix)
 
+**Preferred: the `model-pr` helper** (`tools/model_pr/`)
+collapses the whole fork → clone → write the
+`AGENTS.md → SECURITY.md → model` scaffold (create-or-append,
+idempotent — it handles the fiddly "create when absent /
+append one section when present" branch on `SECURITY.md` and
+`AGENTS.md`) → commit → push → `gh pr create --web` flow into
+one command:
+
+```bash
+# in-repo model (lands THREAT_MODEL.md, wires AGENTS.md -> SECURITY.md -> it):
+uv run --project tools/model_pr model-pr open \
+  --repo apache/<repo> --model <THREAT_MODEL.md> --date <YYYY-MM-DD> \
+  --title "<title>" --body-file "$TMPDIR/glasswing-pr-<ts>.md"
+
+# pointer to an umbrella model hosted in another repo:
+uv run --project tools/model_pr model-pr open \
+  --repo apache/<repo> --pointer <umbrella-model-URL> --date <YYYY-MM-DD> \
+  --agents-note "<one-line role note>"
+```
+
+It opens the PR with `gh pr create --web` by default (you
+submit in-browser — the same second gate as the manual flow);
+pass `--dry-run` to build the files and show the staged diff
+without committing, or `--submit` to create the PR
+non-interactively. The file-merge core is unit-tested. The
+manual steps below are the equivalent it runs under the hood,
+kept for cases it doesn't cover (issues, non-scaffold edits).
+
 Use a worktree to keep the local state clean. The branch push
 happens via `git push` (local-to-remote, no user review
 surface); the PR creation goes through `--web` so the user
