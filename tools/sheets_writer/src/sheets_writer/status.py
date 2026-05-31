@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Build the Status / Program totals / Completed / Timeline tabs from the PMCs sheet."""
+"""Build the README / Status / Program totals / Completed / Timeline tabs from PMCs."""
 
 from __future__ import annotations
 
@@ -25,9 +25,11 @@ import sys
 from sheets_writer import (
     COMPLETED_SHEET,
     IN_PROGRESS_SHEET,
+    MODEL_COLOR,
     NOMINATED_COLOR,
     PIPELINE_STATES,
     PROGRAM_TOTALS_SHEET,
+    README_SHEET,
     STATE_COLOR,
     STATUS_SHEET,
     TIMELINE_SHEET,
@@ -35,6 +37,34 @@ from sheets_writer import (
 from sheets_writer.columns import col_letter
 from sheets_writer.prs import parse_pr_urls, query_pr_states
 from sheets_writer.sheets_api import fetch_sheet_grid, get_service
+
+# Light fill behind a section's heading row on the Program totals tab, so the
+# group headings read distinctly from the data rows.
+HEADING_FILL = {"red": 0.82, "green": 0.87, "blue": 0.94}
+
+# One-line descriptions for the README "Overview" tab list (auto-generated from
+# the spreadsheet's actual tabs; tabs not listed here fall back to a dash).
+TAB_DESCRIPTIONS = {
+    "README": "this overview.",
+    "Program totals": "headline totals across the whole programme.",
+    "Status in progress": "the in-flight PMCs and where each is in the pipeline.",
+    "Completed": "PMCs whose scan has been delivered.",
+    "PMCs": "every Apache PMC, its private list, and outreach-tracking columns.",
+    "Repositories": "every public github.com/apache repo, mapped to its PMC.",
+    "OSS Subscriptions": "expedited Claude-for-OSS subscriptions for PMC members.",
+    "Timeline": "wide-format milestone dates per PMC, chart-ready.",
+    "Canned Responses": "reusable answers to common PMC questions.",
+}
+
+# Colour legend, shown on the README tab. (description, swatch colour).
+LEGEND_ENTRIES = [
+    ("Pre-flight — model not yet verified", STATE_COLOR["Pre-flight"]),
+    ("Pre-flight — model nominated, pending verification", NOMINATED_COLOR),
+    ("Ready — model verified, awaiting operator submit", STATE_COLOR["Ready"]),
+    ("Submitted — sent to vendor, awaiting results", STATE_COLOR["Submitted"]),
+    ("Triaging — results back, pre-forward sanity check", STATE_COLOR["Triaging"]),
+    ("Delivered — forwarded to PMC", STATE_COLOR["Delivered"]),
+]
 
 # Origin buckets for the threat/security model, in display order, with the
 # row label each renders as in the PROGRAM TOTALS "Threat / security models"
@@ -192,12 +222,15 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
 
 
 class _Tab:
-    """Accumulator for one sheet's values + per-row colors + header rows."""
+    """Accumulator for one sheet's values + formatting (row colours, per-cell
+    colours, bold header rows, and section borders)."""
 
     def __init__(self) -> None:
         self.values: list[list] = []
         self.colors: list[tuple[int, dict, int]] = []
+        self.cell_colors: list[tuple[int, int, dict]] = []
         self.headers: list[int] = []
+        self.borders: list[tuple[int, int, int, int]] = []
 
     def row(self, cells: list, *, color: dict | None = None, span: int = 11, header: bool = False):
         i = len(self.values)
@@ -206,6 +239,15 @@ class _Tab:
             self.colors.append((i, color, span))
         if header:
             self.headers.append(i)
+        return i
+
+    def cell_color(self, row: int, col: int, color: dict) -> None:
+        """Colour a single cell's background (row/col are 0-based)."""
+        self.cell_colors.append((row, col, color))
+
+    def border(self, r0: int, r1: int, c0: int, c1: int) -> None:
+        """Outer border around the block rows [r0, r1) × cols [c0, c1)."""
+        self.borders.append((r0, r1, c0, c1))
 
 
 def _ensure_sheet(service, spreadsheet_id, title, by_title, rename_from=None) -> int:
@@ -323,6 +365,41 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
                 }
             }
         )
+    for r, c, color in tab.cell_colors:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": r,
+                        "endRowIndex": r + 1,
+                        "startColumnIndex": c,
+                        "endColumnIndex": c + 1,
+                    },
+                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                    "fields": "userEnteredFormat.backgroundColor",
+                }
+            }
+        )
+    _border = {"style": "SOLID_MEDIUM", "color": {"red": 0.4, "green": 0.4, "blue": 0.4}}
+    for r0, r1, c0, c1 in tab.borders:
+        requests.append(
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": r0,
+                        "endRowIndex": r1,
+                        "startColumnIndex": c0,
+                        "endColumnIndex": c1,
+                    },
+                    "top": _border,
+                    "bottom": _border,
+                    "left": _border,
+                    "right": _border,
+                }
+            }
+        )
     if wrap_col is not None:
         requests.append(
             {
@@ -340,6 +417,63 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id, body={"requests": requests}
     ).execute()
+
+
+def _build_readme(today: str, tab_titles: list[str]) -> _Tab:
+    """Build the README tab: an auto-generated overview of the workbook's tabs,
+    the (static) data-source + how-to-submit notes, and the colour legend."""
+    rd = _Tab()
+    rd.row(["Apache Software Foundation — Glasswing Scan Outreach Tracker"], header=True)
+    rd.row([""])
+
+    rd.row(["Overview"], header=True)
+    rd.row(["This workbook has these sheets (auto-generated from the live tab list):"])
+    for title in tab_titles:
+        rd.row([f"  • {title} — {TAB_DESCRIPTIONS.get(title, '—')}"])
+    rd.row([""])
+    rd.row(
+        [
+            "NOTE: This spreadsheet is automatically maintained and updated by agentic "
+            "SKILLs in the apache/security private repo."
+        ]
+    )
+    rd.row([""])
+
+    rd.row(["Data sources"], header=True)
+    rd.row(["  • PMC list: Apache Whimsy committee-info.json (210 PMCs)."])
+    rd.row(["  • Repos: scraped from github.com/orgs/apache/repositories (3,107 public repos)."])
+    rd.row(["  • Criticality score: OSSF criticality_score, 2025-07-25 public-dataset snapshot."])
+    rd.row(["    669 of the 3,107 apache repos have a score; the rest are blank."])
+    rd.row(["    Score is 0..1 (higher = more critical); the cell is formatted as a percentage."])
+    rd.row([""])
+
+    rd.row(["How to submit your project"], header=True)
+    rd.row(["To request a scan, email security@apache.org (CC: private@<pmc>.apache.org)."])
+    rd.row(["Subject:  [GLASSWING] <PMC>: request to scan repositories"])
+    rd.row(["Body:"])
+    rd.row(["  • Confirmation of interest and PMC name."])
+    rd.row(["  • Names of primary and backup PMC contacts."])
+    rd.row(["  • The @apache.org email addresses to receive scan results."])
+    rd.row(["  • Links to the GitHub repositories to be scanned."])
+    rd.row(
+        [
+            "Detailed example + context: "
+            "https://lists.apache.org/thread/0xobh4k24pcqty3f3dtbzomdn6l8wvrb"
+        ]
+    )
+    rd.row(
+        [
+            "Jarek Potiuk (potiuk@apache.org, @potiuk on ASF Slack) is a Security Committee "
+            "member available to help any PMC meet the necessary boundary conditions."
+        ]
+    )
+    rd.row([""])
+
+    rd.row(["Legend", "swatch colour = pipeline state"], header=True)
+    for label, color in LEGEND_ENTRIES:
+        i = rd.row(["", label])
+        rd.cell_color(i, 0, color)
+    return rd
 
 
 def cmd_build_status_tab(args: argparse.Namespace) -> None:
@@ -379,16 +513,25 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     total_merged = sum(e["pr_merged"] for e in entries)
     total_closed = sum(e["pr_closed"] for e in entries)
     total_prs = total_open + total_merged + total_closed
-    pmcs_with_prs = len(
-        [e for e in entries if (e["pr_open"] + e["pr_merged"] + e["pr_closed"]) > 0]
-    )
     state_counts = {s: sum(1 for e in entries if e["state"] == s) for s in PIPELINE_STATES}
-    pmcs_sent_to_vendor = sum(
-        state_counts.get(s, 0) for s in ("Submitted", "Triaging", "Delivered")
-    )
-    pmcs_results_back = sum(state_counts.get(s, 0) for s in ("Triaging", "Delivered"))
     total_repos_requested = sum(e["repos_requested_count"] for e in entries)
     total_repos_submitted = sum(e["repos_submitted_count"] for e in entries)
+    repos_not_submitted = total_repos_requested - total_repos_submitted
+
+    # "Engaged" = the PMC responded to outreach, proxied by having nominated a
+    # model (Security Model cell non-empty → model_status Nominated/Verified).
+    def _engaged(e: dict) -> bool:
+        return e["model_status"] != "Missing"
+
+    total_engaged = sum(1 for e in entries if _engaged(e))
+    nominated_count = sum(1 for e in entries if e["model_status"] == "Nominated")
+    state_engaged = {
+        s: sum(1 for e in entries if e["state"] == s and _engaged(e)) for s in PIPELINE_STATES
+    }
+    results_back = sum(state_counts[s] for s in ("Triaging", "Delivered"))
+    results_back_engaged = sum(
+        1 for e in entries if e["state"] in ("Triaging", "Delivered") and _engaged(e)
+    )
     origin_counts = {
         key: sum(1 for e in entries if e["model_origin"] == key) for key, _ in MODEL_ORIGINS
     }
@@ -406,39 +549,16 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         for key, _ in MODEL_ORIGINS
     }
 
-    # 3. Build the "Status in progress" tab: legend, grouped totals, in-flight.
+    # 3. Build the "Status in progress" tab: just the in-flight table now (the
+    #    colour legend lives on the README tab; totals on 'Program totals').
     ip = _Tab()
     ip.row([f"Glasswing scan pipeline — Status in progress · as of {today}"], header=True)
     ip.row(
         [
             "Source: PMCs sheet · regenerated by sheets-writer build-status-tab. "
-            "Program totals are on the 'Program totals' tab; completed PMCs on "
-            "'Completed'; date milestones on 'Timeline'."
+            "Colour legend is on the 'README' tab; program totals on 'Program "
+            "totals'; completed PMCs on 'Completed'; date milestones on 'Timeline'."
         ]
-    )
-    ip.row([""])
-    # Legend: one colour swatch cell (column A) + its description (column B), so
-    # only a single cell is coloured per entry rather than the whole row.
-    ip.row(["LEGEND", "swatch colour = pipeline state"], header=True)
-    ip.row(["", "Pre-flight — model not yet verified"], color=STATE_COLOR["Pre-flight"], span=1)
-    ip.row(
-        ["", "Pre-flight — model nominated, pending verification"], color=NOMINATED_COLOR, span=1
-    )
-    ip.row(
-        ["", "Ready — model verified, awaiting operator submit"], color=STATE_COLOR["Ready"], span=1
-    )
-    ip.row(
-        ["", "Submitted — sent to vendor, awaiting results"], color=STATE_COLOR["Submitted"], span=1
-    )
-    ip.row(
-        ["", "Triaging — results back, pre-forward sanity check"],
-        color=STATE_COLOR["Triaging"],
-        span=1,
-    )
-    ip.row(
-        ["", "Delivered — forwarded to PMC (see 'Completed' tab)"],
-        color=STATE_COLOR["Delivered"],
-        span=1,
     )
     ip.row([""])
 
@@ -484,36 +604,101 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             color=color,
         )
 
-    # 4. Build the "Program totals" tab (the grouped rollup, on its own tab now).
+    # 4. Build the "Program totals" tab: one bordered section per group, each
+    #    with a filled+bold heading row, a bold total, and state-coloured numbers.
     pt = _Tab()
     pt.row([f"Glasswing scan pipeline — Program totals · as of {today}"], header=True)
-    pt.row(["Pipeline"], header=True)
-    pt.row(["  PMCs opted in (Scan Requested = Yes)", total_pmcs])
-    pt.row(["  Pre-flight (model not yet verified)", state_counts["Pre-flight"]])
-    pt.row(["  Ready (model verified, awaiting operator submit)", state_counts["Ready"]])
-    pt.row(["  Submitted (sent to vendor, awaiting results)", state_counts["Submitted"]])
-    pt.row(["  Triaging (results back, pre-forward sanity check)", state_counts["Triaging"]])
-    pt.row(["  Delivered (forwarded to PMC)", state_counts["Delivered"]])
-    pt.row(["  Sent to vendor (Submitted+Triaging+Delivered)", pmcs_sent_to_vendor])
-    pt.row(["  Results back (Triaging+Delivered)", pmcs_results_back])
-    pt.row(["Repositories"], header=True)
-    pt.row(["  Repos requested across PMCs", total_repos_requested])
-    pt.row(["  Repos submitted to vendor", total_repos_submitted])
-    pt.row(["Pull requests"], header=True)
-    pt.row(["  PMCs with at least one PR opened", pmcs_with_prs])
-    pt.row(["  PRs open (not yet merged)", total_open])
-    pt.row(["  PRs merged", total_merged])
-    pt.row(["  PRs total", total_prs])
+    pt.row([""])
+
+    # --- PMC pipeline (two columns: All / Engaged) ---
+    s = pt.row(["PMC pipeline", "All", "Engaged"], color=HEADING_FILL, span=3, header=True)
+
+    def _pipe(label, all_n, eng_n, color=None):
+        r = pt.row([f"  {label}", all_n, eng_n])
+        if color is not None:
+            pt.cell_color(r, 1, color)
+            pt.cell_color(r, 2, color)
+
+    _pipe(
+        "Pre-flight (model not yet verified)",
+        state_counts["Pre-flight"],
+        state_engaged["Pre-flight"],
+        STATE_COLOR["Pre-flight"],
+    )
+    _pipe(
+        "Nominated (model awaiting verification)", nominated_count, nominated_count, NOMINATED_COLOR
+    )
+    _pipe(
+        "Ready (model verified, awaiting submit)",
+        state_counts["Ready"],
+        state_engaged["Ready"],
+        STATE_COLOR["Ready"],
+    )
+    _pipe(
+        "Submitted (sent to vendor)",
+        state_counts["Submitted"],
+        state_engaged["Submitted"],
+        STATE_COLOR["Submitted"],
+    )
+    _pipe(
+        "Triaging (results back, sanity check)",
+        state_counts["Triaging"],
+        state_engaged["Triaging"],
+        STATE_COLOR["Triaging"],
+    )
+    _pipe(
+        "Delivered (forwarded to PMC)",
+        state_counts["Delivered"],
+        state_engaged["Delivered"],
+        STATE_COLOR["Delivered"],
+    )
+    _pipe("Results back (Triaging + Delivered)", results_back, results_back_engaged)
+    t = pt.row(["  Total — PMCs opted in", total_pmcs, total_engaged], header=True)
+    pt.border(s, t + 1, 0, 3)
+    pt.row([""])
+
+    # --- Repositories ---
+    s = pt.row(["Repositories", "Repos"], color=HEADING_FILL, span=2, header=True)
+    pt.row(["  Submitted to vendor", total_repos_submitted])
+    pt.row(["  Not yet submitted", repos_not_submitted])
+    t = pt.row(["  Total — requested across PMCs", total_repos_requested], header=True)
+    pt.border(s, t + 1, 0, 2)
+    pt.row([""])
+
+    # --- Pull requests ---
+    s = pt.row(["Pull requests", "PRs"], color=HEADING_FILL, span=2, header=True)
+    pt.row(["  Open (not yet merged)", total_open])
+    pt.row(["  Merged", total_merged])
     if total_closed:
-        pt.row(["  (of which closed without merge)", total_closed])
-    pt.row(["Threat / security models", "Total", "In progress", "Complete"], header=True)
+        pt.row(["  Closed without merge", total_closed])
+    t = pt.row(["  Total", total_prs], header=True)
+    pt.border(s, t + 1, 0, 2)
+    pt.row([""])
+
+    # --- Threat / security models (All / In progress / Complete) ---
+    s = pt.row(
+        ["Threat / security models", "All", "In progress", "Complete"],
+        color=HEADING_FILL,
+        span=4,
+        header=True,
+    )
     for key, label in MODEL_ORIGINS:
         if key == "none":
-            pt.row([f"  {label}", origin_counts[key], "—", "—"])
+            r = pt.row([f"  {label}", origin_counts[key], "—", "—"])
+            pt.cell_color(r, 1, MODEL_COLOR["Missing"])
         else:
-            pt.row(
+            r = pt.row(
                 [f"  {label}", origin_counts[key], origin_in_progress[key], origin_complete[key]]
             )
+            pt.cell_color(r, 2, MODEL_COLOR["Nominated"])
+            pt.cell_color(r, 3, MODEL_COLOR["Verified"])
+    t = pt.row(
+        ["  Total", total_pmcs, sum(origin_in_progress.values()), sum(origin_complete.values())],
+        header=True,
+    )
+    pt.cell_color(t, 2, MODEL_COLOR["Nominated"])
+    pt.cell_color(t, 3, MODEL_COLOR["Verified"])
+    pt.border(s, t + 1, 0, 4)
 
     # 5. Build the "Completed" tab.
     cp = _Tab()
@@ -580,16 +765,17 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
 
     if args.dry_run:
         print(
-            f"Would write 4 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
+            f"Would write 5 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
             f"{len(in_flight)} in flight), '{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
             f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
-            f"'{TIMELINE_SHEET}' ({len(entries)} events). Model origins: "
+            f"'{TIMELINE_SHEET}' ({len(entries)} events), '{README_SHEET}' (auto overview "
+            f"+ legend). Model origins: "
             + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
             + "."
         )
         return
 
-    # 7. Ensure the four tabs exist (migrating the old single 'Status' tab into
+    # 7. Ensure our tabs exist (migrating the old single 'Status' tab into
     #    'Status in progress'), then write each.
     meta = service.spreadsheets().get(spreadsheetId=args.spreadsheet_id).execute()
     by_title = {
@@ -601,17 +787,25 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     pt_id = _ensure_sheet(service, args.spreadsheet_id, PROGRAM_TOTALS_SHEET, by_title)
     cp_id = _ensure_sheet(service, args.spreadsheet_id, COMPLETED_SHEET, by_title)
     tl_id = _ensure_sheet(service, args.spreadsheet_id, TIMELINE_SHEET, by_title)
+    rd_id = _ensure_sheet(service, args.spreadsheet_id, README_SHEET, by_title)
+
+    # Re-read the (now-complete) tab list, in sheet order, for the README overview.
+    final_meta = service.spreadsheets().get(spreadsheetId=args.spreadsheet_id).execute()
+    tab_titles = [s["properties"]["title"] for s in final_meta.get("sheets", [])]
+    rd = _build_readme(today, tab_titles)
 
     _write_tab(service, args.spreadsheet_id, IN_PROGRESS_SHEET, ip_id, ip, wrap_col=10)
     _write_tab(service, args.spreadsheet_id, PROGRAM_TOTALS_SHEET, pt_id, pt)
     _write_tab(service, args.spreadsheet_id, COMPLETED_SHEET, cp_id, cp)
     _write_tab(service, args.spreadsheet_id, TIMELINE_SHEET, tl_id, tl)
+    _write_tab(service, args.spreadsheet_id, README_SHEET, rd_id, rd)
 
     print(
         f"Refreshed: '{IN_PROGRESS_SHEET}' ({len(in_flight)} in flight), "
         f"'{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
         f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
-        f"'{TIMELINE_SHEET}' ({len(entries)} events). Model origins: "
+        f"'{TIMELINE_SHEET}' ({len(entries)} events), '{README_SHEET}' "
+        f"({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."
     )
