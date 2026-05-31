@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Build the Status / Program totals / Completed / Timeline tabs from the PMCs sheet."""
+"""Build the README / Status / Program totals / Completed / Timeline tabs from PMCs."""
 
 from __future__ import annotations
 
@@ -25,9 +25,11 @@ import sys
 from sheets_writer import (
     COMPLETED_SHEET,
     IN_PROGRESS_SHEET,
+    MODEL_COLOR,
     NOMINATED_COLOR,
     PIPELINE_STATES,
     PROGRAM_TOTALS_SHEET,
+    README_SHEET,
     STATE_COLOR,
     STATUS_SHEET,
     TIMELINE_SHEET,
@@ -35,6 +37,34 @@ from sheets_writer import (
 from sheets_writer.columns import col_letter
 from sheets_writer.prs import parse_pr_urls, query_pr_states
 from sheets_writer.sheets_api import fetch_sheet_grid, get_service
+
+# Light fill behind a section's heading row on the Program totals tab, so the
+# group headings read distinctly from the data rows.
+HEADING_FILL = {"red": 0.82, "green": 0.87, "blue": 0.94}
+
+# One-line descriptions for the README "Overview" tab list (auto-generated from
+# the spreadsheet's actual tabs; tabs not listed here fall back to a dash).
+TAB_DESCRIPTIONS = {
+    "README": "this overview.",
+    "Program totals": "headline totals across the whole programme.",
+    "Status in progress": "the in-flight PMCs and where each is in the pipeline.",
+    "Completed": "PMCs whose scan has been delivered.",
+    "PMCs": "every Apache PMC, its private list, and outreach-tracking columns.",
+    "Repositories": "every public github.com/apache repo, mapped to its PMC.",
+    "OSS Subscriptions": "expedited Claude-for-OSS subscriptions for PMC members.",
+    "Timeline": "wide-format milestone dates per PMC, chart-ready.",
+    "Canned Responses": "reusable answers to common PMC questions.",
+}
+
+# Colour legend, shown on the README tab. (description, swatch colour).
+LEGEND_ENTRIES = [
+    ("Pre-flight — model not yet verified", STATE_COLOR["Pre-flight"]),
+    ("Pre-flight — model nominated, pending verification", NOMINATED_COLOR),
+    ("Ready — model verified, awaiting operator submit", STATE_COLOR["Ready"]),
+    ("Submitted — sent to vendor, awaiting results", STATE_COLOR["Submitted"]),
+    ("Triaging — results back, pre-forward sanity check", STATE_COLOR["Triaging"]),
+    ("Delivered — forwarded to PMC", STATE_COLOR["Delivered"]),
+]
 
 # Origin buckets for the threat/security model, in display order, with the
 # row label each renders as in the PROGRAM TOTALS "Threat / security models"
@@ -192,20 +222,80 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
 
 
 class _Tab:
-    """Accumulator for one sheet's values + per-row colors + header rows."""
+    """Accumulator for one sheet's values + formatting (row colours, per-cell
+    colours, bold header rows, and section borders)."""
 
     def __init__(self) -> None:
         self.values: list[list] = []
         self.colors: list[tuple[int, dict, int]] = []
-        self.headers: list[int] = []
+        self.cell_colors: list[tuple[int, int, dict]] = []
+        self.cell_text_colors: list[tuple[int, int, dict]] = []
+        self.headers: list[int] = []  # bold + distinct background fill
+        self.bolds: list[int] = []  # bold only (e.g. section totals)
+        self.borders: list[tuple[int, int, int, int]] = []
+        self.charts: list[dict] = []  # embedded-chart specs (logical, pre-offset)
 
-    def row(self, cells: list, *, color: dict | None = None, span: int = 11, header: bool = False):
+    def row(
+        self,
+        cells: list,
+        *,
+        color: dict | None = None,
+        span: int = 11,
+        header: bool = False,
+        bold: bool = False,
+    ):
         i = len(self.values)
         self.values.append(cells)
         if color is not None:
             self.colors.append((i, color, span))
         if header:
             self.headers.append(i)
+        if bold:
+            self.bolds.append(i)
+        return i
+
+    def cell_color(self, row: int, col: int, color: dict) -> None:
+        """Colour a single cell's background (row/col are 0-based)."""
+        self.cell_colors.append((row, col, color))
+
+    def cell_text_color(self, row: int, col: int, color: dict) -> None:
+        """Colour a single cell's text/foreground (row/col are 0-based)."""
+        self.cell_text_colors.append((row, col, color))
+
+    def border(self, r0: int, r1: int, c0: int, c1: int) -> None:
+        """Outer border around the block rows [r0, r1) × cols [c0, c1)."""
+        self.borders.append((r0, r1, c0, c1))
+
+    def chart(
+        self,
+        *,
+        title: str,
+        chart_type: str,
+        domain: tuple[int, int, int],
+        series: list[tuple[int, int, int]],
+        anchor: tuple[int, int],
+        stacked: bool = False,
+        series_colors: list[dict] | None = None,
+        width: int = 460,
+        height: int = 280,
+    ) -> None:
+        """Record an embedded basic chart. ``domain``/``series`` entries are
+        (row_start, row_end, col) in logical (pre-offset) coordinates and
+        include the header row; ``anchor`` is the (row, col) top-left cell.
+        ``series_colors`` optionally gives each series its own colour."""
+        self.charts.append(
+            {
+                "title": title,
+                "type": chart_type,
+                "stacked": stacked,
+                "domain": domain,
+                "series": series,
+                "series_colors": series_colors,
+                "anchor": anchor,
+                "width": width,
+                "height": height,
+            }
+        )
 
 
 def _ensure_sheet(service, spreadsheet_id, title, by_title, rename_from=None) -> int:
@@ -255,24 +345,52 @@ def _ensure_sheet(service, spreadsheet_id, title, by_title, rename_from=None) ->
     return sid
 
 
-def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=None) -> None:
-    """Clear ``title``, write the tab's values, and apply formatting (bold
-    headers, row background colors, optional text-wrap on one column)."""
+def _write_tab(
+    service,
+    spreadsheet_id,
+    title,
+    sheet_id,
+    tab: _Tab,
+    wrap_col=None,
+    col_offset=0,
+    frozen=(0, 0),
+    existing_charts=(),
+) -> None:
+    """Clear ``title``, write the tab's values, and apply formatting.
+
+    Header rows are bold + given a distinct fill; bold-only rows (section
+    totals) are bold without the fill. ``col_offset`` inserts that many empty
+    margin columns on the left (narrowed) so section borders don't sit flush
+    against the sheet edge. The current freeze (``frozen`` = (rows, cols)) is
+    preserved — never reset — and those frozen header rows/columns are re-bolded.
+    """
     service.spreadsheets().values().clear(
         spreadsheetId=spreadsheet_id, range=f"'{title}'"
     ).execute()
     ncols = max((len(r) for r in tab.values), default=1)
-    end_col = col_letter(ncols - 1)
+    nrows = max(len(tab.values), 1)
+    content_end = col_offset + ncols
+    end_col = col_letter(content_end - 1)
+    values = [[""] * col_offset + r for r in tab.values]
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range=f"'{title}'!A1:{end_col}{max(len(tab.values), 1)}",
+        range=f"'{title}'!A1:{end_col}{nrows}",
         valueInputOption="RAW",
-        body={"values": tab.values},
+        body={"values": values},
     ).execute()
 
-    # Clear formatting first, then re-apply (bold → colors → wrap). Also unfreeze
-    # the sheet so there is no fixed no-scroll header block (older tabs were
-    # created with a frozen first row; this clears it on every refresh).
+    def _range(r0, r1, c0, c1):
+        return {
+            "sheetId": sheet_id,
+            "startRowIndex": r0,
+            "endRowIndex": r1,
+            "startColumnIndex": c0,
+            "endColumnIndex": c1,
+        }
+
+    # Clear cell formatting first, then re-apply. Note: clearing userEnteredFormat
+    # does NOT touch the sheet's frozen rows/cols (a gridProperties setting), so
+    # the current freeze is preserved without us setting it.
     requests: list[dict] = [
         {
             "repeatCell": {
@@ -280,30 +398,36 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
                 "cell": {"userEnteredFormat": {}},
                 "fields": "userEnteredFormat",
             }
-        },
-        {
-            "updateSheetProperties": {
-                "properties": {
-                    "sheetId": sheet_id,
-                    "gridProperties": {"frozenRowCount": 0, "frozenColumnCount": 0},
-                },
-                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
-            }
-        },
+        }
     ]
+
+    colored_rows = {r for r, _, _ in tab.colors}
+    bold_fmt = {"textFormat": {"bold": True}}
+    bold_fields = "userEnteredFormat.textFormat.bold"
     for r in sorted(set(tab.headers)):
+        # Header rows: bold + a distinct background fill, unless the row already
+        # carries an explicit fill (e.g. a Program-totals section heading).
+        if r in colored_rows:
+            cell, fields = bold_fmt, bold_fields
+        else:
+            cell = {"textFormat": {"bold": True}, "backgroundColor": HEADING_FILL}
+            fields = "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
         requests.append(
             {
                 "repeatCell": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "startRowIndex": r,
-                        "endRowIndex": r + 1,
-                        "startColumnIndex": 0,
-                        "endColumnIndex": ncols,
-                    },
-                    "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
-                    "fields": "userEnteredFormat.textFormat.bold",
+                    "range": _range(r, r + 1, col_offset, content_end),
+                    "cell": {"userEnteredFormat": cell},
+                    "fields": fields,
+                }
+            }
+        )
+    for r in sorted(set(tab.bolds)):
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(r, r + 1, col_offset, content_end),
+                    "cell": {"userEnteredFormat": bold_fmt},
+                    "fields": bold_fields,
                 }
             }
         )
@@ -311,15 +435,72 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
         requests.append(
             {
                 "repeatCell": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "startRowIndex": r,
-                        "endRowIndex": r + 1,
-                        "startColumnIndex": 0,
-                        "endColumnIndex": span,
-                    },
+                    "range": _range(r, r + 1, col_offset, col_offset + span),
                     "cell": {"userEnteredFormat": {"backgroundColor": color}},
                     "fields": "userEnteredFormat.backgroundColor",
+                }
+            }
+        )
+    for r, c, color in tab.cell_colors:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(r, r + 1, col_offset + c, col_offset + c + 1),
+                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                    "fields": "userEnteredFormat.backgroundColor",
+                }
+            }
+        )
+    for r, c, color in tab.cell_text_colors:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(r, r + 1, col_offset + c, col_offset + c + 1),
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {"foregroundColor": color, "bold": True}
+                        }
+                    },
+                    "fields": (
+                        "userEnteredFormat.textFormat.foregroundColor,"
+                        "userEnteredFormat.textFormat.bold"
+                    ),
+                }
+            }
+        )
+    _border = {"style": "SOLID_MEDIUM", "color": {"red": 0.4, "green": 0.4, "blue": 0.4}}
+    for r0, r1, c0, c1 in tab.borders:
+        requests.append(
+            {
+                "updateBorders": {
+                    "range": _range(r0, r1, col_offset + c0, col_offset + c1),
+                    "top": _border,
+                    "bottom": _border,
+                    "left": _border,
+                    "right": _border,
+                }
+            }
+        )
+    # Re-bold whatever rows/columns are currently frozen, so the preserved freeze
+    # keeps its header styling after the format clear.
+    frozen_rows, frozen_cols = frozen
+    if frozen_rows:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(0, frozen_rows, 0, content_end),
+                    "cell": {"userEnteredFormat": bold_fmt},
+                    "fields": bold_fields,
+                }
+            }
+        )
+    if frozen_cols:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(0, nrows, 0, frozen_cols),
+                    "cell": {"userEnteredFormat": bold_fmt},
+                    "fields": bold_fields,
                 }
             }
         )
@@ -329,17 +510,147 @@ def _write_tab(service, spreadsheet_id, title, sheet_id, tab: _Tab, wrap_col=Non
                 "repeatCell": {
                     "range": {
                         "sheetId": sheet_id,
-                        "startColumnIndex": wrap_col,
-                        "endColumnIndex": wrap_col + 1,
+                        "startColumnIndex": wrap_col + col_offset,
+                        "endColumnIndex": wrap_col + col_offset + 1,
                     },
                     "cell": {"userEnteredFormat": {"wrapStrategy": "WRAP"}},
                     "fields": "userEnteredFormat.wrapStrategy",
                 }
             }
         )
+    if col_offset:
+        requests.append(
+            {
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": col_offset,
+                    },
+                    "properties": {"pixelSize": 30},
+                    "fields": "pixelSize",
+                }
+            }
+        )
+    # Replace any embedded charts: delete the existing ones, then add ours.
+    for cid in existing_charts:
+        requests.append({"deleteEmbeddedObject": {"objectId": cid}})
+    for ch in tab.charts:
+        dr0, dr1, dc = ch["domain"]
+        domain_src = _range(dr0, dr1, dc + col_offset, dc + col_offset + 1)
+        # BAR (horizontal) charts measure on the bottom axis; everything else
+        # (COLUMN/AREA/LINE) measures on the left axis.
+        value_axis = "BOTTOM_AXIS" if ch["type"] == "BAR" else "LEFT_AXIS"
+        series_colors = ch.get("series_colors")
+        series_specs = []
+        for idx, (sr0, sr1, sc) in enumerate(ch["series"]):
+            spec = {
+                "series": {
+                    "sourceRange": {
+                        "sources": [_range(sr0, sr1, sc + col_offset, sc + col_offset + 1)]
+                    }
+                },
+                "targetAxis": value_axis,
+            }
+            if series_colors:
+                spec["color"] = series_colors[idx]
+            series_specs.append(spec)
+        multi = ch["stacked"] or len(ch["series"]) > 1
+        basic = {
+            "chartType": ch["type"],
+            "legendPosition": "BOTTOM_LEGEND" if multi else "NO_LEGEND",
+            "headerCount": 1,
+            "domains": [{"domain": {"sourceRange": {"sources": [domain_src]}}}],
+            "series": series_specs,
+        }
+        if ch["stacked"]:
+            basic["stackedType"] = "STACKED"
+        ar, ac = ch["anchor"]
+        requests.append(
+            {
+                "addChart": {
+                    "chart": {
+                        "spec": {"title": ch["title"], "basicChart": basic},
+                        "position": {
+                            "overlayPosition": {
+                                "anchorCell": {
+                                    "sheetId": sheet_id,
+                                    "rowIndex": ar,
+                                    "columnIndex": ac + col_offset,
+                                },
+                                "offsetXPixels": 5,
+                                "offsetYPixels": 5,
+                                "widthPixels": ch["width"],
+                                "heightPixels": ch["height"],
+                            }
+                        },
+                    }
+                }
+            }
+        )
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id, body={"requests": requests}
     ).execute()
+
+
+def _build_readme(today: str, tab_titles: list[str]) -> _Tab:
+    """Build the README tab: an auto-generated overview of the workbook's tabs,
+    the (static) data-source + how-to-submit notes, and the colour legend."""
+    rd = _Tab()
+    rd.row(["Apache Software Foundation — Glasswing Scan Outreach Tracker"], header=True)
+    rd.row([""])
+
+    rd.row(["Overview"], header=True)
+    rd.row(["This workbook has these sheets (auto-generated from the live tab list):"])
+    for title in tab_titles:
+        rd.row([f"  • {title} — {TAB_DESCRIPTIONS.get(title, '—')}"])
+    rd.row([""])
+    rd.row(
+        [
+            "NOTE: This spreadsheet is automatically maintained and updated by agentic "
+            "SKILLs in the apache/security private repo."
+        ]
+    )
+    rd.row([""])
+
+    # Legend: each entry is a single cell — its description text on the swatch
+    # colour — placed above the data-source notes.
+    rd.row(["Legend in Status and Program Totals"], header=True)
+    for label, color in LEGEND_ENTRIES:
+        i = rd.row([label])
+        rd.cell_color(i, 0, color)
+    rd.row([""])
+
+    rd.row(["Data sources"], header=True)
+    rd.row(["  • PMC list: Apache Whimsy committee-info.json (210 PMCs)."])
+    rd.row(["  • Repos: scraped from github.com/orgs/apache/repositories (3,107 public repos)."])
+    rd.row(["  • Criticality score: OSSF criticality_score, 2025-07-25 public-dataset snapshot."])
+    rd.row(["    669 of the 3,107 apache repos have a score; the rest are blank."])
+    rd.row(["    Score is 0..1 (higher = more critical); the cell is formatted as a percentage."])
+    rd.row([""])
+
+    rd.row(["How to submit your project"], header=True)
+    rd.row(["To request a scan, email security@apache.org (CC: private@<pmc>.apache.org)."])
+    rd.row(["Subject:  [GLASSWING] <PMC>: request to scan repositories"])
+    rd.row(["Body:"])
+    rd.row(["  • Confirmation of interest and PMC name."])
+    rd.row(["  • Names of primary and backup PMC contacts."])
+    rd.row(["  • The @apache.org email addresses to receive scan results."])
+    rd.row(["  • Links to the GitHub repositories to be scanned."])
+    rd.row(
+        [
+            "Detailed example + context: "
+            "https://lists.apache.org/thread/0xobh4k24pcqty3f3dtbzomdn6l8wvrb"
+        ]
+    )
+    rd.row(
+        [
+            "Jarek Potiuk (potiuk@apache.org, @potiuk on ASF Slack) is a Security Committee "
+            "member available to help any PMC meet the necessary boundary conditions."
+        ]
+    )
+    return rd
 
 
 def cmd_build_status_tab(args: argparse.Namespace) -> None:
@@ -379,16 +690,14 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     total_merged = sum(e["pr_merged"] for e in entries)
     total_closed = sum(e["pr_closed"] for e in entries)
     total_prs = total_open + total_merged + total_closed
-    pmcs_with_prs = len(
-        [e for e in entries if (e["pr_open"] + e["pr_merged"] + e["pr_closed"]) > 0]
-    )
     state_counts = {s: sum(1 for e in entries if e["state"] == s) for s in PIPELINE_STATES}
-    pmcs_sent_to_vendor = sum(
-        state_counts.get(s, 0) for s in ("Submitted", "Triaging", "Delivered")
-    )
-    pmcs_results_back = sum(state_counts.get(s, 0) for s in ("Triaging", "Delivered"))
     total_repos_requested = sum(e["repos_requested_count"] for e in entries)
     total_repos_submitted = sum(e["repos_submitted_count"] for e in entries)
+    repos_not_submitted = total_repos_requested - total_repos_submitted
+
+    nominated_count = sum(1 for e in entries if e["model_status"] == "Nominated")
+    has_model = sum(1 for e in entries if e["model_status"] != "Missing")
+    results_back = sum(state_counts[s] for s in ("Triaging", "Delivered"))
     origin_counts = {
         key: sum(1 for e in entries if e["model_origin"] == key) for key, _ in MODEL_ORIGINS
     }
@@ -406,39 +715,76 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         for key, _ in MODEL_ORIGINS
     }
 
-    # 3. Build the "Status in progress" tab: legend, grouped totals, in-flight.
+    def _pct(n: int, total: int) -> str:
+        return f"{round(100 * n / total)}%" if total else "—"
+
+    # Cumulative funnel of PMC numbers (monotonically narrowing): (stage, count,
+    # swatch colour). The colour also drives the chart's per-stage bar colours.
+    funnel = [
+        ("Opted in", total_pmcs, STATE_COLOR["Pre-flight"]),
+        ("Has a model", has_model, NOMINATED_COLOR),
+        (
+            "Model verified",
+            sum(state_counts[s] for s in ("Ready", "Submitted", "Triaging", "Delivered")),
+            STATE_COLOR["Ready"],
+        ),
+        (
+            "Submitted to vendor",
+            sum(state_counts[s] for s in ("Submitted", "Triaging", "Delivered")),
+            STATE_COLOR["Submitted"],
+        ),
+        ("Results back", results_back, STATE_COLOR["Triaging"]),
+        ("Delivered", state_counts["Delivered"], STATE_COLOR["Delivered"]),
+    ]
+
+    # Funnel over time: for each milestone date, how many PMCs were in each
+    # pipeline state as of that date (state = the latest milestone reached). ISO
+    # date strings compare lexically, so plain <= works.
+    def _state_asof(e: dict, d: str) -> str | None:
+        for date_key, st in (
+            ("forwarded_date", "Delivered"),
+            ("received_date", "Triaging"),
+            ("submitted_date", "Submitted"),
+            ("model_verified_date", "Ready"),
+            ("request_date", "Pre-flight"),
+        ):
+            if e[date_key] and e[date_key] <= d:
+                return st
+        return None
+
+    timeline_dates = sorted(
+        {
+            d
+            for e in entries
+            for d in (
+                e["request_date"],
+                e["model_verified_date"],
+                e["submitted_date"],
+                e["received_date"],
+                e["forwarded_date"],
+            )
+            if d
+        }
+    )
+    timeseries = []
+    for d in timeline_dates:
+        counts = dict.fromkeys(PIPELINE_STATES, 0)
+        for e in entries:
+            st = _state_asof(e, d)
+            if st:
+                counts[st] += 1
+        timeseries.append((d, [counts[s] for s in PIPELINE_STATES]))
+
+    # 3. Build the "Status in progress" tab: just the in-flight table now (the
+    #    colour legend lives on the README tab; totals on 'Program totals').
     ip = _Tab()
     ip.row([f"Glasswing scan pipeline — Status in progress · as of {today}"], header=True)
     ip.row(
         [
             "Source: PMCs sheet · regenerated by sheets-writer build-status-tab. "
-            "Program totals are on the 'Program totals' tab; completed PMCs on "
-            "'Completed'; date milestones on 'Timeline'."
+            "Colour legend is on the 'README' tab; program totals on 'Program "
+            "totals'; completed PMCs on 'Completed'; date milestones on 'Timeline'."
         ]
-    )
-    ip.row([""])
-    # Legend: one colour swatch cell (column A) + its description (column B), so
-    # only a single cell is coloured per entry rather than the whole row.
-    ip.row(["LEGEND", "swatch colour = pipeline state"], header=True)
-    ip.row(["", "Pre-flight — model not yet verified"], color=STATE_COLOR["Pre-flight"], span=1)
-    ip.row(
-        ["", "Pre-flight — model nominated, pending verification"], color=NOMINATED_COLOR, span=1
-    )
-    ip.row(
-        ["", "Ready — model verified, awaiting operator submit"], color=STATE_COLOR["Ready"], span=1
-    )
-    ip.row(
-        ["", "Submitted — sent to vendor, awaiting results"], color=STATE_COLOR["Submitted"], span=1
-    )
-    ip.row(
-        ["", "Triaging — results back, pre-forward sanity check"],
-        color=STATE_COLOR["Triaging"],
-        span=1,
-    )
-    ip.row(
-        ["", "Delivered — forwarded to PMC (see 'Completed' tab)"],
-        color=STATE_COLOR["Delivered"],
-        span=1,
     )
     ip.row([""])
 
@@ -484,36 +830,157 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             color=color,
         )
 
-    # 4. Build the "Program totals" tab (the grouped rollup, on its own tab now).
+    # 4. Build the "Program totals" tab: one bordered section per group, each
+    #    with a filled+bold heading, a bold total, status-coloured number cells,
+    #    and a "% of total" column. A funnel chart sits to the right.
+    green, yellow = MODEL_COLOR["Verified"], MODEL_COLOR["Nominated"]
+    # Saturated *text* colours for the status-style tables (Pull requests,
+    # Threat/security models). These read as a different kind of signal than the
+    # background-filled pipeline / repositories / funnel cells.
+    tgreen = {"red": 0.11, "green": 0.46, "blue": 0.20}
+    tamber = {"red": 0.72, "green": 0.43, "blue": 0.0}
+    tred = {"red": 0.70, "green": 0.0, "blue": 0.0}
     pt = _Tab()
     pt.row([f"Glasswing scan pipeline — Program totals · as of {today}"], header=True)
-    pt.row(["Pipeline"], header=True)
-    pt.row(["  PMCs opted in (Scan Requested = Yes)", total_pmcs])
-    pt.row(["  Pre-flight (model not yet verified)", state_counts["Pre-flight"]])
-    pt.row(["  Ready (model verified, awaiting operator submit)", state_counts["Ready"]])
-    pt.row(["  Submitted (sent to vendor, awaiting results)", state_counts["Submitted"]])
-    pt.row(["  Triaging (results back, pre-forward sanity check)", state_counts["Triaging"]])
-    pt.row(["  Delivered (forwarded to PMC)", state_counts["Delivered"]])
-    pt.row(["  Sent to vendor (Submitted+Triaging+Delivered)", pmcs_sent_to_vendor])
-    pt.row(["  Results back (Triaging+Delivered)", pmcs_results_back])
-    pt.row(["Repositories"], header=True)
-    pt.row(["  Repos requested across PMCs", total_repos_requested])
-    pt.row(["  Repos submitted to vendor", total_repos_submitted])
-    pt.row(["Pull requests"], header=True)
-    pt.row(["  PMCs with at least one PR opened", pmcs_with_prs])
-    pt.row(["  PRs open (not yet merged)", total_open])
-    pt.row(["  PRs merged", total_merged])
-    pt.row(["  PRs total", total_prs])
+    pt.row([""])
+
+    # --- PMC pipeline ---
+    s = pt.row(["PMC pipeline", "All", "% of opted-in"], color=HEADING_FILL, span=3, header=True)
+
+    def _pipe(label, n, color=None):
+        r = pt.row([f"  {label}", n, _pct(n, total_pmcs)])
+        if color is not None:
+            pt.cell_color(r, 1, color)
+            pt.cell_color(r, 2, color)  # % cell matches the value cell
+
+    _pipe(
+        "Pre-flight (model not yet verified)", state_counts["Pre-flight"], STATE_COLOR["Pre-flight"]
+    )
+    _pipe("Nominated (model awaiting verification)", nominated_count, NOMINATED_COLOR)
+    _pipe("Ready (model verified, awaiting submit)", state_counts["Ready"], STATE_COLOR["Ready"])
+    _pipe("Submitted (sent to vendor)", state_counts["Submitted"], STATE_COLOR["Submitted"])
+    _pipe(
+        "Triaging (results back, sanity check)", state_counts["Triaging"], STATE_COLOR["Triaging"]
+    )
+    _pipe("Delivered (forwarded to PMC)", state_counts["Delivered"], STATE_COLOR["Delivered"])
+    _pipe("Results back (Triaging + Delivered)", results_back)
+    t = pt.row(["  Total — PMCs opted in", total_pmcs, "100%"], bold=True)
+    pt.border(s, t + 1, 0, 3)
+    pt.row([""])
+
+    # --- Repositories (submitted = green, not-yet = yellow) ---
+    s = pt.row(["Repositories", "Repos", "% of requested"], color=HEADING_FILL, span=3, header=True)
+    r = pt.row(
+        [
+            "  Submitted to vendor",
+            total_repos_submitted,
+            _pct(total_repos_submitted, total_repos_requested),
+        ]
+    )
+    pt.cell_color(r, 1, green)
+    pt.cell_color(r, 2, green)
+    r = pt.row(
+        [
+            "  Not yet submitted",
+            repos_not_submitted,
+            _pct(repos_not_submitted, total_repos_requested),
+        ]
+    )
+    pt.cell_color(r, 1, yellow)
+    pt.cell_color(r, 2, yellow)
+    t = pt.row(["  Total — requested across PMCs", total_repos_requested, "100%"], bold=True)
+    pt.border(s, t + 1, 0, 3)
+    pt.row([""])
+
+    # --- Pull requests (merged = green, open = yellow, closed = red) ---
+    s = pt.row(["Pull requests", "PRs", "% of all PRs"], color=HEADING_FILL, span=3, header=True)
+    r = pt.row(["  Open (not yet merged)", total_open, _pct(total_open, total_prs)])
+    pt.cell_text_color(r, 1, tamber)
+    pt.cell_text_color(r, 2, tamber)
+    r = pt.row(["  Merged", total_merged, _pct(total_merged, total_prs)])
+    pt.cell_text_color(r, 1, tgreen)
+    pt.cell_text_color(r, 2, tgreen)
     if total_closed:
-        pt.row(["  (of which closed without merge)", total_closed])
-    pt.row(["Threat / security models", "Total", "In progress", "Complete"], header=True)
+        r = pt.row(["  Closed without merge", total_closed, _pct(total_closed, total_prs)])
+        pt.cell_text_color(r, 1, tred)
+        pt.cell_text_color(r, 2, tred)
+    t = pt.row(["  Total", total_prs, "100%"], bold=True)
+    pt.border(s, t + 1, 0, 3)
+    pt.row([""])
+
+    # --- Threat / security models (status = coloured TEXT, not background) ---
+    s = pt.row(
+        ["Threat / security models", "All", "In progress", "Complete", "% complete"],
+        color=HEADING_FILL,
+        span=5,
+        header=True,
+    )
     for key, label in MODEL_ORIGINS:
         if key == "none":
-            pt.row([f"  {label}", origin_counts[key], "—", "—"])
+            # No model to complete — percentage is not applicable.
+            r = pt.row([f"  {label}", origin_counts[key], "—", "—", "—"])
+            pt.cell_text_color(r, 1, tred)
         else:
-            pt.row(
-                [f"  {label}", origin_counts[key], origin_in_progress[key], origin_complete[key]]
+            r = pt.row(
+                [
+                    f"  {label}",
+                    origin_counts[key],
+                    origin_in_progress[key],
+                    origin_complete[key],
+                    _pct(origin_complete[key], origin_counts[key]),
+                ]
             )
+            pt.cell_text_color(r, 2, tamber)
+            pt.cell_text_color(r, 3, tgreen)
+    t = pt.row(
+        [
+            "  Total",
+            total_pmcs,
+            sum(origin_in_progress.values()),
+            sum(origin_complete.values()),
+            _pct(sum(origin_complete.values()), total_pmcs),
+        ],
+        bold=True,
+    )
+    pt.cell_text_color(t, 2, tamber)
+    pt.cell_text_color(t, 3, tgreen)
+    pt.border(s, t + 1, 0, 5)
+    pt.row([""])
+
+    # --- PMC funnel (readable table: coloured count cell + % of opted-in) ---
+    fs = pt.row(["PMC funnel", "PMCs", "% of opted-in"], color=HEADING_FILL, span=3, header=True)
+    for stage, n, color in funnel:
+        r = pt.row([stage, n, _pct(n, total_pmcs)])
+        pt.cell_color(r, 1, color)
+        pt.cell_color(r, 2, color)  # % cell matches the value cell
+    pt.border(fs, len(pt.values), 0, 3)
+    pt.row([""])
+
+    # Chart-data strip: one series per stage (each a single cell) so the bar
+    # chart can colour every stage differently. One header row (series names) +
+    # one data row (counts), laid out horizontally and formatted as a small
+    # table with per-stage coloured count cells.
+    ncol = 1 + len(funnel)
+    hh = pt.row(
+        ["Funnel chart data", *[stage for stage, _, _ in funnel]],
+        color=HEADING_FILL,
+        span=ncol,
+        header=True,
+    )
+    hd = pt.row(["PMCs", *[n for _, n, _ in funnel]])
+    for i, (_, _, color) in enumerate(funnel):
+        pt.cell_color(hd, i + 1, color)
+    pt.border(hh, hd + 1, 0, ncol)
+    pt.chart(
+        title="PMC funnel",
+        chart_type="BAR",
+        domain=(hh, hd + 1, 0),
+        series=[(hh, hd + 1, i + 1) for i in range(len(funnel))],
+        series_colors=[c for _, _, c in funnel],
+        anchor=(1, 6),
+        width=480,
+        height=320,
+    )
 
     # 5. Build the "Completed" tab.
     cp = _Tab()
@@ -561,12 +1028,15 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             span=10,
         )
 
-    # 6. Build the "Timeline" tab (wide format — chart-ready: X=date cols, Y=PMC).
+    # 6. Build the "Timeline" tab: per-PMC milestone dates (rows coloured by
+    #    pipeline state, like the other tabs), then a funnel-over-time block that
+    #    drives a stacked area chart.
     tl = _Tab()
     tl.row([f"Glasswing scan pipeline — Timeline · as of {today}"], header=True)
-    tl.row(["Wide format — scatter chart: X = a date column, Y = PMC, one series per milestone."])
+    tl.row(["Per-PMC milestone dates. Rows coloured by current pipeline state."])
     tl.row(["PMC", "Requested", "Ready", "Submitted", "Received", "Forwarded"], header=True)
     for e in sorted(entries, key=lambda x: x["request_date"]):
+        color = NOMINATED_COLOR if e["model_status"] == "Nominated" else STATE_COLOR[e["state"]]
         tl.row(
             [
                 e["pmc"],
@@ -575,21 +1045,45 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
                 e["submitted_date"] or "",
                 e["received_date"] or "",
                 e["forwarded_date"] or "",
-            ]
+            ],
+            color=color,
+            span=6,
+        )
+
+    tl.row([""])
+    # Funnel over time: PMCs in each pipeline state as of each milestone date.
+    ts_head = tl.row(
+        ["Funnel over time", *PIPELINE_STATES], color=HEADING_FILL, span=6, header=True
+    )
+    for d, counts in timeseries:
+        tl.row([d, *counts])
+    ts_end = len(tl.values)
+    if timeseries:
+        tl.border(ts_head, ts_end, 0, 6)
+        tl.chart(
+            title="PMC funnel over time",
+            chart_type="AREA",
+            stacked=True,
+            domain=(ts_head, ts_end, 0),
+            series=[(ts_head, ts_end, i + 1) for i in range(len(PIPELINE_STATES))],
+            anchor=(1, 8),
+            width=640,
+            height=360,
         )
 
     if args.dry_run:
         print(
-            f"Would write 4 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
+            f"Would write 5 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
             f"{len(in_flight)} in flight), '{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
             f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
-            f"'{TIMELINE_SHEET}' ({len(entries)} events). Model origins: "
+            f"'{TIMELINE_SHEET}' ({len(entries)} events), '{README_SHEET}' (auto overview "
+            f"+ legend). Model origins: "
             + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
             + "."
         )
         return
 
-    # 7. Ensure the four tabs exist (migrating the old single 'Status' tab into
+    # 7. Ensure our tabs exist (migrating the old single 'Status' tab into
     #    'Status in progress'), then write each.
     meta = service.spreadsheets().get(spreadsheetId=args.spreadsheet_id).execute()
     by_title = {
@@ -601,17 +1095,58 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     pt_id = _ensure_sheet(service, args.spreadsheet_id, PROGRAM_TOTALS_SHEET, by_title)
     cp_id = _ensure_sheet(service, args.spreadsheet_id, COMPLETED_SHEET, by_title)
     tl_id = _ensure_sheet(service, args.spreadsheet_id, TIMELINE_SHEET, by_title)
+    rd_id = _ensure_sheet(service, args.spreadsheet_id, README_SHEET, by_title)
 
-    _write_tab(service, args.spreadsheet_id, IN_PROGRESS_SHEET, ip_id, ip, wrap_col=10)
-    _write_tab(service, args.spreadsheet_id, PROGRAM_TOTALS_SHEET, pt_id, pt)
-    _write_tab(service, args.spreadsheet_id, COMPLETED_SHEET, cp_id, cp)
-    _write_tab(service, args.spreadsheet_id, TIMELINE_SHEET, tl_id, tl)
+    # Re-read the (now-complete) tab list, in sheet order, for the README overview,
+    # and capture each sheet's current freeze so we can preserve it.
+    final_meta = service.spreadsheets().get(spreadsheetId=args.spreadsheet_id).execute()
+    tab_titles = [s["properties"]["title"] for s in final_meta.get("sheets", [])]
+    frozen_by_id = {}
+    charts_by_id = {}
+    for s in final_meta.get("sheets", []):
+        gp = s["properties"].get("gridProperties", {})
+        sid = s["properties"]["sheetId"]
+        frozen_by_id[sid] = (gp.get("frozenRowCount", 0), gp.get("frozenColumnCount", 0))
+        charts_by_id[sid] = [c["chartId"] for c in s.get("charts", [])]
+    rd = _build_readme(today, tab_titles)
+
+    def _fz(sid):
+        return frozen_by_id.get(sid, (0, 0))
+
+    def _ch(sid):
+        return charts_by_id.get(sid, [])
+
+    _write_tab(
+        service, args.spreadsheet_id, IN_PROGRESS_SHEET, ip_id, ip, wrap_col=10, frozen=_fz(ip_id)
+    )
+    _write_tab(
+        service,
+        args.spreadsheet_id,
+        PROGRAM_TOTALS_SHEET,
+        pt_id,
+        pt,
+        col_offset=1,
+        frozen=_fz(pt_id),
+        existing_charts=_ch(pt_id),
+    )
+    _write_tab(service, args.spreadsheet_id, COMPLETED_SHEET, cp_id, cp, frozen=_fz(cp_id))
+    _write_tab(
+        service,
+        args.spreadsheet_id,
+        TIMELINE_SHEET,
+        tl_id,
+        tl,
+        frozen=_fz(tl_id),
+        existing_charts=_ch(tl_id),
+    )
+    _write_tab(service, args.spreadsheet_id, README_SHEET, rd_id, rd, frozen=_fz(rd_id))
 
     print(
         f"Refreshed: '{IN_PROGRESS_SHEET}' ({len(in_flight)} in flight), "
         f"'{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
         f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
-        f"'{TIMELINE_SHEET}' ({len(entries)} events). Model origins: "
+        f"'{TIMELINE_SHEET}' ({len(entries)} events), '{README_SHEET}' "
+        f"({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."
     )

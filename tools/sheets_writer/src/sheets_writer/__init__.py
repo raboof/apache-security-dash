@@ -75,6 +75,9 @@ IN_PROGRESS_SHEET = "Status in progress"
 COMPLETED_SHEET = "Completed"
 TIMELINE_SHEET = "Timeline"
 PROGRAM_TOTALS_SHEET = "Program totals"
+# Hand-written overview tab; build-status-tab only appends/refreshes a legend
+# block at the bottom (sentinel-managed), never clearing the rest.
+README_SHEET = "README"
 
 # Pipeline states in progression order. Order matters: the state-detection
 # function picks the latest applicable state, and colors render red->green
