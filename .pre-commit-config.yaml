@@ -15,10 +15,23 @@
 #   - Python lint + format on the repo's one Python file
 #     (ruff against sheets_writer.py)
 
+# Install BOTH a pre-commit and a pre-push git hook on `prek install`, so the
+# hooks run automatically before every push — not only when someone remembers
+# to run `prek run --all-files`. Combined with `default_stages` below (which
+# scopes every hook to the commit *and* push stages), a plain `prek install`
+# is enough to enforce the checks at push time.
+default_install_hook_types: [pre-commit, pre-push]
 default_stages: [commit, push]
 default_language_version:
   python: python3
 minimum_prek_version: '0.3.5'
+
+# `.claude/settings.json` is committed (team-wide Claude Code settings) but is a
+# sandbox-protected path: agentic tooling runs with it denied for read/write, so
+# the file-fixing hooks (end-of-file-fixer, trailing-whitespace, …) error with
+# "Operation not permitted" when `prek run --all-files` reaches it. It's a
+# managed JSON settings file that doesn't need linting — exclude it everywhere.
+exclude: '^\.claude/settings(\.local)?\.json$'
 
 repos:
   - repo: meta
