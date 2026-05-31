@@ -2,11 +2,13 @@ github:
   features:
     issues: true
   # Branch protection for main. `contexts` are the CI status checks that must
-  # pass before a PR can merge. Both always report on every PR:
-  #   - prek     : the prek workflow has no path filter, so it runs on all PRs.
-  #   - tests-ok : the tests workflow's aggregating job runs always (even when
-  #                the Python matrix is skipped on doc-only PRs), so the check
-  #                is always present and never deadlocks a merge.
+  # pass before a PR can merge. All three always report on every PR:
+  #   - prek      : the prek workflow has no path filter, so it runs on all PRs.
+  #   - tests-ok  : the tests workflow's aggregating job runs always (even when
+  #                 the Python matrix is skipped on doc-only PRs), so the check
+  #                 is always present and never deadlocks a merge.
+  #   - allowlist : the approved-actions check; also un-path-filtered so it
+  #                 always reports.
   # Requiring the single `tests-ok` aggregate (rather than each project/python
   # matrix leg) means the matrix can grow without editing this list.
   protected_branches:
@@ -17,3 +19,4 @@ github:
         contexts:
           - prek
           - tests-ok
+          - allowlist

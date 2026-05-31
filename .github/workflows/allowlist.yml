@@ -24,22 +24,21 @@ name: allowlist
 # with 0-second runs and no logs — this check turns that into an
 # actionable PR failure with the offending refs listed.
 
+# Not path-filtered: `allowlist` is a required status check (.asf.yaml), and a
+# required check must always report — a path-filtered workflow never runs on
+# PRs that don't touch `.github/**`, leaving the required check pending forever.
+# The job is a single cheap scan, so it just runs on every PR rather than
+# needing a changes-gate. The job name is left to default to `allowlist` so the
+# required-checks context matches `prek` / `tests-ok`.
 on:  # yamllint disable-line rule:truthy
   pull_request:
-    paths:
-      - ".github/workflows/**"
-      - ".github/actions/**"
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/**"
-      - ".github/actions/**"
 
 permissions: {}
 
 jobs:
   allowlist:
-    name: ASF approved-actions allowlist
     runs-on: ubuntu-latest
     permissions:
       contents: read
