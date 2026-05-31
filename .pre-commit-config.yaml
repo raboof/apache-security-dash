@@ -96,11 +96,12 @@ repos:
         entry: uvx ruff format --check
         files: ^(\.github/(skills|scripts)|tools)/.*\.py$
         pass_filenames: true
-      # Catch the Mermaid syntax that GitHub's renderer rejects — chiefly a
-      # `;` inside a ```mermaid block, which has broken README diagrams twice.
-      # A lightweight guard, not a full Mermaid parser; see the script header.
+      # Catch the Mermaid syntax that GitHub's renderer rejects — a `;` anywhere
+      # in a ```mermaid block, or an `@` inside an edge label. Both have broken
+      # README diagrams here. A lightweight guard, not a full Mermaid parser;
+      # see the script header for the rules and how to add one.
       - id: check-mermaid
-        name: mermaid diagrams (no `;` — breaks GitHub render)
+        name: mermaid render guard (no `;`, no `@` in edge labels)
         # The script's `uv run --script` shebang + PEP 723 metadata makes it
         # self-contained; prek just executes it (no `uv run` wrapper needed).
         language: script

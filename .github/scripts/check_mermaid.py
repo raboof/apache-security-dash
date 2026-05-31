@@ -19,20 +19,25 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Guard against the Mermaid syntax that GitHub's renderer rejects.
+"""Guard against Mermaid syntax that GitHub's renderer rejects.
 
-This is NOT a full Mermaid parser. It catches the one failure class that has
-broken README diagrams twice (see the git history: a "fix mermaid semicolon
-parse error" commit, then a second regression): a raw semicolon inside a
-```mermaid block. Mermaid treats ``;`` as a statement separator, so a ``;``
-that ends up inside node, edge, or message text makes GitHub fail to render
-with ``Unable to render rich display ... got 'INVALID'`` and show a parse
-error instead of the diagram. Every diagram in this repo separates statements
-with newlines, never ``;``, so any semicolon inside a mermaid block is a bug.
+This is NOT a full Mermaid parser. It catches specific failure classes that
+have broken README diagrams in this repo — each slipped through review and only
+surfaced as "Unable to render rich display ... got '...'" on github.com:
+
+1. A raw ``;`` anywhere inside a ```mermaid block. Mermaid treats ``;`` as a
+   statement separator, so a ``;`` inside node / edge / message text aborts the
+   parse. The repo's diagrams separate statements with newlines, never ``;``.
+2. An ``@`` inside an edge label (``-->|... @ ...|``). Newer Mermaid uses ``@``
+   for edge ids and node-shape metadata, so an ``@`` inside a pipe-delimited
+   edge label is lexed as a link-id token and the parse fails. (``@`` inside
+   *node* text — e.g. an email address — is fine and is left alone.)
+
+Each rule is a deliberately narrow, low-false-positive pattern, not a grammar;
+a genuinely new render failure may need a new rule added here.
 
 Usage: ``check_mermaid.py FILE [FILE ...]`` (prek passes the changed ``*.md``
-files). Exits non-zero, listing ``path:line``, if any mermaid block contains a
-semicolon; exits 0 otherwise.
+files). Exits non-zero, listing ``path:line: reason`` for every hit; 0 if clean.
 """
 
 from __future__ import annotations
@@ -42,6 +47,8 @@ import sys
 
 OPEN_FENCE = re.compile(r"^ *(`{3,}|~{3,})\s*mermaid\s*$", re.IGNORECASE)
 CLOSE_FENCE = re.compile(r"^ *(`{3,}|~{3,})\s*$")
+# Pipe-delimited edge labels, e.g. the `...` in `A -->|...| B`.
+EDGE_LABEL = re.compile(r"\|([^|\n]*)\|")
 
 
 def check_file(path: str) -> list[str]:
@@ -68,6 +75,11 @@ def check_file(path: str) -> list[str]:
                 f"{path}:{num}: ';' inside a mermaid block breaks GitHub rendering"
                 f" -> {line.strip()}"
             )
+        if any("@" in label for label in EDGE_LABEL.findall(line)):
+            problems.append(
+                f"{path}:{num}: '@' inside a mermaid edge label (|...|) breaks GitHub"
+                f" rendering -> {line.strip()}"
+            )
     return problems
 
 
@@ -78,11 +90,14 @@ def main(argv: list[str]) -> int:
             problems.extend(check_file(path))
     if problems:
         sys.stderr.write(
-            "Mermaid lint failed. Remove ';' from diagram text — separate Mermaid "
-            "statements with newlines, not semicolons:\n"
+            "Mermaid lint failed — GitHub would refuse to render these diagrams:\n"
         )
         for problem in problems:
             sys.stderr.write(f"  {problem}\n")
+        sys.stderr.write(
+            "Fixes: separate statements with newlines (not ';'); keep '@' out of edge "
+            "labels (it's fine inside node text).\n"
+        )
         return 1
     return 0
 
