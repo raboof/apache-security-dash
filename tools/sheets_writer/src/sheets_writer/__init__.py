@@ -35,9 +35,10 @@ CLI subcommands:
   append-pmc --spreadsheet-id ID --entries PATH [--dry-run]
       Append new PMC rows; aborts on duplicate slug.
   build-status-tab --spreadsheet-id ID [--dry-run]
-      Refresh three tabs from the PMCs sheet: 'Status in progress'
-      (colour legend + grouped program totals + in-flight table),
-      'Completed', and 'Timeline' — colour-coded by pipeline state.
+      Refresh four tabs from the PMCs sheet: 'Status in progress'
+      (colour legend + in-flight table), 'Program totals' (grouped
+      rollup), 'Completed', and 'Timeline' — colour-coded by pipeline
+      state.
   rename-column --spreadsheet-id ID --sheet S --old H --new NEW [--dry-run]
   insert-column --spreadsheet-id ID --sheet S --after H --header NEW [--dry-run]
   add-columns --spreadsheet-id ID --sheet S --headers H... [--dry-run]
@@ -66,12 +67,14 @@ PMCS_SHEET = "PMCs"
 PMCS_REQUIRED_FIELDS = ("PMC Name", "PMC Slug")
 
 STATUS_SHEET = "Status"
-# build-status-tab now writes three tabs: the in-flight view, the completed
-# view, and the date-milestone timeline (each was a block in the old single
-# "Status" tab). The in-flight tab is the renamed successor of "Status".
+# build-status-tab now writes four tabs: the in-flight view, the completed
+# view, the date-milestone timeline, and the program-totals rollup (each was a
+# block in the old single "Status" tab). The in-flight tab is the renamed
+# successor of "Status".
 IN_PROGRESS_SHEET = "Status in progress"
 COMPLETED_SHEET = "Completed"
 TIMELINE_SHEET = "Timeline"
+PROGRAM_TOTALS_SHEET = "Program totals"
 
 # Pipeline states in progression order. Order matters: the state-detection
 # function picks the latest applicable state, and colors render red->green
