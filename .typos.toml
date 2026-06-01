@@ -46,4 +46,11 @@ extend-exclude = [
   # Generated thread permalinks in the spreadsheet snapshots (if any
   # land here later).
   "*.tracker.txt",
+  # Vendored apache-steward framework content — the gitignored snapshot
+  # and the one committed framework skill (`setup-steward`). Upstream
+  # prose is spell-checked in apache/airflow-steward and reconciled here
+  # by `/setup-steward upgrade`, so we don't hand-edit it to satisfy our
+  # local typos config (e.g. legitimate hyphenated "mis-apply").
+  ".apache-steward/**",
+  ".github/skills/setup-steward/**",
 ]

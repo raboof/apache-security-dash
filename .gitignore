@@ -5,3 +5,33 @@
 /report-cache/
 /email-classification/
 __pycache__/
+
+# apache-steward — gitignored snapshot of the framework, refreshed
+# by /setup-steward upgrade. Build artefact, not source.
+/.apache-steward/
+
+# Per-machine local-pin file. Records what THIS machine fetched and
+# when. Compared against the committed .apache-steward.lock to
+# detect drift.
+/.apache-steward.local.lock
+
+# Project-local per-machine settings (sandbox allowlist etc.).
+/.claude/settings.local.json
+
+# Symlinks created by /setup-steward into the gitignored snapshot.
+# Layout B (per-skill double-symlinked) → keep BOTH blocks (one
+# physical symlink per layer needs its own ignore line).
+/.claude/skills/security-*
+/.claude/skills/pr-management-*
+/.claude/skills/issue-*
+/.claude/skills/setup-isolated-setup-*
+/.claude/skills/setup-override-upstream
+/.claude/skills/setup-shared-config-sync
+/.claude/skills/list-steward-*
+/.github/skills/security-*
+/.github/skills/pr-management-*
+/.github/skills/issue-*
+/.github/skills/setup-isolated-setup-*
+/.github/skills/setup-override-upstream
+/.github/skills/setup-shared-config-sync
+/.github/skills/list-steward-*

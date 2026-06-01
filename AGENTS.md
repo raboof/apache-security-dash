@@ -6,6 +6,29 @@ Conventions for agentic tooling (Claude Code, Codex, similar) working in this re
 
 apache/security is the ASF Security team's private skill set + tooling for managing the Glasswing scan-outreach program. SKILLs live under `.github/skills/` and are symlinked from `.claude/skills/` so Claude Code can find them. Helper tools that have outgrown the single-file-inside-a-SKILL pattern live under `tools/` as proper Python projects (`pyproject.toml` + tests + CI); see the [README's "Two helper tiers" section](README.md#two-helper-tiers--inline-scripts-vs-tools-projects). The [README](README.md) at the repo root is the entry point and the canonical workflow reference (diagrams, per-PMC state machine, sequence diagram).
 
+## apache-steward framework
+
+This repo adopts the
+[`apache/airflow-steward`](https://github.com/apache/airflow-steward)
+framework via the snapshot mechanism. The framework's skills are
+gitignored symlinks into the `.apache-steward/` snapshot; only the
+always-on `setup-*` / `list-steward-*` maintenance skills are
+wired in this adopter (no opt-in `security-*` / `pr-management-*`
+/ `issue-*` families).
+
+A fresh clone needs the snapshot populated before any framework
+skill is invocable. Run `/setup-steward` (or follow
+[`.claude/skills/setup-steward/`](.claude/skills/setup-steward/))
+to fetch it per the committed
+[`.apache-steward.lock`](.apache-steward.lock). The
+contributor-facing summary lives in the
+[Agent-assisted contribution section of `README.md`](README.md#agent-assisted-contribution-apache-steward).
+
+Adopter-specific modifications to framework-skill workflows live
+in [`.apache-steward-overrides/`](.apache-steward-overrides/) —
+never edit the snapshot directly. Framework changes go via PR to
+[`apache/airflow-steward`](https://github.com/apache/airflow-steward).
+
 ## Pre-commit hooks
 
 **Required before any PR.** The repo uses [`prek`](https://github.com/j178/prek) (a faster Rust-based drop-in replacement for `pre-commit`) for static checks. Every push to a branch that will become a PR must first pass `prek run --all-files` locally — agents and humans both. The hooks catch the easy mistakes before a maintainer's review cycle is spent on them.
