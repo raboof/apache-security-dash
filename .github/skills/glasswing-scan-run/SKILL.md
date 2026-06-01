@@ -177,9 +177,30 @@ straight to `glasswing-scan-response`).
 
 ### Step 1 — Email sweep
 
-Search Gmail for `subject:GLASSWING OR subject:Glasswing`,
-limit 50 most recent threads. For each thread, classify into
-one of these buckets:
+Search Gmail for `subject:GLASSWING OR subject:Glasswing`.
+
+**Paginate to exhaustion — never stop at the first page.**
+`mcp__claude_ai_Gmail__search_threads` caps each page at
+`pageSize=50` and returns a `nextPageToken` whenever more
+threads exist. Loop: issue the search, accumulate the returned
+thread IDs, and if the response carries a `nextPageToken`,
+re-issue with that token — repeat until the token is empty.
+After any page returns 50 results, **assume there is a next
+page until the empty-token response proves otherwise**. The
+program already exceeds 100 GLASSWING threads (≈106 across 3
+pages as of 2026-06-01), so a single 50-thread page is a
+fraction of the set. A sweep that classifies only the first
+page produces *complete spreadsheet-derived state but
+incomplete email-direction state* — PMCs whose thread sorts
+onto page 2+ look quiet when they may in fact be awaiting our
+reply (the 2026-06-01 sweep missed APISIX, Thrift, Hop,
+Directory, and Grails this way). Cross-check the full
+accumulated thread set against every `Scan Requested = Yes`
+row in the spreadsheet so no in-flight PMC is left
+only-sheet-classified.
+
+For each thread (across all pages), classify into one of these
+buckets:
 
 | Bucket | Signal |
 | --- | --- |
@@ -228,12 +249,15 @@ there is nothing new to read. Exploit that:
    (sandbox-writable; create the dir if missing). Shape:
    `{ "last_sweep": "<ISO8601>", "threads": { "<tid>": <record above> } }`.
 2. **Load** the cache at sweep start (empty `{}` on first run).
-3. **Find the changed set** with one bounded search:
+3. **Find the changed set** with a search:
    `mcp__claude_ai_Gmail__search_threads` with
    `query="subject:GLASSWING after:YYYY/MM/DD"`, where the
    date is `last_sweep` minus a 1-day safety buffer. Every
    `thread_id` it returns is a thread that gained ≥1 message
    since the last sweep (new PMC requests show up here too).
+   **This search paginates too** — if the response carries a
+   `nextPageToken`, loop on it until empty (a busy week can
+   exceed 50 changed threads). Do not stop at the first page.
 4. **Refresh only the changed set + any thread absent from
    the cache:** call `get_thread` (MINIMAL) on each, rebuild
    its record, and overwrite the cache entry. Threads in the
@@ -260,7 +284,9 @@ After the thread sweep, call
 `mcp__claude_ai_Gmail__list_drafts` with
 `query="subject:GLASSWING"` and `pageSize=50` and capture
 the result as `{thread_id, draft_id, draft_subject}` for
-each returned row. This is the *only* trustworthy signal
+each returned row — **paginating on `nextPageToken` until
+empty**, same as the thread search (a backlog of unsent
+drafts can exceed one page). This is the *only* trustworthy signal
 that a draft is still pending in Drafts vs. already sent —
 session memory of "I created draft X earlier in this
 session" is not evidence (the operator may have manually
