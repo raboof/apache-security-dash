@@ -1,6 +1,9 @@
 {
   "permissions": {
     "allow": [
+      "mcp__apache-projects__get_committee",
+      "mcp__apache-projects__get_person",
+      "mcp__apache-projects__search_people",
       "mcp__claude_ai_Gmail__get_thread",
       "mcp__claude_ai_Gmail__list_drafts",
       "mcp__claude_ai_Gmail__search_threads",
