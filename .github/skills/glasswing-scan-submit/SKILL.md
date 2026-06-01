@@ -361,8 +361,9 @@ operator decides to actually queue the scan.
 
    These are the people who need to know the scan has been
    queued and who will receive the eventual forwarded
-   results. The PMC notification email is the PMC's
-   official notification thread of record.
+   results. The notification is sent as a reply on the PMC's
+   original `[GLASSWING]` request thread (step 12), so the
+   whole engagement stays on one thread of record.
 
 10. **After form submissions are confirmed AND the user
     sends the PMC notification email, hand off to
@@ -441,12 +442,15 @@ the body; vendor identity is what's redacted.
 every `@apache.org` address from the original `[GLASSWING]`
 request's "send results to" list.
 
-**Subject**: `[GLASSWING] Apache <PMC name> — scan request submitted`
-
-(Distinct subject from the original `[GLASSWING]` request
-thread; this is the PMC's notification thread, not a
-reply to scoping discussion. Note: no "to vendor" in the
-subject — vendor opacity applies to subject lines too.)
+**Subject**: reply on the PMC's original `[GLASSWING]` request
+thread — reuse that thread's subject with a `Re:` prefix (e.g.
+`Re: [GLASSWING] <PMC name>: request to scan repositories`). Do
+**not** invent a new subject: a distinct subject is what used to
+split the notification off into its own Gmail thread. Keeping the
+original subject (and replying in-thread per step 12) keeps the
+whole engagement — scoping → submission → eventual forward — on a
+single thread. (Vendor opacity still applies to the subject:
+never name the vendor in it.)
 
 **Body**:
 
@@ -648,11 +652,18 @@ Best,
     `mcp__claude_ai_Gmail__create_draft`. Pass:
     - `to`: the primary contact's `@apache.org` address
     - `cc`: the full CC list from step 5
-    - `subject`: the rendered subject
+    - `subject`: `Re: ` + the PMC's original `[GLASSWING]`
+      request thread subject (so Gmail keeps it on that thread)
     - `body`: the rendered body
-    - `replyToMessageId`: **omit** — this is a fresh
-      thread distinct from the original `[GLASSWING]`
-      request thread.
+    - `replyToMessageId`: **the latest message id in the PMC's
+      original `[GLASSWING]` request thread.** Resolve it with
+      `mcp__claude_ai_Gmail__get_thread` on that thread and take
+      the newest message's id. This threads the notification
+      onto the existing request thread instead of opening a new
+      one, so the whole engagement stays in a single thread.
+      Note: when `replyToMessageId` is set, `create_draft`
+      appends the rendered body below the quoted original — that
+      is the intended reply shape.
 
 13. **Hand off to `glasswing-scan-update`.** Surface the
     line:
