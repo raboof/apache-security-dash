@@ -173,6 +173,37 @@ straight to `glasswing-scan-response`).
    awaiting-state, the verdict must come from `get_thread`,
    never from the search snippet.
 
+   **Corollary — `is:unread` is NOT a safe proxy for
+   "awaiting us".** It is tempting to shortcut the per-thread
+   resolution with `subject:GLASSWING is:unread`, on the theory
+   that an unprocessed PMC reply is unread. It is not reliable:
+   the operator reads mail in the Gmail UI, which clears the
+   unread flag *without* the thread being actioned — so a
+   read-but-unanswered PMC reply is invisible to `is:unread`.
+   The 2026-06-01 verification sweep proved this: an `is:unread`
+   pass surfaced 5 awaiting-us threads but **missed OpenDAL and
+   bRPC**, both of which had PMC replies (scope confirmation;
+   a revised threat-model) that had been read but never
+   answered. `is:unread` may be used as a *hint* to prioritise,
+   never as the awaiting-state verdict — that always comes from
+   the per-thread true-last-message resolution below.
+
+   **Why the snippet is stale even after full pagination.**
+   `search_threads` orders threads by **creation date** (the
+   thread's first message) and the `messages` array it returns
+   is the **first** messages, not the newest. So a thread
+   created early (e.g. 05-13) with a fresh reply today sorts
+   onto a *late* page AND shows a stale "last message" in its
+   snippet — the cap and the ordering compound. Paginating to
+   exhaustion (Step 1) is necessary but **not** sufficient: it
+   guarantees you *see* every thread, not that you know its
+   true latest message. Only a per-thread `get_thread` on every
+   thread with ≥5 messages (where the snippet is, by definition,
+   possibly truncated) closes the gap. The 2026-06-01 sweep,
+   run after the pagination fix had already landed, still found
+   three awaiting-us threads hidden this way (OpenDAL, bRPC,
+   Superset) — pagination alone would not have caught them.
+
 ## Procedure
 
 ### Step 1 — Email sweep
