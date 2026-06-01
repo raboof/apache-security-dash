@@ -268,55 +268,66 @@ most cases we can do the lookup work ourselves rather than
 pushing it onto the maintainer.
 
 **Resolution procedure** — start with the canonical source. The
-public LDAP JSON dump is the only source that always gives the
-correct ID; everything else is a hint.
+ASF roster is the only source that always gives the correct ID;
+everything else is a hint.
 
-1. **Whimsy public LDAP JSON (canonical, no auth required)** —
-   query <https://whimsy.apache.org/public/public_ldap_people.json>
-   via the `whimsy-lookup` CLI in [`tools/whimsy_lookup/`](../../../tools/whimsy_lookup/) — `resolve-id`:
+1. **Apache Projects MCP — `search_people` (canonical, no auth,
+   structured).** Resolve the name via the
+   `mcp__apache-projects__search_people` tool:
+
+       search_people(query="<full name from From: or signature line>")
+
+   It returns structured records (`id`, `name`, `member`,
+   `groups`) for every committer whose ID or name matches — no
+   multi-MB JSON enters context and there is no summarizing layer
+   to hallucinate. Typically one hit. Bonus: the `groups` array
+   already lists the person's PMC groups (e.g. `camel-pmc`), so a
+   single call often answers Gate 3 as well. Use this first.
+
+   Example. Sender wrote from `ancosen@gmail.com`. The local-part
+   heuristic (step 3) would propose `ancosen@apache.org`, but
+   `search_people(query="Andrea Cosentino")` returns id
+   `acosentino` (groups include `camel-pmc`, `servicemix-pmc`).
+   Trust the roster, not the heuristic.
+
+2. **`whimsy-lookup resolve-id` (deterministic fallback when the
+   MCP isn't registered).** Same authoritative data via the CLI
+   in [`tools/whimsy_lookup/`](../../../tools/whimsy_lookup/),
+   fetching <https://whimsy.apache.org/public/public_ldap_people.json>
+   with stdlib urllib + json (no summarizing layer):
 
        uv run --project tools/whimsy_lookup whimsy-lookup \
          resolve-id "<full name from From: or signature line>"
-
-   This fetches the LDAP JSON via stdlib urllib + json (no
-   summarizing layer) and returns every Apache ID whose `name`
-   field matches the search string. Typically one hit. Use this
-   first; the endpoint is open and authoritative.
 
    **Do NOT use WebFetch on this URL.** The LDAP people JSON is
    several MB; WebFetch summarises it and has been observed to
    return hallucinated keys, truncated rosters, or fabricated
    entries. The 2026-05-21 Doris incident (Calvin Kirs) traces
    back to a WebFetch summary that drove an unnecessary gate-3
-   challenge in a PMC-facing email; the deterministic helper
-   would have returned the correct answer. Treat WebFetch on
-   `*.json` Whimsy endpoints as a bug.
+   challenge in a PMC-facing email; both the MCP (step 1) and
+   this deterministic helper would have returned the correct
+   answer. Treat WebFetch on `*.json` Whimsy endpoints as a bug.
 
-   Example. Sender wrote from `ancosen@gmail.com`. The local-part
-   heuristic (next step) would propose `ancosen@apache.org`, but
-   `whimsy-lookup resolve-id "Andrea Cosentino"` returns
-   `acosentino`. Trust the helper, not the heuristic.
+3. **Local-part heuristic (hint only — confirm against the
+   roster)** — `<local-part-of-sender>@apache.org`. Often right,
+   sometimes wrong (Andrea Cosentino's gmail local-part is
+   `ancosen` but his Apache ID is `acosentino`). Never propose
+   this as a candidate without confirming against step 1 or 2.
 
-2. **Local-part heuristic (hint only — confirm against LDAP)** —
-   `<local-part-of-sender>@apache.org`. Often right, sometimes
-   wrong (Andrea Cosentino's gmail local-part is `ancosen` but
-   his Apache ID is `acosentino`). Never propose this as a
-   candidate without confirming against step 1.
-
-3. **Project committers / team page** — fetch
+4. **Project committers / team page** — fetch
    `https://<pmc>.apache.org/team.html` (or `/committers.html` /
-   `/community/team-list.html`, naming varies). Useful when LDAP
-   has an ambiguous-name case (two people with similar names),
-   since the team page lists *which PMC* each member is on.
+   `/community/team-list.html`, naming varies). Useful when the
+   roster has an ambiguous-name case (two people with similar
+   names), since the team page lists *which PMC* each member is on.
 
-4. **Git history on the project's primary repo** —
+5. **Git history on the project's primary repo** —
    `gh api search/commits?q=author-name:<First>+<Last>+repo:apache/<repo>`
    (use the GitHub `search/commits` endpoint, not the
    per-repo `commits?author=` endpoint, which only accepts
    GitHub-login authors). Commit emails are sometimes `@apache.org`
    (definitive) but more often a personal address (a hint at best).
 
-5. **Whimsy interactive roster** —
+6. **Whimsy interactive roster** —
    `https://whimsy.apache.org/roster/committee/<pmc>` and
    `https://whimsy.apache.org/roster/people/<id>`. Requires
    Apache ID auth; use it for the user-side confirmation step,
@@ -370,25 +381,43 @@ Reply fragment — block (only when no candidate can be inferred):
 
 Cross-check the sender's `@apache.org` address (From: header
 or body-stated, whichever gate 2 resolved to) against the PMC
-roster via the `whimsy-lookup` CLI's `check-pmc-member`:
+roster. Two structured, deterministic ways, in order:
 
-    uv run --project tools/whimsy_lookup whimsy-lookup \
-      check-pmc-member <pmc-slug> <apache-id> [<apache-id> ...]
+1. **Apache Projects MCP (primary).** If Gate 2 used
+   `search_people`, the returned `groups` array already settles
+   this — membership of `<slug>-pmc` (e.g. `camel-pmc`) means the
+   sender is on the PMC. Otherwise confirm directly:
 
-The helper queries
-<https://whimsy.apache.org/public/committee-info.json> via
-stdlib urllib + json (no summarizing layer), looks up the PMC
-under `committees.<slug>`, and reports YES/NO per Apache ID
-with the member's name + joining date for context. Exit code
-1 if any queried ID is not on the roster; 0 if all are.
+   - `mcp__apache-projects__get_person(id="<apache-id>")` —
+     returns the person's PMC groups; check for `<slug>-pmc`.
+   - `mcp__apache-projects__get_committee(id="<slug>")` —
+     returns the full roster (`id`, `name`, `joined`) plus the
+     `chair`; check the sender's ID is present. Use this when
+     drafting the reply or verifying the chair.
 
-For the full roster (useful when drafting the reply or
-verifying the chair), use `whimsy-lookup pmc-info <slug>`.
+   Structured output — no multi-MB JSON in context, no
+   summarizing layer to hallucinate.
+
+2. **`whimsy-lookup` CLI (deterministic fallback when the MCP
+   isn't registered).** `check-pmc-member` for a yes/no per ID,
+   or `pmc-info` for the full roster:
+
+       uv run --project tools/whimsy_lookup whimsy-lookup \
+         check-pmc-member <pmc-slug> <apache-id> [<apache-id> ...]
+
+   The helper queries
+   <https://whimsy.apache.org/public/committee-info.json> via
+   stdlib urllib + json (no summarizing layer), looks up the PMC
+   under `committees.<slug>`, and reports YES/NO per Apache ID
+   with the member's name + joining date for context. Exit code
+   1 if any queried ID is not on the roster; 0 if all are. For
+   the full roster (useful when drafting the reply or verifying
+   the chair), use `whimsy-lookup pmc-info <slug>`.
 
 **Do NOT use WebFetch on `committee-info.json`.** Same caveat
-as Gate 2: WebFetch summarises this multi-MB file and has
-been observed to return hallucinated roster entries. The
-helper above is the only way to get a deterministic answer.
+as Gate 2: WebFetch summarises this multi-MB file and has been
+observed to return hallucinated roster entries. The MCP (1) and
+the CLI (2) are the only ways to get a deterministic answer.
 
 The interactive roster page
 `https://whimsy.apache.org/roster/committee/<pmc>` requires
