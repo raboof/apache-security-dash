@@ -100,6 +100,67 @@ def test_argparse_routing_insert_column() -> None:
     assert args.after == "Notes" and args.header == "NewCol"
 
 
+def test_argparse_routing_insert_column_before() -> None:
+    args = build_parser().parse_args(
+        [
+            "insert-column",
+            "--spreadsheet-id",
+            "X",
+            "--sheet",
+            "PMCs",
+            "--before",
+            "PMC Slug",
+            "--header",
+            "NewCol",
+        ]
+    )
+    assert args.before == "PMC Slug" and args.after is None and args.at_start is False
+
+
+def test_argparse_routing_insert_column_at_start_with_fill() -> None:
+    args = build_parser().parse_args(
+        [
+            "insert-column",
+            "--spreadsheet-id",
+            "X",
+            "--sheet",
+            "PMCs",
+            "--at-start",
+            "--header",
+            "Name",
+            "--fill",
+            "/tmp/x.json",
+        ]
+    )
+    assert args.at_start is True and str(args.fill) == "/tmp/x.json"
+
+
+def test_argparse_insert_column_requires_a_position() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["insert-column", "--spreadsheet-id", "X", "--sheet", "PMCs", "--header", "N"]
+        )
+
+
+def test_argparse_insert_column_position_is_mutually_exclusive() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            [
+                "insert-column",
+                "--spreadsheet-id",
+                "X",
+                "--sheet",
+                "PMCs",
+                "--after",
+                "A",
+                "--before",
+                "B",
+                "--header",
+                "N",
+            ]
+        )
+
+
 def test_argparse_routing_add_columns() -> None:
     args = build_parser().parse_args(
         [

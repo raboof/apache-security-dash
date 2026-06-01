@@ -232,3 +232,16 @@ def pmcs_grid() -> list[list[str]]:
 def fake_service(pmcs_grid: list[list[str]]) -> FakeSheetsService:
     """A `FakeSheetsService` pre-loaded with the PMCs sample grid."""
     return FakeSheetsService(grids={"PMCs": pmcs_grid})
+
+
+@pytest.fixture
+def make_service():
+    """Factory returning a `FakeSheetsService` for an arbitrary grid + sheet meta."""
+
+    def _make(sheet: str, grid: list[list[str]], sheet_id: int = 1) -> FakeSheetsService:
+        return FakeSheetsService(
+            grids={sheet: [list(r) for r in grid]},
+            sheet_meta=[{"properties": {"title": sheet, "sheetId": sheet_id}}],
+        )
+
+    return _make

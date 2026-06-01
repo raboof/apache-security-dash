@@ -132,12 +132,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inscol_p.add_argument("--spreadsheet-id", required=True)
     inscol_p.add_argument("--sheet", required=True, help="Sheet name (e.g. 'PMCs').")
-    inscol_p.add_argument(
+    pos = inscol_p.add_mutually_exclusive_group(required=True)
+    pos.add_argument(
         "--after",
-        required=True,
         help="Header of the column the new one should be inserted directly after.",
     )
+    pos.add_argument(
+        "--before",
+        help="Header of the column the new one should be inserted directly before.",
+    )
+    pos.add_argument(
+        "--at-start",
+        action="store_true",
+        help="Insert the new column as the first column of the sheet.",
+    )
     inscol_p.add_argument("--header", required=True, help="Header for the new column.")
+    inscol_p.add_argument(
+        "--fill",
+        type=Path,
+        help=(
+            "Optional JSON file to fill the new column's data rows. Either a list "
+            'of cell values in row order, or an object {"key": <existing header>, '
+            '"map": {key-cell: value}} to look each row up by another column.'
+        ),
+    )
     inscol_p.add_argument("--dry-run", action="store_true")
 
     addcol_p = sub.add_parser(
