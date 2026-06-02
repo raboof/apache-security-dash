@@ -80,16 +80,27 @@ Google Sheets API v4 directly.
   **The `OSS Subscriptions` tab** is the human-facing,
   per-person view of all this: a persistent registry with
   columns `Name · Email · PMC · Date · Submitted manually`, also rebuilt by
-  `build-status-tab` on every refresh. It is **append-only** —
-  `Name` and `Submitted manually` are maintained **by hand** (resolve the
-  person's name; record when/how the subscription was actually
-  submitted or granted) and are **preserved** across refreshes;
-  the tool only ever *appends* a new person (with **both `Name`
-  and `Submitted manually` blank**, to fill in) when a submitted PMC gains a
-  new expedite address.
-  So edit `Name` / `Submitted manually` directly on that tab; never clear it
-  expecting the tool to rebuild names (it won't — it preserves
-  what's there and only adds missing people).
+  `build-status-tab` on every refresh. It is **append-only** — the
+  tool only ever *appends* a new person (never removes) when a
+  submitted PMC gains a new expedite address.
+  - **`Name` is auto-resolved.** On every refresh the tool resolves the
+    person's full name from the Apache committer directory (Whimsy
+    `public_ldap_people.json`, keyed by the `@apache.org` local-part =
+    the Apache id) for any row whose `Name` is blank — both newly
+    appended people **and** historical blank-name rows are backfilled.
+    A **hand-entered `Name` is always preserved** (manual edits win); the
+    resolver only fills blanks. Resolution is best-effort and network-bound
+    — if Whimsy is unreachable the refresh still succeeds and the name just
+    stays blank until the next run. (A non-`@apache.org` address, or an id
+    not in the directory, also stays blank.) The refresh prints
+    `N name(s) resolved`.
+  - **`Submitted manually` is maintained by hand** — record when/how the
+    subscription was actually submitted or granted; it is **preserved**
+    across refreshes (the tool appends a new person with it blank).
+  So edit `Submitted manually` directly on that tab; correct a wrong
+  auto-resolved `Name` by typing the right one (it will be preserved). Never
+  expect the tool to *remove* people — it preserves what's there and only
+  adds missing ones + fills blank names.
 
 Skip this skill when the user is only asking for the *current*
 state — that's `glasswing-scan-status`. Skip it when the user is
@@ -340,7 +351,7 @@ Subcommands:
 | `insert-column --spreadsheet-id ID --sheet S --after H --header NEW [--dry-run]` | Insert a new column at a specific position in a sheet (right after the column with header `H`). Idempotent. |
 | `add-columns --spreadsheet-id ID --sheet S --headers H1 H2 ... [--dry-run]` | Append new column headers to the end of a sheet. Idempotent per header. |
 | `rename-column --spreadsheet-id ID --sheet S --old H --new NEW [--dry-run]` | Rename the header text at row 1 of a sheet's column. |
-| `build-status-tab --spreadsheet-id ID [--dry-run]` | Rebuild the derived-view tabs from the PMCs sheet — `Status in progress` (in-flight table), `Program totals` (grouped rollup + PMC-funnel bar chart), `Completed`, `Timeline` (milestone dates + funnel-over-time stacked chart), and `README` (auto tab-overview + colour legend) — then overwrite the private dashboard gist with a markdown rendering of the program totals (see the [`glasswing-dashboard`](../glasswing-dashboard/SKILL.md) SKILL). Colour-coded by pipeline state; idempotent; overwrites the existing tab contents and chart(s). Also **syncs the OSS subscriptions**: appends each submitted PMC's `Expedite Claude OSS Requests` addresses into the `Claude OSS Subscriptions Submitted` column (append-only) **and** into the per-person `OSS Subscriptions` tab (`Name · Email · PMC · Date · Submitted manually`; append-only, `Name`/`Status` hand-maintained + preserved). `--dry-run` prints the dashboard preview and pushes nothing (and skips the column sync). |
+| `build-status-tab --spreadsheet-id ID [--dry-run]` | Rebuild the derived-view tabs from the PMCs sheet — `Status in progress` (in-flight table), `Program totals` (grouped rollup + PMC-funnel bar chart), `Completed`, `Timeline` (milestone dates + funnel-over-time stacked chart), and `README` (auto tab-overview + colour legend) — then overwrite the private dashboard gist with a markdown rendering of the program totals (see the [`glasswing-dashboard`](../glasswing-dashboard/SKILL.md) SKILL). Colour-coded by pipeline state; idempotent; overwrites the existing tab contents and chart(s). Also **syncs the OSS subscriptions**: appends each submitted PMC's `Expedite Claude OSS Requests` addresses into the `Claude OSS Subscriptions Submitted` column (append-only) **and** into the per-person `OSS Subscriptions` tab (`Name · Email · PMC · Date · Submitted manually`; append-only; `Name` auto-resolved from the Apache committer directory with hand edits preserved, `Submitted manually` hand-maintained + preserved). `--dry-run` prints the dashboard preview and pushes nothing (and skips the column sync). |
 
 Safety properties baked into the helper:
 

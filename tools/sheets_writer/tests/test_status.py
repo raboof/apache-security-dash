@@ -22,6 +22,7 @@ from sheets_writer.status import (
     classify_model_origin,
     compute_pmc_status,
     compute_subscription_syncs,
+    fill_registry_names,
     parse_subscription_registry,
     subscription_email_rows,
 )
@@ -344,3 +345,39 @@ def test_parse_registry_unknown_layout_is_empty() -> None:
     # No matching header (e.g. an older tab layout) -> re-seed from scratch.
     assert parse_subscription_registry([["PMC", "Slug", "addrs"], ["x", "y", "z"]]) == ([], set())
     assert parse_subscription_registry([]) == ([], set())
+
+
+# --- registry Name resolution (auto-fill from the committer directory) ---
+
+
+def _stub_resolver(emails):
+    table = {
+        "jamesfredley@apache.org": "James Fredley",
+        "matrei@apache.org": "Mattias Reichel",
+        "new@apache.org": "New Person",
+    }
+    return {e: table[e] for e in emails if e in table}
+
+
+def test_fill_registry_names_fills_blanks_and_preserves_manual() -> None:
+    rows = [
+        ["Andrea Cosentino", "acosentino@apache.org", "camel", "2026-05-13", "Expedite requested"],
+        ["", "jamesfredley@apache.org", "grails", "2026-05-13", ""],  # blank -> fill
+        ["", "matrei@apache.org", "grails", "2026-05-13", ""],  # blank -> fill
+        ["", "unknown@apache.org", "x", "2026-05-13", ""],  # unresolved -> stays blank
+    ]
+    filled = fill_registry_names(rows, resolver=_stub_resolver)
+    assert filled == 2
+    assert rows[0][0] == "Andrea Cosentino"  # manual name preserved
+    assert rows[1][0] == "James Fredley"
+    assert rows[2][0] == "Mattias Reichel"
+    assert rows[3][0] == ""  # unresolved left blank
+
+
+def test_fill_registry_names_no_blanks_skips_resolver() -> None:
+    rows = [["Andrea Cosentino", "acosentino@apache.org", "camel", "2026-05-13", "x"]]
+
+    def _boom(_emails):  # must not be called when nothing is pending
+        raise AssertionError("resolver should not be called")
+
+    assert fill_registry_names(rows, resolver=_boom) == 0
