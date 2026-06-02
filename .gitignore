@@ -6,32 +6,22 @@
 /email-classification/
 __pycache__/
 
-# apache-steward — gitignored snapshot of the framework, refreshed
-# by /setup-steward upgrade. Build artefact, not source.
-/.apache-steward/
+# apache-magpie — gitignored snapshot of the framework, refreshed
+# by /magpie-setup upgrade. Build artefact, not source.
+/.apache-magpie/
 
 # Per-machine local-pin file. Records what THIS machine fetched and
-# when. Compared against the committed .apache-steward.lock to
+# when. Compared against the committed .apache-magpie.lock to
 # detect drift.
-/.apache-steward.local.lock
+/.apache-magpie.local.lock
 
 # Project-local per-machine settings (sandbox allowlist etc.).
 /.claude/settings.local.json
 
-# Symlinks created by /setup-steward into the gitignored snapshot.
-# Layout B (per-skill double-symlinked) → keep BOTH blocks (one
-# physical symlink per layer needs its own ignore line).
-/.claude/skills/security-*
-/.claude/skills/pr-management-*
-/.claude/skills/issue-*
-/.claude/skills/setup-isolated-setup-*
-/.claude/skills/setup-override-upstream
-/.claude/skills/setup-shared-config-sync
-/.claude/skills/list-steward-*
-/.github/skills/security-*
-/.github/skills/pr-management-*
-/.github/skills/issue-*
-/.github/skills/setup-isolated-setup-*
-/.github/skills/setup-override-upstream
-/.github/skills/setup-shared-config-sync
-/.github/skills/list-steward-*
+# Symlinks created by /magpie-setup into the gitignored snapshot.
+# Every framework skill is symlinked under the magpie- prefix, so a
+# single glob covers them all. Layout B (per-skill double-symlinked)
+# → both layers need the ignore line. The committed magpie-setup
+# bootstrap is force-added, so this glob does not untrack it.
+/.claude/skills/magpie-*
+/.github/skills/magpie-*

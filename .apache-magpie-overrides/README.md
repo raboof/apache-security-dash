@@ -12,5 +12,5 @@ before executing default behaviour. See
 in the framework for the full contract.
 
 **Hard rule**: never modify the snapshot under
-`.apache-steward/`. Local mods go here.
+`.apache-magpie/`. Local mods go here.
 Framework changes go via PR to `apache/airflow-steward`.
