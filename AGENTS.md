@@ -11,21 +11,21 @@ apache/security is the ASF Security team's private skill set + tooling for manag
 This repo adopts the
 [`apache/airflow-steward`](https://github.com/apache/airflow-steward)
 framework via the snapshot mechanism. The framework's skills are
-gitignored symlinks into the `.apache-steward/` snapshot; only the
-always-on `setup-*` / `list-steward-*` maintenance skills are
-wired in this adopter (no opt-in `security-*` / `pr-management-*`
-/ `issue-*` families).
+gitignored symlinks (each `magpie-`-prefixed) into the
+`.apache-magpie/` snapshot; only the always-on `setup-*` /
+`list-*` maintenance skills are wired in this adopter (no opt-in
+`security-*` / `pr-management-*` / `issue-*` families).
 
 A fresh clone needs the snapshot populated before any framework
-skill is invocable. Run `/setup-steward` (or follow
-[`.claude/skills/setup-steward/`](.claude/skills/setup-steward/))
+skill is invocable. Run `/magpie-setup` (or follow
+[`.claude/skills/magpie-setup/`](.claude/skills/magpie-setup/))
 to fetch it per the committed
-[`.apache-steward.lock`](.apache-steward.lock). The
+[`.apache-magpie.lock`](.apache-magpie.lock). The
 contributor-facing summary lives in the
 [Agent-assisted contribution section of `README.md`](README.md#agent-assisted-contribution-apache-steward).
 
 Adopter-specific modifications to framework-skill workflows live
-in [`.apache-steward-overrides/`](.apache-steward-overrides/) —
+in [`.apache-magpie-overrides/`](.apache-magpie-overrides/) —
 never edit the snapshot directly. Framework changes go via PR to
 [`apache/airflow-steward`](https://github.com/apache/airflow-steward).
 

@@ -586,32 +586,33 @@ This repo adopts the
 [`apache/airflow-steward`](https://github.com/apache/airflow-steward)
 framework via a snapshot mechanism. The framework is **not**
 vendored — it lives as a gitignored snapshot under
-`.apache-steward/`, fetched on demand from the version pinned in
-the committed [`.apache-steward.lock`](.apache-steward.lock)
+`.apache-magpie/`, fetched on demand from the version pinned in
+the committed [`.apache-magpie.lock`](.apache-magpie.lock)
 (currently tracking the framework's `main` branch).
 
 The only framework artefact committed to this repo is the
-`setup-steward` skill at
-[`.github/skills/setup-steward/`](.github/skills/setup-steward/);
-every other framework skill is a gitignored symlink the setup
-skill wires up. This adopter currently wires only the framework's
-**always-on maintenance skills** (`setup-isolated-setup-*`,
-`setup-override-upstream`, `setup-shared-config-sync`,
-`list-steward-skills`) — none of the opt-in `security-*`,
-`pr-management-*`, or `issue-*` families are installed. (The
-repo's own Glasswing / triage SKILLs are unaffected.)
+`magpie-setup` skill at
+[`.github/skills/magpie-setup/`](.github/skills/magpie-setup/);
+every other framework skill is a gitignored `magpie-`-prefixed
+symlink the setup skill wires up. This adopter currently wires
+only the framework's **always-on maintenance skills**
+(`setup-isolated-setup-*`, `setup-override-upstream`,
+`setup-shared-config-sync`, `list-skills`) — none of the opt-in
+`security-*`, `pr-management-*`, or `issue-*` families are
+installed. (The repo's own Glasswing / triage SKILLs are
+unaffected.)
 
 A fresh clone needs the snapshot populated before any framework
 skill is invocable. In your agent harness, run:
 
-    /setup-steward
+    /magpie-setup
 
-(or follow [`.claude/skills/setup-steward/`](.claude/skills/setup-steward/))
+(or follow [`.claude/skills/magpie-setup/`](.claude/skills/magpie-setup/))
 to fetch the snapshot per the committed lock, scaffold the
 gitignored symlinks, and install the post-checkout hook.
 
 Adopter-specific modifications to framework workflows live in
-[`.apache-steward-overrides/`](.apache-steward-overrides/)
+[`.apache-magpie-overrides/`](.apache-magpie-overrides/)
 (committed) — never edit the snapshot directly. Framework changes
 go via PR to
 [`apache/airflow-steward`](https://github.com/apache/airflow-steward).
