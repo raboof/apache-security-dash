@@ -24,9 +24,9 @@ default — surfaces gaps and remediation commands.
 2. `git remote get-url origin` — refuse if it resolves to
    `apache/airflow-steward` itself (this skill is for
    adopters, not the framework).
-3. If `<repo-root>/.apache-steward.lock` is missing, the
+3. If `<repo-root>/.apache-magpie.lock` is missing, the
    repo is not adopted. Surface and stop with a pointer at
-   `/setup-steward adopt`.
+   `/magpie-setup adopt`.
 
 ## The checks
 
@@ -42,17 +42,17 @@ resolves to one) and contains the expected top-level files
 
 - ✗ if missing **and we are in the main checkout** (`git
   rev-parse --git-dir` equals `git rev-parse --git-common-dir`)
-  → run `/setup-steward upgrade` (it gracefully handles the
+  → run `/magpie-setup upgrade` (it gracefully handles the
   recover-snapshot case when the committed lock exists but
   the snapshot does not).
 - ✗ if missing **and we are in a worktree** (the two dirs
-  differ) → run `/setup-steward worktree-init` to symlink
+  differ) → run `/magpie-setup worktree-init` to symlink
   `<snapshot-dir>` to the main checkout's. Do **not**
   propose `upgrade` — that creates a per-worktree snapshot,
   which is the bug `worktree-init` is designed to prevent.
 - ⚠ if present as a regular directory **in a worktree** →
   legacy per-worktree snapshot. Suggest
-  `/setup-steward worktree-init` (with the move-aside flow)
+  `/magpie-setup worktree-init` (with the move-aside flow)
   to convert into a symlink to the main's snapshot. Verify
   continues — the per-worktree snapshot is still functional,
   just wasteful.
@@ -65,14 +65,14 @@ resolves to one) and contains the expected top-level files
 
 ### 2. Both lock files exist + parse
 
-`<committed-lock>` (`.apache-steward.lock`) and
-`<local-lock>` (`.apache-steward.local.lock`) both parse.
+`<committed-lock>` (`.apache-magpie.lock`) and
+`<local-lock>` (`.apache-magpie.local.lock`) both parse.
 
 - ✗ if `<committed-lock>` is missing → not adopted;
   redirect (already caught in pre-flight).
 - ⚠ if `<local-lock>` is missing or unparsable → first
   install on this machine has not run, or the file was
-  truncated. Suggest `/setup-steward upgrade` to re-create
+  truncated. Suggest `/magpie-setup upgrade` to re-create
   the snapshot + write the local lock.
 
 ### 3. Drift between committed and local locks
@@ -92,8 +92,8 @@ Compare:
 | Result | Severity |
 |---|---|
 | All match (and for `git-branch`, local is at upstream tip) | ✓ |
-| Method or URL differ | ✗ — full re-install needed; remediation: `/setup-steward upgrade` |
-| Ref differs (e.g. project bumped tag, or `git-branch` local is behind upstream) | ⚠ — sync needed; remediation: `/setup-steward upgrade` |
+| Method or URL differ | ✗ — full re-install needed; remediation: `/magpie-setup upgrade` |
+| Ref differs (e.g. project bumped tag, or `git-branch` local is behind upstream) | ⚠ — sync needed; remediation: `/magpie-setup upgrade` |
 | `svn-zip` SHA-512 differs from the verification anchor in `<committed-lock>` | ✗ — security-flagged; the released zip changed content; investigate before upgrading |
 
 ### 4. `.gitignore` correctly excludes the snapshot + local lock + symlinks + project-local settings
@@ -102,11 +102,11 @@ Check that the entries from
 [`adopt.md` Step 7](adopt.md) are present in
 `<repo-root>/.gitignore`. Required:
 
-- `/.apache-steward/` (snapshot path)
-- `/.apache-steward.local.lock` (per-machine state)
+- `/.apache-magpie/` (snapshot path)
+- `/.apache-magpie.local.lock` (per-machine state)
 - `/.claude/settings.local.json` (per-machine project-scope
   settings — written to by
-  [`sandbox-add-project-root.sh`](../../../tools/agent-isolation/sandbox-add-project-root.sh)
+  [`sandbox-add-project-root.sh`](../../tools/agent-isolation/sandbox-add-project-root.sh)
   as the per-worktree sandbox-allowlist defense for
   [issue #197](https://github.com/apache/airflow-steward/issues/197);
   must never be committed since the content is machine-specific
@@ -118,7 +118,7 @@ Recommended (the family patterns the adopter's
 - **Pattern A** — framework-skill symlink patterns
   (`security-*`, `pr-management-*`, `issue-*`,
   `setup-isolated-setup-*`, `setup-shared-config-sync`,
-  `list-steward-*`) under `.claude/skills/` only.
+  `list-*`) under `.claude/skills/` only.
 - **Pattern B** — same patterns under **both**
   `.claude/skills/` and `.github/skills/` (one ignore line
   per physical symlink).
@@ -128,9 +128,9 @@ Recommended (the family patterns the adopter's
   lines because git does not descend into a directory
   symlink.
 
-- ✗ if `/.apache-steward/` is not gitignored — the snapshot
+- ✗ if `/.apache-magpie/` is not gitignored — the snapshot
   is at risk of being accidentally committed.
-- ✗ if `/.apache-steward.local.lock` is not gitignored —
+- ✗ if `/.apache-magpie.local.lock` is not gitignored —
   per-machine state would leak into the repo.
 - ✗ if `/.claude/settings.local.json` is not gitignored —
   per-machine absolute paths would leak into the repo; the
@@ -143,24 +143,24 @@ Recommended (the family patterns the adopter's
 ### 5. Symlinks point at live framework skills
 
 For each symlink under `<adopter-skills-dir>` that resolves
-into `.apache-steward/.claude/skills/<name>/`:
+into `.apache-magpie/skills/<name>/`:
 
 - ✓ if the target exists.
 - ✗ if dangling (target deleted or snapshot missing).
-  Remediation: `/setup-steward adopt` (idempotent re-run)
+  Remediation: `/magpie-setup adopt` (idempotent re-run)
   or this same skill with `--auto-fix-symlinks`.
 
 For each framework skill in the snapshot **not** symlinked
 in the adopter, classify it:
 
 - **Always-on family** (every `setup-*` *except*
-  `setup-steward` itself, and every `list-steward-*` — per
+  `setup` itself, and every `list-*` — per
   [`SKILL.md` Golden rule 8](SKILL.md#golden-rules)) →
   surface as ✗. These families are not opt-in; missing
   symlinks here indicate a broken install or a skipped
   upgrade pass. Remediation:
-  `/setup-steward verify --auto-fix-symlinks` (cheap), or
-  `/setup-steward upgrade` (covers the family-wide pass).
+  `/magpie-setup verify --auto-fix-symlinks` (cheap), or
+  `/magpie-setup upgrade` (covers the family-wide pass).
 - **Opt-in family the project picked** (per
   `<committed-lock>` / `<local-lock>`) → surface as ✗. The
   project declared the family but the install is missing a
@@ -171,26 +171,26 @@ in the adopter, classify it:
 
 The `--auto-fix-symlinks` path repairs the first two
 classes in place without prompting; the ⚠ class needs an
-explicit `/setup-steward adopt` re-run with the family
+explicit `/magpie-setup adopt` re-run with the family
 added to the pick.
 
-### 6. `.apache-steward-overrides/` exists + has the README
+### 6. `.apache-magpie-overrides/` exists + has the README
 
-`<repo-root>/.apache-steward-overrides/` is a directory
+`<repo-root>/.apache-magpie-overrides/` is a directory
 with the `README.md` scaffold from
 [`adopt.md` Step 9](adopt.md).
 
-- ✗ if missing → `/setup-steward adopt` (idempotently
+- ✗ if missing → `/magpie-setup adopt` (idempotently
   re-creates).
 - ⚠ if present but `README.md` is missing — the directory
   may have been hand-created. Suggest re-running
-  `/setup-steward adopt`.
+  `/magpie-setup adopt`.
 
-### 7. The `setup-steward` skill itself is up to date
+### 7. The `setup` skill itself is up to date
 
-Compare the adopter-side committed `setup-steward` skill
-(at `<adopter-skills-dir>/setup-steward/`) against the
-snapshot's `.apache-steward/.claude/skills/setup-steward/`.
+Compare the adopter-side committed `setup` skill
+(at `<adopter-skills-dir>/magpie-setup/`) against the
+snapshot's `.apache-magpie/skills/setup/`.
 
 - ✓ if same content.
 - ⚠ if different — the adopter's committed copy has
@@ -199,9 +199,9 @@ snapshot's `.apache-steward/.claude/skills/setup-steward/`.
 
   - **Snapshot is newer than the committed copy** (typical
     case after a framework upgrade where the adopter has
-    not yet rerun `/setup-steward upgrade`). Run
-    `/setup-steward upgrade` — its
-    [Step 4b](upgrade.md#step-4b--overwrite-the-committed-setup-steward-from-the-new-snapshot--reload-in-flight)
+    not yet rerun `/magpie-setup upgrade`). Run
+    `/magpie-setup upgrade` — its
+    [Step 4b](upgrade.md#step-4b--overwrite-the-committed-setup-from-the-new-snapshot--reload-in-flight)
     auto-overwrites the committed copy with the snapshot's
     version, **reloads the skill in-flight** so the rest of
     the upgrade run executes against the new bootstrap
@@ -215,7 +215,7 @@ snapshot's `.apache-steward/.claude/skills/setup-steward/`.
     framework-side fix is to upstream the modifications as
     a PR against `apache/airflow-steward`; the local fix
     is to revert the modifications and use
-    `.apache-steward-overrides/` instead.
+    `.apache-magpie-overrides/` instead.
 
 ### 8. Post-checkout hook installed *and content matches the framework's expected*
 
@@ -223,10 +223,10 @@ Two sub-checks on `<repo-root>/.git/hooks/post-checkout`:
 
 1. **Presence + executable.** File exists, is executable,
    and contains the
-   `/setup-steward verify --auto-fix-symlinks` recipe.
+   `/magpie-setup verify --auto-fix-symlinks` recipe.
    - ⚠ if missing — strictly optional, but worktrees off
      this repo will need a manual
-     `/setup-steward verify --auto-fix-symlinks` after
+     `/magpie-setup verify --auto-fix-symlinks` after
      checkout. Print the install recipe.
 
 2. **Content drift vs the framework's expected.** Diff the
@@ -238,7 +238,7 @@ Two sub-checks on `<repo-root>/.git/hooks/post-checkout`:
    - ✓ if content matches.
    - ⚠ if drifted and the diff looks like operator
      hand-edits — surface the diff; remediation is to run
-     `/setup-steward` (adopt or upgrade), whose
+     `/magpie-setup` (adopt or upgrade), whose
      hook+config-sync pass re-installs from the snapshot
      after asking about hand-edits.
    - ✗ if drifted and the installed content is clearly
@@ -251,7 +251,7 @@ Two sub-checks on `<repo-root>/.git/hooks/post-checkout`:
 Defensive cross-check for
 [issue #197](https://github.com/apache/airflow-steward/issues/197):
 `sandbox.filesystem.allowRead: ["."]` does not in practice cover
-CWD under the harness, so `/setup-steward` (adopt, upgrade,
+CWD under the harness, so `/magpie-setup` (adopt, upgrade,
 worktree-init) chains into
 `~/.claude/scripts/sandbox-add-project-root.sh` to add explicit
 absolute paths to each worktree's own project-local settings.
@@ -268,7 +268,7 @@ For the current worktree (resolved via
   — remediation:
   `~/.claude/scripts/sandbox-add-project-root.sh`
   (no `--all-worktrees` needed — just this worktree), or
-  re-run `/setup-steward` (adopt/upgrade) which chains into
+  re-run `/magpie-setup` (adopt/upgrade) which chains into
   the helper as part of its Step 12 / Step 6c sandbox-allowlist
   pass.
 - ⚠ if missing from either array **and** the helper script is
@@ -284,20 +284,20 @@ For the current worktree (resolved via
 - ✗ if `<worktree>/.claude/settings.local.json` exists AND
   is **not** gitignored (cross-check via `git check-ignore`).
   Per the security rationale in
-  [`docs/setup/secure-agent-setup.md` → *Security rationale — why project-local is safe to write to*](../../../docs/setup/secure-agent-setup.md#security-rationale--why-project-local-is-safe-to-write-to),
+  [`docs/setup/secure-agent-setup.md` → *Security rationale — why project-local is safe to write to*](../../docs/setup/secure-agent-setup.md#security-rationale--why-project-local-is-safe-to-write-to),
   the per-machine settings.local.json must never be committed.
   Remediation: add `/.claude/settings.local.json` to the
   adopter's `.gitignore` (also surfaced by check 4 above).
 
 The check scopes to the current worktree only, not the full
 `git worktree list`, because each worktree carries its own
-project-local settings file — `/setup-steward verify` running
+project-local settings file — `/magpie-setup verify` running
 in worktree A has no business asserting on worktree B's file
 (which it cannot even reliably read without crossing into
 another working tree's path).
 
 This check is read-only on the framework state. The defence
-is layered: `/setup-steward` writes during adopt/upgrade,
+is layered: `/magpie-setup` writes during adopt/upgrade,
 `setup-isolated-setup-verify` adds a live read+write probe
 (check 8 there), and this check is the cheap static cross-check
 to surface drift between the two skill families.
@@ -339,7 +339,7 @@ The check:
 
 3. Bucket the result against a threshold (default: **7 days**;
    adopter override via `worktree_stale_days` in
-   `<project-config>/setup-steward.md` — if absent, default
+   `<project-config>/magpie-setup.md` — if absent, default
    stands):
    - ✓ if age ≤ threshold
    - ⚠ if age > threshold AND the worktree has zero
@@ -390,7 +390,7 @@ Two files to read:
   project-wide).
 - `<repo-root>/.claude/settings.local.json` (gitignored,
   per-machine — same security model as
-  `.apache-steward.local.lock`).
+  `.apache-magpie.local.lock`).
 
 For each, parse the JSON, walk `permissions.allow[]`, and
 bucket each entry against two canonical lists.
@@ -458,14 +458,14 @@ adopter opted into via
   affiliation lookups — also used by `contributor-nomination`,
   the maintainer-side PMC/committer assessment skill. Both MCP
   servers are installed from the latest `main` of `apache/comdev`;
-  see [`tools/apache-projects/tool.md`](../../../tools/apache-projects/tool.md)
-  and [`tools/ponymail/tool.md`](../../../tools/ponymail/tool.md).)
+  see [`tools/apache-projects/tool.md`](../../tools/apache-projects/tool.md)
+  and [`tools/ponymail/tool.md`](../../tools/ponymail/tool.md).)
 
 - **Any family that ships docs / markdown** (effectively
   every adopter, since the framework itself ships docs) —
   - `Bash(lychee *)` — read-only link-checker invoked by
     the *"run lychee before pushing a PR"* hygiene gate
-    documented in [`AGENTS.md`](../../../AGENTS.md).
+    documented in [`AGENTS.md`](../../AGENTS.md).
 
 The recommended list is **deliberately narrow** — every
 entry is read-only, scoped to a specific tool, and
@@ -476,10 +476,10 @@ redundantly propose entries that never prompt anyway.
 
 **Implementation.** The classification logic and the atomic
 edit path are factored out into the
-[`tools/permission-audit`](../../../tools/permission-audit/README.md)
+[`tools/permission-audit`](../../tools/permission-audit/README.md)
 CLI; the canonical forbidden + recommended-by-family lists
 live in
-[`tools/permission-audit/src/permission_audit/audit.py`](../../../tools/permission-audit/src/permission_audit/audit.py).
+[`tools/permission-audit/src/permission_audit/audit.py`](../../tools/permission-audit/src/permission_audit/audit.py).
 The skill invokes the CLI once per settings file:
 
 ```bash
@@ -498,7 +498,7 @@ operator can locate it instantly; for each recommended entry
 missing, print the suggested string verbatim ready for paste.
 **Do not auto-write the files** — the per-machine
 `settings.local.json` is the operator's; surface the proposal
-and let `/setup-steward verify --apply-permission-audit`
+and let `/magpie-setup verify --apply-permission-audit`
 (interactive) or a hand-edit close the gap. The apply path
 calls
 
@@ -541,8 +541,8 @@ true` or `Mail sources` `ponymail` `mandatory: yes`. Skip otherwise
 (the two MCP servers are optional for non-ASF adopters).
 
 For ASF projects, both the
-[PonyMail](../../../tools/ponymail/tool.md) and
-[Apache Projects](../../../tools/apache-projects/tool.md) MCP
+[PonyMail](../../tools/ponymail/tool.md) and
+[Apache Projects](../../tools/apache-projects/tool.md) MCP
 servers are mandatory pre-flight prerequisites, installed from the
 latest `main` of `apache/comdev` (tracked, not pinned). Confirm:
 
@@ -562,7 +562,7 @@ latest `main` of `apache/comdev` (tracked, not pinned). Confirm:
    `apache/comdev`, the branch is `main`, and it is not behind the
    last-fetched `origin/main`. This is the read-only, offline form
    of the freshness assertion; the authoritative live fetch belongs
-   to [`/setup-steward upgrade` Step 6e](upgrade.md#step-6e--refresh-comdev-mcp-checkouts-asf-projects)
+   to [`/magpie-setup upgrade` Step 6e](upgrade.md#step-6e--refresh-comdev-mcp-checkouts-asf-projects)
    and [`setup-isolated-setup-update`](../setup-isolated-setup-update/SKILL.md).
    ✗ off-`main` or non-`apache/comdev` remote; ⚠ behind
    `origin/main`.
@@ -575,9 +575,9 @@ Two files to check (per
 - **`<repo-root>/README.md`** — should have a contributor-facing
   section (typically `## Agent-assisted contribution
   (apache-steward)`) that mentions the snapshot mechanism, the
-  `/setup-steward` invocation for fresh clones, the
-  `.apache-steward.lock` pin, and `.apache-steward-overrides/`.
-  Grep for `apache-steward` and `/setup-steward` together as a
+  `/magpie-setup` invocation for fresh clones, the
+  `.apache-magpie.lock` pin, and `.apache-magpie-overrides/`.
+  Grep for `apache-steward` and `/magpie-setup` together as a
   proxy. ⚠ if either token is absent.
 - **`<repo-root>/AGENTS.md`** — if the file exists, it should
   have an `## apache-steward framework` section that
@@ -600,13 +600,13 @@ intentionally opted out of), say so explicitly and stop.
 If anything is ✗, end the report with a concrete next-step
 list, ordered most → least urgent:
 
-- ✗ on check 1 → `/setup-steward upgrade` (re-fetches per
+- ✗ on check 1 → `/magpie-setup upgrade` (re-fetches per
   the committed lock).
-- ✗ on check 3 (drift) → `/setup-steward upgrade`.
+- ✗ on check 3 (drift) → `/magpie-setup upgrade`.
 - ✗ on check 5 (dangling symlinks) →
-  `/setup-steward verify --auto-fix-symlinks` (cheap;
+  `/magpie-setup verify --auto-fix-symlinks` (cheap;
   no-op when symlinks already correct).
-- ✗ on check 6 → `/setup-steward adopt` (idempotent
+- ✗ on check 6 → `/magpie-setup adopt` (idempotent
   re-create).
 - ✗ on check 4 / SHA-512 mismatch → **investigate first**;
   do not run upgrade until you understand why the
@@ -628,7 +628,7 @@ list, ordered most → least urgent:
   the file's `permissions.allow[]` array. Print the JSON-
   pointer path so the operator can locate it. Per-machine
   `settings.local.json` writes go via
-  `/setup-steward verify --apply-permission-audit`
+  `/magpie-setup verify --apply-permission-audit`
   (interactive, atomic JSON edit, sandbox-bypass requires
   per-write authorisation). Committed `settings.json`
   writes are a regular file edit + commit; flag them
@@ -640,10 +640,10 @@ list, ordered most → least urgent:
   an adopter who skipped the `security` family will not
   see the Gmail / PonyMail entries surfaced as gaps.
 - ✗ on check 8e (ASF project, comdev MCP not registered or
-  off-`main`) → `/setup-steward adopt` Step 9c to (re-)install
+  off-`main`) → `/magpie-setup adopt` Step 9c to (re-)install
   from latest `apache/comdev` `main`. ⚠ on check 8e (PonyMail
   unauthenticated, or checkout behind `origin/main`) →
-  `mcp__ponymail__login()` and/or `/setup-steward upgrade`
+  `mcp__ponymail__login()` and/or `/magpie-setup upgrade`
   Step 6e (live fetch + `git pull --ff-only`).
 - All other ✗ / ⚠ → name the gap, give the one-line
   remediation.
