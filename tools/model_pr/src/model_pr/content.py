@@ -45,6 +45,29 @@ limitations under the License.
 -->"""
 
 
+def ensure_asf_header(content: str) -> str:
+    """Prepend the ASF license header (HTML comment) unless ``content`` already
+    carries an Apache-2.0 header. Idempotent.
+
+    Every file committed to an ASF repo must carry the license header or Apache
+    RAT fails the build; the threat-model document supplied via ``--model`` is
+    authored without one, so the CLI runs it through this before writing.
+    """
+    stripped = content.lstrip()
+    head = "\n".join(stripped.splitlines()[:30]).lower()
+    # Only count it as headered if the file *opens* with an HTML-comment that
+    # carries the license — a threat model that merely *mentions* the Apache
+    # License in its prose must still get a real header (RAT scans the top).
+    has_header = stripped.startswith("<!--") and (
+        "apache license" in head
+        or "licenses/license-2.0" in head
+        or "spdx-license-identifier: apache-2.0" in head
+    )
+    if has_header:
+        return content
+    return f"{ASF_HTML_HEADER}\n\n{stripped}"
+
+
 def branch_name(kind: str, date: str) -> str:
     """Branch name for a model/discoverability PR, e.g.
     ``asf-security/threat-model-2026-05-31``. ``kind`` is typically
@@ -100,6 +123,7 @@ def build_security_md(existing: str | None, repo: str, model_ref: str) -> str:
     section = _security_threat_section(model_ref)
     if existing is None:
         return (
+            f"{ASF_HTML_HEADER}\n\n"
             "# Security Policy\n\n"
             "## Reporting a Vulnerability\n\n"
             f"`{repo}` follows the [Apache Software Foundation security process]"

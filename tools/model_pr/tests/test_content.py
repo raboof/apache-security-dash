@@ -20,7 +20,12 @@ from __future__ import annotations
 import pytest
 
 from model_pr.cli import build_parser
-from model_pr.content import branch_name, build_agents_md, build_security_md
+from model_pr.content import (
+    branch_name,
+    build_agents_md,
+    build_security_md,
+    ensure_asf_header,
+)
 
 
 def test_branch_name() -> None:
@@ -30,7 +35,8 @@ def test_branch_name() -> None:
 
 def test_build_security_md_create_inrepo() -> None:
     out = build_security_md(None, "apache/jspwiki", "[THREAT_MODEL.md](./THREAT_MODEL.md)")
-    assert out.startswith("# Security Policy")
+    assert out.startswith("<!--")  # ASF license header (RAT)
+    assert "# Security Policy" in out
     assert "## Reporting a Vulnerability" in out
     assert "## Threat Model" in out
     assert "[THREAT_MODEL.md](./THREAT_MODEL.md)" in out
@@ -96,3 +102,53 @@ def test_open_argparse_model() -> None:
     assert args.repo == "jspwiki"
     assert args.model == "/tmp/m.md"
     assert args.pointer is None
+
+
+# --- ASF license header (Apache RAT compliance on generated files) ---
+
+
+def test_security_md_create_has_asf_header() -> None:
+    out = build_security_md(None, "apache/x", "[THREAT_MODEL.md](./THREAT_MODEL.md)")
+    assert out.startswith("<!--")
+    assert "Apache License" in out.splitlines()[3] or "Apache License" in out[:400]
+
+
+def test_agents_md_create_has_asf_header() -> None:
+    out = build_agents_md(None, "x")
+    assert out.startswith("<!--")
+    assert "Apache License" in out[:400]
+
+
+def test_ensure_asf_header_prepends_when_missing() -> None:
+    out = ensure_asf_header("# Apache Foo — Threat Model\n\nbody\n")
+    assert out.startswith("<!--")
+    assert "Apache License" in out[:400]
+    assert "# Apache Foo" in out
+
+
+def test_ensure_asf_header_idempotent_on_existing_header() -> None:
+    once = ensure_asf_header("# Model\n\nbody\n")
+    assert ensure_asf_header(once) == once  # already has a header -> unchanged
+
+
+def test_ensure_asf_header_detects_existing_spdx() -> None:
+    already = "<!--\nSPDX-License-Identifier: Apache-2.0\n-->\n\n# Model\n"
+    assert ensure_asf_header(already) == already
+
+
+def test_ensure_asf_header_adds_when_apache_only_in_prose() -> None:
+    # A model that *mentions* the Apache License in its body (not a top comment)
+    # must still get a real header — RAT scans the file's top.
+    doc = "# Apache Foo Threat Model\n\nFoo ships under the Apache License 2.0.\n"
+    out = ensure_asf_header(doc)
+    assert out.startswith("<!--")
+    assert out.count("Licensed under the Apache License") >= 1
+
+
+def test_security_md_pointer_autolink_keeps_period_outside() -> None:
+    # cli wraps pointer URLs in <...>; the template's trailing '.' must land
+    # outside the autolink so link-checkers don't grab "<url>." and 404.
+    url = "https://github.com/apache/cxf/blob/main/THREAT_MODEL.md"
+    out = build_security_md(None, "apache/x", f"<{url}>")
+    assert f"<{url}>." in out
+    assert f"{url}.\n" not in out  # never a bare url immediately before a period

@@ -39,7 +39,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-from model_pr.content import branch_name, build_agents_md, build_security_md
+from model_pr.content import (
+    branch_name,
+    build_agents_md,
+    build_security_md,
+    ensure_asf_header,
+)
 
 
 def _run(cmd: list[str], cwd: str | None = None, capture: bool = False) -> str:
@@ -86,11 +91,14 @@ def cmd_open(args: argparse.Namespace) -> int:
     # Build the discoverability scaffold (idempotent create-or-append).
     if args.model:
         model_name = args.model_name
-        (clone / model_name).write_text(Path(args.model).read_text())
+        (clone / model_name).write_text(ensure_asf_header(Path(args.model).read_text()))
         model_ref = f"[{model_name}](./{model_name})"
         files = [model_name, "SECURITY.md", "AGENTS.md"]
     else:
-        model_ref = args.pointer
+        # Wrap the pointer URL as a markdown autolink so trailing sentence
+        # punctuation (the "." the template appends) stays outside the link —
+        # otherwise link-checkers (e.g. lychee) grab "<url>." and 404.
+        model_ref = f"<{args.pointer}>"
         files = ["SECURITY.md", "AGENTS.md"]
 
     (clone / "SECURITY.md").write_text(
