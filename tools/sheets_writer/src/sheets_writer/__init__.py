@@ -75,6 +75,10 @@ IN_PROGRESS_SHEET = "Status in progress"
 COMPLETED_SHEET = "Completed"
 TIMELINE_SHEET = "Timeline"
 PROGRAM_TOTALS_SHEET = "Program totals"
+# Per-PMC + consolidated rollup of the @apache.org addresses for which an
+# OSS-subscription expedite has been submitted (synced from the PMCs sheet's
+# "Claude OSS Subscriptions Submitted" column on every refresh).
+OSS_SUBSCRIPTIONS_SHEET = "OSS Subscriptions"
 # Hand-written overview tab; build-status-tab only appends/refreshes a legend
 # block at the bottom (sentinel-managed), never clearing the rest.
 README_SHEET = "README"
