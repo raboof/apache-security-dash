@@ -143,3 +143,12 @@ def test_ensure_asf_header_adds_when_apache_only_in_prose() -> None:
     out = ensure_asf_header(doc)
     assert out.startswith("<!--")
     assert out.count("Licensed under the Apache License") >= 1
+
+
+def test_security_md_pointer_autolink_keeps_period_outside() -> None:
+    # cli wraps pointer URLs in <...>; the template's trailing '.' must land
+    # outside the autolink so link-checkers don't grab "<url>." and 404.
+    url = "https://github.com/apache/cxf/blob/main/THREAT_MODEL.md"
+    out = build_security_md(None, "apache/x", f"<{url}>")
+    assert f"<{url}>." in out
+    assert f"{url}.\n" not in out  # never a bare url immediately before a period

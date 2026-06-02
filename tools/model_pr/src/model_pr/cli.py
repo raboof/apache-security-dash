@@ -95,7 +95,10 @@ def cmd_open(args: argparse.Namespace) -> int:
         model_ref = f"[{model_name}](./{model_name})"
         files = [model_name, "SECURITY.md", "AGENTS.md"]
     else:
-        model_ref = args.pointer
+        # Wrap the pointer URL as a markdown autolink so trailing sentence
+        # punctuation (the "." the template appends) stays outside the link —
+        # otherwise link-checkers (e.g. lychee) grab "<url>." and 404.
+        model_ref = f"<{args.pointer}>"
         files = ["SECURITY.md", "AGENTS.md"]
 
     (clone / "SECURITY.md").write_text(
