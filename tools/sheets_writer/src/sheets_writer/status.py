@@ -27,6 +27,7 @@ from sheets_writer import (
     IN_PROGRESS_SHEET,
     MODEL_COLOR,
     NOMINATED_COLOR,
+    OSS_SUBSCRIPTIONS_SHEET,
     PIPELINE_STATES,
     PROGRAM_TOTALS_SHEET,
     README_SHEET,
@@ -654,6 +655,155 @@ def _build_readme(today: str, tab_titles: list[str]) -> _Tab:
     return rd
 
 
+def _parse_addrs(cell: str) -> list[str]:
+    """Split an address cell on newlines / commas into a deduped, ordered list."""
+    out: list[str] = []
+    for part in (cell or "").replace(",", "\n").split("\n"):
+        a = part.strip()
+        if a and a not in out:
+            out.append(a)
+    return out
+
+
+def compute_subscription_syncs(
+    grid: list[list[str]], col_idx: dict
+) -> list[tuple[int, list[str], list[str]]]:
+    """Pure: decide which PMC rows need expedite addresses appended to their
+    ``Claude OSS Subscriptions Submitted`` cell.
+
+    A PMC's expedite request counts as *submitted* once ``Date scan requested``
+    is set (the expedite list rides the headline scan-submission form). The
+    merge is an append-only union — addresses already in the Subscriptions cell
+    are preserved, never removed. Returns ``(sheet_row, merged, new)`` per row
+    that changes (``sheet_row`` is 1-based; the header occupies row 1).
+    """
+    exp_i = col_idx.get("Expedite Claude OSS Requests", -1)
+    sub_i = col_idx.get("Claude OSS Subscriptions Submitted", -1)
+    dsr_i = col_idx.get("Date scan requested", -1)
+    if exp_i < 0 or sub_i < 0:
+        return []  # required columns absent — nothing to sync
+
+    def _cell(row: list[str], i: int) -> str:
+        return row[i].strip() if 0 <= i < len(row) else ""
+
+    out: list[tuple[int, list[str], list[str]]] = []
+    for r, row in enumerate(grid[1:], start=2):  # sheet row number (header is row 1)
+        if dsr_i >= 0 and not _cell(row, dsr_i):
+            continue  # not yet submitted — expedite not relayed to the vendor
+        expedite = _parse_addrs(_cell(row, exp_i))
+        if not expedite:
+            continue
+        current = _parse_addrs(_cell(row, sub_i))
+        new = [a for a in expedite if a not in current]
+        if not new:
+            continue
+        out.append((r, current + new, new))
+    return out
+
+
+# Schema of the persistent 'OSS Subscriptions' registry tab. Name and the
+# "Submitted manually" column are maintained by hand and preserved across
+# refreshes; PMC + Date are auto-filled when a person is first appended. Email
+# is the dedup key.
+SUBSCRIPTION_REGISTRY_HEADER = ["Name", "Email", "PMC", "Date", "Submitted manually"]
+
+
+def subscription_email_rows(grid: list[list[str]], col_idx: dict) -> list[tuple[str, str, str]]:
+    """Pure: ``(email, pmc_slug, date)`` for every OSS-subscription address
+    across *submitted* PMCs, deduped by email (first PMC wins).
+
+    The address set per PMC is the union of ``Claude OSS Subscriptions
+    Submitted`` and ``Expedite Claude OSS Requests``; ``date`` is the PMC's
+    ``Request date`` (so an auto-appended person carries the same date shape as
+    the hand-seeded rows).
+    """
+    slug_i = col_idx.get("PMC Slug", -1)
+    exp_i = col_idx.get("Expedite Claude OSS Requests", -1)
+    sub_i = col_idx.get("Claude OSS Subscriptions Submitted", -1)
+    dsr_i = col_idx.get("Date scan requested", -1)
+    req_i = col_idx.get("Request date", -1)
+    if sub_i < 0 and exp_i < 0:
+        return []
+
+    def _cell(row: list[str], i: int) -> str:
+        return row[i].strip() if 0 <= i < len(row) else ""
+
+    seen: set[str] = set()
+    out: list[tuple[str, str, str]] = []
+    for row in grid[1:]:
+        if dsr_i >= 0 and not _cell(row, dsr_i):
+            continue  # not yet submitted — expedite not relayed
+        current = _parse_addrs(_cell(row, sub_i))
+        emails = current + [a for a in _parse_addrs(_cell(row, exp_i)) if a not in current]
+        slug = _cell(row, slug_i)
+        date = _cell(row, req_i)
+        for e in emails:
+            if e in seen:
+                continue
+            seen.add(e)
+            out.append((e, slug, date))
+    return out
+
+
+def parse_subscription_registry(
+    os_grid: list[list[str]],
+) -> tuple[list[list[str]], set[str]]:
+    """Pure: parse the existing 'OSS Subscriptions' tab into its data rows +
+    the set of emails already present.
+
+    Locates the ``SUBSCRIPTION_REGISTRY_HEADER`` row (the tab has title/summary
+    rows above it); data rows are the subsequent rows with a non-empty Email.
+    Each returned row is normalised to the 5 registry columns. Rows that don't
+    match the header (e.g. an older tab layout) yield an empty registry, so the
+    refresh re-seeds from scratch.
+    """
+    if not os_grid:
+        return [], set()
+    width = len(SUBSCRIPTION_REGISTRY_HEADER)
+    header_at = -1
+    for i, row in enumerate(os_grid):
+        if [c.strip() for c in row[:width]] == SUBSCRIPTION_REGISTRY_HEADER:
+            header_at = i
+            break
+    if header_at < 0:
+        return [], set()
+    rows: list[list[str]] = []
+    emails: set[str] = set()
+    for row in os_grid[header_at + 1 :]:
+        email = row[1].strip() if len(row) > 1 else ""
+        if not email:
+            continue
+        rows.append([(row[j].strip() if j < len(row) else "") for j in range(width)])
+        emails.add(email)
+    return rows, emails
+
+
+def sync_oss_subscriptions(
+    service, spreadsheet_id: str, grid: list[list[str]], col_idx: dict
+) -> int:
+    """Append each *submitted* PMC's expedite addresses into its
+    ``Claude OSS Subscriptions Submitted`` cell (append-only union; never
+    removes). Runs on every ``build-status-tab`` refresh so the column stays in
+    sync with the expedite asks. Returns the number of PMC rows updated.
+    """
+    sub_i = col_idx.get("Claude OSS Subscriptions Submitted", -1)
+    syncs = compute_subscription_syncs(grid, col_idx)
+    if not syncs:
+        return 0
+    data = [
+        {"range": f"PMCs!{col_letter(sub_i)}{r}", "values": [["\n".join(merged)]]}
+        for r, merged, _new in syncs
+    ]
+    service.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"valueInputOption": "USER_ENTERED", "data": data},
+    ).execute()
+    print(f"Synced OSS subscriptions ({len(data)} PMC row(s)):")
+    for r, _merged, new in syncs:
+        print(f"  PMCs row {r} · Claude OSS Subscriptions Submitted += {new}")
+    return len(data)
+
+
 def cmd_build_status_tab(args: argparse.Namespace) -> None:
     service = get_service()
     today = datetime.date.today().isoformat()
@@ -1091,12 +1241,54 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             height=360,
         )
 
+    # 6b. Build the "OSS Subscriptions" tab — a persistent, append-only person
+    #     registry (Name · Email · PMC · Date · Status). Name + Status are
+    #     hand-maintained and preserved; new people are appended when a submitted
+    #     PMC's expedite list grows. Read the existing tab first so manual edits
+    #     survive the rewrite.
+    try:
+        os_grid = fetch_sheet_grid(service, args.spreadsheet_id, OSS_SUBSCRIPTIONS_SHEET) or []
+    except Exception:  # noqa: BLE001 — tab may not exist yet on a first run
+        os_grid = []
+    existing_rows, existing_emails = parse_subscription_registry(os_grid)
+    # New people are appended with blank Name + blank Status — both are
+    # filled in by hand; the tool only auto-fills Email/PMC/Date.
+    additions = [
+        ["", email, slug, date, ""]
+        for email, slug, date in subscription_email_rows(grid, col_idx)
+        if email not in existing_emails
+    ]
+    registry_rows = existing_rows + additions
+    os_sub = _Tab()
+    os_sub.row([f"Glasswing scan pipeline — OSS Subscriptions · as of {today}"], header=True)
+    os_sub.row(
+        [
+            "Per-person registry of Claude-for-Open-Source (Max 20x) expedite "
+            "requests. Append-only: Name and Status are maintained by hand and "
+            "preserved across refreshes; a new person is appended automatically "
+            "(Name + Status blank, to fill in) when a submitted PMC's expedite "
+            "list grows."
+        ]
+    )
+    os_sub.row(
+        [f"{len(registry_rows)} people registered ({len(additions)} appended this refresh)."],
+        bold=True,
+    )
+    os_sub.row([""])
+    os_sub.row(SUBSCRIPTION_REGISTRY_HEADER, header=True)
+    if not registry_rows:
+        os_sub.row(["(none yet)"])
+    for cells in registry_rows:
+        os_sub.row(cells, span=len(SUBSCRIPTION_REGISTRY_HEADER))
+
     if args.dry_run:
         print(
-            f"Would write 5 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
+            f"Would write 6 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
             f"{len(in_flight)} in flight), '{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
             f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
-            f"'{TIMELINE_SHEET}' ({len(entries)} events), '{README_SHEET}' (auto overview "
+            f"'{TIMELINE_SHEET}' ({len(entries)} events), "
+            f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, "
+            f"{len(additions)} new), '{README_SHEET}' (auto overview "
             f"+ legend). Model origins: "
             + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
             + "."
@@ -1104,6 +1296,11 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         print("\n----- dashboard gist preview (not pushed in --dry-run) -----\n")
         print(render_dashboard(today, sheet_url, dashboard_data))
         return
+
+    # 6a. Keep the OSS-subscription column in sync: append every submitted PMC's
+    #     expedite addresses into 'Claude OSS Subscriptions Submitted'
+    #     (append-only; never removes). Runs on every live refresh.
+    sync_oss_subscriptions(service, args.spreadsheet_id, grid, col_idx)
 
     # 7. Ensure our tabs exist (migrating the old single 'Status' tab into
     #    'Status in progress'), then write each.
@@ -1117,6 +1314,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     pt_id = _ensure_sheet(service, args.spreadsheet_id, PROGRAM_TOTALS_SHEET, by_title)
     cp_id = _ensure_sheet(service, args.spreadsheet_id, COMPLETED_SHEET, by_title)
     tl_id = _ensure_sheet(service, args.spreadsheet_id, TIMELINE_SHEET, by_title)
+    os_id = _ensure_sheet(service, args.spreadsheet_id, OSS_SUBSCRIPTIONS_SHEET, by_title)
     rd_id = _ensure_sheet(service, args.spreadsheet_id, README_SHEET, by_title)
 
     # Re-read the (now-complete) tab list, in sheet order, for the README overview,
@@ -1161,14 +1359,24 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         frozen=_fz(tl_id),
         existing_charts=_ch(tl_id),
     )
+    _write_tab(
+        service,
+        args.spreadsheet_id,
+        OSS_SUBSCRIPTIONS_SHEET,
+        os_id,
+        os_sub,
+        wrap_col=4,
+        frozen=_fz(os_id),
+    )
     _write_tab(service, args.spreadsheet_id, README_SHEET, rd_id, rd, frozen=_fz(rd_id))
 
     print(
         f"Refreshed: '{IN_PROGRESS_SHEET}' ({len(in_flight)} in flight), "
         f"'{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
         f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
-        f"'{TIMELINE_SHEET}' ({len(entries)} events), '{README_SHEET}' "
-        f"({len(tab_titles)}-tab overview). Model origins: "
+        f"'{TIMELINE_SHEET}' ({len(entries)} events), "
+        f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, {len(additions)} new), "
+        f"'{README_SHEET}' ({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."
     )

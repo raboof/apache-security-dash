@@ -17,7 +17,14 @@
 
 from __future__ import annotations
 
-from sheets_writer.status import classify_model_origin, compute_pmc_status
+from sheets_writer.status import (
+    _parse_addrs,
+    classify_model_origin,
+    compute_pmc_status,
+    compute_subscription_syncs,
+    parse_subscription_registry,
+    subscription_email_rows,
+)
 
 
 def _row(header: list[str], **overrides) -> tuple[list[str], dict[str, int]]:
@@ -187,3 +194,153 @@ def test_compute_pmc_status_sets_model_origin() -> None:
         **{"PMC Slug": "x", "Security Model": "https://x.org", "Notes": "Path 3 — we drafted it"},
     )
     assert compute_pmc_status(row, col_idx)["model_origin"] == "security-team"
+
+
+# --- OSS-subscription sync (Expedite -> Subscriptions Submitted) ---
+
+_SUB_HEADER = [
+    "PMC Slug",
+    "Date scan requested",
+    "Expedite Claude OSS Requests",
+    "Claude OSS Subscriptions Submitted",
+]
+
+
+def _sub_grid(*rows: dict) -> tuple[list[list[str]], dict[str, int]]:
+    grid = [_SUB_HEADER]
+    for r in rows:
+        grid.append([r.get(h, "") for h in _SUB_HEADER])
+    return grid, {h: i for i, h in enumerate(_SUB_HEADER)}
+
+
+def test_parse_addrs_splits_newlines_and_commas_dedup() -> None:
+    assert _parse_addrs("a@x.org\nb@x.org, a@x.org\n") == ["a@x.org", "b@x.org"]
+    assert _parse_addrs("") == []
+
+
+def test_subscription_sync_submitted_pmc_appends_expedite() -> None:
+    grid, idx = _sub_grid(
+        {
+            "PMC Slug": "airflow",
+            "Date scan requested": "2026-06-01",
+            "Expedite Claude OSS Requests": "a@apache.org\nb@apache.org",
+        }
+    )
+    syncs = compute_subscription_syncs(grid, idx)
+    assert syncs == [(2, ["a@apache.org", "b@apache.org"], ["a@apache.org", "b@apache.org"])]
+
+
+def test_subscription_sync_skips_unsubmitted_pmc() -> None:
+    # Verified/expedited but no Date scan requested -> not yet relayed, skip.
+    grid, idx = _sub_grid({"PMC Slug": "grails", "Expedite Claude OSS Requests": "a@apache.org"})
+    assert compute_subscription_syncs(grid, idx) == []
+
+
+def test_subscription_sync_is_append_only_and_idempotent() -> None:
+    # Existing address preserved; only the genuinely-new one is appended.
+    grid, idx = _sub_grid(
+        {
+            "PMC Slug": "spark",
+            "Date scan requested": "2026-05-26",
+            "Expedite Claude OSS Requests": "old@apache.org\nnew@apache.org",
+            "Claude OSS Subscriptions Submitted": "old@apache.org",
+        }
+    )
+    assert compute_subscription_syncs(grid, idx) == [
+        (2, ["old@apache.org", "new@apache.org"], ["new@apache.org"])
+    ]
+    # Once both are present, a re-run produces no change (idempotent).
+    grid2, idx2 = _sub_grid(
+        {
+            "PMC Slug": "spark",
+            "Date scan requested": "2026-05-26",
+            "Expedite Claude OSS Requests": "old@apache.org\nnew@apache.org",
+            "Claude OSS Subscriptions Submitted": "old@apache.org\nnew@apache.org",
+        }
+    )
+    assert compute_subscription_syncs(grid2, idx2) == []
+
+
+def test_subscription_sync_no_expedite_column_is_noop() -> None:
+    grid = [["PMC Slug"], ["airflow"]]
+    assert compute_subscription_syncs(grid, {"PMC Slug": 0}) == []
+
+
+# --- OSS-subscription registry (the persistent 'OSS Subscriptions' tab) ---
+
+_REG_HEADER = [
+    "PMC Slug",
+    "Request date",
+    "Date scan requested",
+    "Expedite Claude OSS Requests",
+    "Claude OSS Subscriptions Submitted",
+]
+
+
+def _reg_grid(*rows: dict) -> tuple[list[list[str]], dict[str, int]]:
+    grid = [_REG_HEADER]
+    for r in rows:
+        grid.append([r.get(h, "") for h in _REG_HEADER])
+    return grid, {h: i for i, h in enumerate(_REG_HEADER)}
+
+
+def test_subscription_email_rows_unions_dedups_and_carries_request_date() -> None:
+    grid, idx = _reg_grid(
+        {
+            "PMC Slug": "camel",
+            "Request date": "2026-05-13",
+            "Date scan requested": "2026-05-26",
+            "Expedite Claude OSS Requests": "a@apache.org",
+            "Claude OSS Subscriptions Submitted": "a@apache.org\nb@apache.org",
+        },
+        {
+            "PMC Slug": "spark",
+            "Request date": "2026-05-15",
+            "Date scan requested": "2026-05-26",
+            "Expedite Claude OSS Requests": "a@apache.org\nc@apache.org",  # a@ dups camel
+        },
+    )
+    assert subscription_email_rows(grid, idx) == [
+        ("a@apache.org", "camel", "2026-05-13"),
+        ("b@apache.org", "camel", "2026-05-13"),
+        ("c@apache.org", "spark", "2026-05-15"),
+    ]
+
+
+def test_subscription_email_rows_skips_unsubmitted() -> None:
+    grid, idx = _reg_grid(
+        {
+            "PMC Slug": "grails",
+            "Request date": "2026-05-13",
+            "Expedite Claude OSS Requests": "g@apache.org",
+        }
+    )
+    assert subscription_email_rows(grid, idx) == []
+
+
+def test_parse_registry_reads_data_rows_and_emails() -> None:
+    os_grid = [
+        ["Glasswing — OSS Subscriptions · title"],
+        ["some note"],
+        ["3 people"],
+        [""],
+        ["Name", "Email", "PMC", "Date", "Submitted manually"],
+        ["Andrea Cosentino", "acosentino@apache.org", "camel", "2026-05-13", "Expedite requested"],
+        ["", "b@apache.org", "spark", "2026-05-15", ""],
+        ["", "", "", "", ""],  # blank email -> ignored
+    ]
+    rows, emails = parse_subscription_registry(os_grid)
+    assert emails == {"acosentino@apache.org", "b@apache.org"}
+    assert rows[0] == [
+        "Andrea Cosentino",
+        "acosentino@apache.org",
+        "camel",
+        "2026-05-13",
+        "Expedite requested",
+    ]
+
+
+def test_parse_registry_unknown_layout_is_empty() -> None:
+    # No matching header (e.g. an older tab layout) -> re-seed from scratch.
+    assert parse_subscription_registry([["PMC", "Slug", "addrs"], ["x", "y", "z"]]) == ([], set())
+    assert parse_subscription_registry([]) == ([], set())

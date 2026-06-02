@@ -60,9 +60,36 @@ Google Sheets API v4 directly.
   expedite-asked addresses. Append the confirmed
   `@apache.org` address to the `Claude OSS Subscriptions
   Submitted` cell (preserve existing addresses; newline-
-  separated). This cell tracks actually-granted outcomes,
-  distinct from `Expedite Claude OSS Requests` which tracks
-  what the PMC asked us to expedite for.
+  separated). This cell tracks addresses for which the
+  OSS-subscription expedite has been **submitted to the
+  vendor** — distinct from `Expedite Claude OSS Requests`,
+  which tracks what the PMC asked us to expedite for.
+
+  **Auto-synced on every refresh.** You normally don't edit
+  this cell by hand: `build-status-tab` appends each
+  *submitted* PMC's `Expedite Claude OSS Requests` addresses
+  into `Claude OSS Subscriptions Submitted` on every live
+  refresh (append-only — never removes an address already
+  there). "Submitted" means the PMC's `Date scan requested`
+  is set, because the expedite list rides the headline
+  scan-submission form. So once a PMC is submitted with a
+  non-empty expedite list, its addresses flow into this cell
+  automatically at the next refresh; manual appends are only
+  needed for out-of-band additions.
+
+  **The `OSS Subscriptions` tab** is the human-facing,
+  per-person view of all this: a persistent registry with
+  columns `Name · Email · PMC · Date · Submitted manually`, also rebuilt by
+  `build-status-tab` on every refresh. It is **append-only** —
+  `Name` and `Submitted manually` are maintained **by hand** (resolve the
+  person's name; record when/how the subscription was actually
+  submitted or granted) and are **preserved** across refreshes;
+  the tool only ever *appends* a new person (with **both `Name`
+  and `Submitted manually` blank**, to fill in) when a submitted PMC gains a
+  new expedite address.
+  So edit `Name` / `Submitted manually` directly on that tab; never clear it
+  expecting the tool to rebuild names (it won't — it preserves
+  what's there and only adds missing people).
 
 Skip this skill when the user is only asking for the *current*
 state — that's `glasswing-scan-status`. Skip it when the user is
@@ -313,7 +340,7 @@ Subcommands:
 | `insert-column --spreadsheet-id ID --sheet S --after H --header NEW [--dry-run]` | Insert a new column at a specific position in a sheet (right after the column with header `H`). Idempotent. |
 | `add-columns --spreadsheet-id ID --sheet S --headers H1 H2 ... [--dry-run]` | Append new column headers to the end of a sheet. Idempotent per header. |
 | `rename-column --spreadsheet-id ID --sheet S --old H --new NEW [--dry-run]` | Rename the header text at row 1 of a sheet's column. |
-| `build-status-tab --spreadsheet-id ID [--dry-run]` | Rebuild the derived-view tabs from the PMCs sheet — `Status in progress` (in-flight table), `Program totals` (grouped rollup + PMC-funnel bar chart), `Completed`, `Timeline` (milestone dates + funnel-over-time stacked chart), and `README` (auto tab-overview + colour legend) — then overwrite the private dashboard gist with a markdown rendering of the program totals (see the [`glasswing-dashboard`](../glasswing-dashboard/SKILL.md) SKILL). Colour-coded by pipeline state; idempotent; overwrites the existing tab contents and chart(s). `--dry-run` prints the dashboard preview and pushes nothing. |
+| `build-status-tab --spreadsheet-id ID [--dry-run]` | Rebuild the derived-view tabs from the PMCs sheet — `Status in progress` (in-flight table), `Program totals` (grouped rollup + PMC-funnel bar chart), `Completed`, `Timeline` (milestone dates + funnel-over-time stacked chart), and `README` (auto tab-overview + colour legend) — then overwrite the private dashboard gist with a markdown rendering of the program totals (see the [`glasswing-dashboard`](../glasswing-dashboard/SKILL.md) SKILL). Colour-coded by pipeline state; idempotent; overwrites the existing tab contents and chart(s). Also **syncs the OSS subscriptions**: appends each submitted PMC's `Expedite Claude OSS Requests` addresses into the `Claude OSS Subscriptions Submitted` column (append-only) **and** into the per-person `OSS Subscriptions` tab (`Name · Email · PMC · Date · Submitted manually`; append-only, `Name`/`Status` hand-maintained + preserved). `--dry-run` prints the dashboard preview and pushes nothing (and skips the column sync). |
 
 Safety properties baked into the helper:
 
