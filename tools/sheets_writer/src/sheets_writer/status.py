@@ -778,6 +778,61 @@ def parse_subscription_registry(
     return rows, emails
 
 
+LDAP_PEOPLE_URL = "https://whimsy.apache.org/public/public_ldap_people.json"
+
+
+def resolve_apache_names(emails: list[str]) -> dict[str, str]:
+    """Map ``<id>@apache.org`` → committer full name via the Whimsy public LDAP
+    people directory (``{"people": {"<id>": {"name": ...}}}``); the local-part of
+    an ``@apache.org`` address *is* the Apache id.
+
+    Best-effort and network-bound: fetched once with stdlib urllib (no
+    summarising layer), and any failure (offline, timeout) returns ``{}`` so the
+    status refresh still succeeds — unresolved names simply stay blank. Only
+    ``@apache.org`` addresses are looked up; others are ignored.
+    """
+    ids = {e.split("@", 1)[0]: e for e in emails if e.strip().endswith("@apache.org")}
+    if not ids:
+        return {}
+    import json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(LDAP_PEOPLE_URL, timeout=30) as resp:  # noqa: S310
+            people = json.load(resp).get("people", {})
+    except Exception:  # noqa: BLE001 — name resolution is best-effort
+        return {}
+    out: dict[str, str] = {}
+    for apache_id, email in ids.items():
+        name = (people.get(apache_id) or {}).get("name", "").strip()
+        if name:
+            out[email] = name
+    return out
+
+
+def fill_registry_names(rows: list[list[str]], resolver=resolve_apache_names) -> int:
+    """Fill a blank Name (column 0) on each registry row from the Apache
+    committer directory, keyed by the row's ``@apache.org`` email (column 1).
+
+    Auto-fills people the subscription sync appended with no name *and*
+    backfills historical blank-name rows; a non-blank (hand-entered) Name is
+    always preserved — manual edits win. ``resolver`` is injectable for tests.
+    Returns the number of names filled. Mutates ``rows`` in place.
+    """
+    pending = [r[1].strip() for r in rows if len(r) > 1 and not r[0].strip() and r[1].strip()]
+    if not pending:
+        return 0
+    name_map = resolver(pending)
+    filled = 0
+    for r in rows:
+        if len(r) > 1 and not r[0].strip():
+            name = name_map.get(r[1].strip(), "")
+            if name:
+                r[0] = name
+                filled += 1
+    return filled
+
+
 def sync_oss_subscriptions(
     service, spreadsheet_id: str, grid: list[list[str]], col_idx: dict
 ) -> int:
@@ -1251,23 +1306,27 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     except Exception:  # noqa: BLE001 — tab may not exist yet on a first run
         os_grid = []
     existing_rows, existing_emails = parse_subscription_registry(os_grid)
-    # New people are appended with blank Name + blank Status — both are
-    # filled in by hand; the tool only auto-fills Email/PMC/Date.
+    # New people are appended with blank Name + blank Status. Status stays
+    # hand-maintained; Name is auto-resolved from the Apache committer directory
+    # (and historical blank-name rows are backfilled) just below.
     additions = [
         ["", email, slug, date, ""]
         for email, slug, date in subscription_email_rows(grid, col_idx)
         if email not in existing_emails
     ]
     registry_rows = existing_rows + additions
+    # Resolve committer names for any blank-Name row (new appends + historical
+    # blanks); hand-entered names are preserved. Best-effort (offline → blank).
+    names_filled = fill_registry_names(registry_rows)
     os_sub = _Tab()
     os_sub.row([f"Glasswing scan pipeline — OSS Subscriptions · as of {today}"], header=True)
     os_sub.row(
         [
             "Per-person registry of Claude-for-Open-Source (Max 20x) expedite "
-            "requests. Append-only: Name and Status are maintained by hand and "
-            "preserved across refreshes; a new person is appended automatically "
-            "(Name + Status blank, to fill in) when a submitted PMC's expedite "
-            "list grows."
+            "requests. Append-only: a new person is appended automatically when "
+            "a submitted PMC's expedite list grows. Name is auto-resolved from "
+            "the Apache committer directory (hand edits preserved); Status is "
+            "maintained by hand. Both are preserved across refreshes."
         ]
     )
     os_sub.row(
@@ -1375,7 +1434,8 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         f"'{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
         f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
         f"'{TIMELINE_SHEET}' ({len(entries)} events), "
-        f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, {len(additions)} new), "
+        f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, {len(additions)} new, "
+        f"{names_filled} name(s) resolved), "
         f"'{README_SHEET}' ({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."
