@@ -375,17 +375,65 @@ name written to the sheet; the team's actual activity in
 that state is a pre-forward sanity check, not per-finding
 triage — see `glasswing-scan-forward`.)
 
-### Step 3 — GitHub PR sweep
+### Step 3 — GitHub PR sweep (state + attention triage)
 
 For each PMC with a non-empty `PR/Issues` cell:
 
 - Parse the URL(s).
-- Query `gh pr view <url> --json state,merged,mergeable,
-  reviewDecision,latestReviews` to get the current state.
-- Bucket the PR: `open` / `closed` / `merged`.
-- Note: a merged AGENTS.md PR means we can re-run
+- Query each PR's current state. Pull enough to triage
+  attention, not just open/closed:
+
+  ```
+  gh pr view <url> --json number,state,isDraft,merged,mergeable,\
+    reviewDecision,updatedAt,author,comments,reviews,statusCheckRollup
+  ```
+
+- Bucket the PR by lifecycle: `open` / `closed` / `merged`.
+- Note: a merged AGENTS.md / model PR means we can re-run
   `glasswing-model-verify`'s discoverability check on that
   repo; surface it.
+
+**Attention triage (run on every sweep — this is the
+"are any PRs waiting on *us*?" pass).** The Security team
+opens many PRs on PMC repos (model + discoverability), almost
+all authored by the operator's GitHub identity via
+`asf-security/*` fork branches. Those PRs accumulate reviewer
+feedback, CI results, and merge drift that the team must act
+on, and that rot silently between sweeps if nobody looks. For
+every **open** PR, classify into one or more attention flags
+(skip merged/closed — just tally them):
+
+| Flag | Signal (`gh pr view` field) | Why it needs us |
+| --- | --- | --- |
+| `pr-needs-reply` | A `comments`/`reviews` entry from someone **other than the PR author (us)** is newer than the author's last activity — the ball is in our court. | A maintainer asked a question / pushed back and we haven't answered; silence reads as abandonment. |
+| `pr-changes-requested` | `reviewDecision == CHANGES_REQUESTED` | A reviewer is blocking on requested edits. |
+| `pr-ci-failing` | `statusCheckRollup` has any `FAILURE`/`ERROR` | Our PR is red; the PMC won't merge a red PR. |
+| `pr-conflict` | `mergeable == CONFLICTING` | Needs a rebase before it can land. |
+| `pr-approved-awaiting-merge` | `reviewDecision == APPROVED`, still open | Low-priority: ready, just needs the PMC to click merge — a nudge candidate. |
+
+The `pr-needs-reply` test mirrors hard rule 7 for email:
+**who acted last?** Compare the latest non-author comment/review
+timestamp against the author's (our) latest commit/comment; if
+theirs is newer, it's awaiting us. Don't infer from
+`updatedAt` alone — a CI re-run bumps it without a human
+acting.
+
+A PR can carry several flags (e.g. `pr-needs-reply` +
+`pr-ci-failing`). Collect, per flagged PR: PMC, `owner/repo#num`,
+the flags, the commenter + a one-line gist of what they want,
+and `updatedAt`. These feed the
+`prs-needing-attention` section of the action list (Step 5)
+and are **the Security team's, not the PMC's, to clear** —
+route each to `glasswing-model-verify` (for model-PR review
+threads) or a direct reply/rebase/CI-fix, gated on operator
+approval per that SKILL's draft-and-confirm rules. The
+`pr-approved-awaiting-merge` set is surfaced separately as
+merge-nudge candidates (the merge itself is the PMC's call).
+
+This pass is **wide** (every open PR across every in-flight
+PMC), so for a large cohort fan it out — but it runs on
+**every** sweep; a PR left waiting on us for days is exactly
+the kind of state this umbrella exists to surface.
 
 ### Step 4 — Cross-reference and classify
 
@@ -471,6 +519,15 @@ Output format:
 
 ### mirko-correspondence (N)
 - <thread> — re: <PMC>; <one-line summary>.
+
+### prs-needing-attention (N)   [waiting on US — from Step 3 triage]
+- <PMC> — <owner/repo#num> — <flags: pr-needs-reply / pr-changes-requested /
+  pr-ci-failing / pr-conflict> — <commenter>: <one-line gist>; last
+  activity <date>. Next: glasswing-model-verify (model-PR review threads) or
+  direct reply / rebase / CI fix.
+
+### prs-approved-awaiting-merge (N)   [merge is the PMC's call — nudge candidates]
+- <PMC> — <owner/repo#num> — approved <date>; open <D> days. Optional nudge.
 
 ## Awaiting PMC reply (no action needed)
 - <PMC> — we replied <date>; <D days> ago.
