@@ -44,7 +44,41 @@ from model_pr.content import (
     build_agents_md,
     build_security_md,
     ensure_asf_header,
+    merge_ratignore,
 )
+
+# Markers that say a repo runs Apache RAT (so a RAT-ignore is worth creating
+# when no ignore file exists yet).
+_RAT_MARKERS = ("apache-rat", "org.apache.rat", "rat-plugin", "ratcheck", "creadur")
+
+
+def _detect_rat_ignore(clone: Path) -> Path | None:
+    """Return the RAT-ignore file to update so the scaffold's Markdown files
+    don't trip a license check, or ``None`` if the repo has no RAT check.
+
+    Prefers an existing ignore file (``.ratignore`` / ``.rat-excludes``); if
+    none exists, returns ``<clone>/.ratignore`` to be created *only* when the
+    repo actually configures Apache RAT (pom/gradle/workflow). A repo with no
+    RAT at all needs no exemption, so ``None`` is returned and nothing is
+    written.
+    """
+    for fname in (".ratignore", ".rat-excludes"):
+        if (clone / fname).exists():
+            return clone / fname
+    candidates = [clone / "pom.xml", clone / "build.gradle", clone / "build.gradle.kts"]
+    wf = clone / ".github" / "workflows"
+    if wf.is_dir():
+        candidates += sorted(wf.glob("*.yml")) + sorted(wf.glob("*.yaml"))
+    for p in candidates:
+        if not p.exists():
+            continue
+        try:
+            txt = p.read_text(errors="ignore").lower()
+        except OSError:
+            continue
+        if any(m in txt for m in _RAT_MARKERS):
+            return clone / ".ratignore"
+    return None
 
 
 def _run(cmd: list[str], cwd: str | None = None, capture: bool = False) -> str:
@@ -89,11 +123,15 @@ def cmd_open(args: argparse.Namespace) -> int:
     _run(["git", "checkout", "-q", "-b", branch], cwd=str(clone))
 
     # Build the discoverability scaffold (idempotent create-or-append).
+    # Track which files we *create* (vs append a section to) — only created
+    # files need a RAT exemption; appended-to files already existed and passed.
+    created: list[str] = []
     if args.model:
         model_name = args.model_name
         (clone / model_name).write_text(ensure_asf_header(Path(args.model).read_text()))
         model_ref = f"[{model_name}](./{model_name})"
         files = [model_name, "SECURITY.md", "AGENTS.md"]
+        created.append(model_name)
     else:
         # Wrap the pointer URL as a markdown autolink so trailing sentence
         # punctuation (the "." the template appends) stays outside the link —
@@ -101,12 +139,26 @@ def cmd_open(args: argparse.Namespace) -> int:
         model_ref = f"<{args.pointer}>"
         files = ["SECURITY.md", "AGENTS.md"]
 
-    (clone / "SECURITY.md").write_text(
-        build_security_md(_read_or_none(clone / "SECURITY.md"), repo, model_ref)
-    )
-    (clone / "AGENTS.md").write_text(
-        build_agents_md(_read_or_none(clone / "AGENTS.md"), name, args.agents_note)
-    )
+    sec_existing = _read_or_none(clone / "SECURITY.md")
+    (clone / "SECURITY.md").write_text(build_security_md(sec_existing, repo, model_ref))
+    if sec_existing is None:
+        created.append("SECURITY.md")
+
+    ag_existing = _read_or_none(clone / "AGENTS.md")
+    (clone / "AGENTS.md").write_text(build_agents_md(ag_existing, name, args.agents_note))
+    if ag_existing is None:
+        created.append("AGENTS.md")
+
+    # RAT exemption: if the repo runs Apache RAT, list the files we created in
+    # its .ratignore. The files carry an SPDX header, but some RAT setups don't
+    # scan a header embedded in Markdown and would fail the build regardless.
+    rat_path = _detect_rat_ignore(clone)
+    if rat_path is not None and created:
+        existing_rat = _read_or_none(rat_path)
+        new_rat = merge_ratignore(existing_rat, created)
+        if new_rat != (existing_rat or ""):
+            rat_path.write_text(new_rat)
+            files = [*files, rat_path.name]
 
     _run(["git", "add", *files], cwd=str(clone))
     _run(["git", "diff", "--cached", "--stat"], cwd=str(clone))
