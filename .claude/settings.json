@@ -10,7 +10,8 @@
       "mcp__ponymail__auth_status",
       "mcp__ponymail__get_email",
       "mcp__ponymail__get_thread",
-      "mcp__ponymail__search_list"
+      "mcp__ponymail__search_list",
+      "Bash(lychee *)"
     ]
   }
 }
