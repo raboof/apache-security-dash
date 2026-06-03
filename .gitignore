@@ -22,6 +22,10 @@ __pycache__/
 # Every framework skill is symlinked under the magpie- prefix, so a
 # single glob covers them all. Layout B (per-skill double-symlinked)
 # → both layers need the ignore line. The committed magpie-setup
-# bootstrap is force-added, so this glob does not untrack it.
+# bootstrap is kept tracked by the !negation lines below — without
+# them the magpie-* glob would ignore it and a plain `git add` would
+# silently skip the one copied framework skill.
 /.claude/skills/magpie-*
+!/.claude/skills/magpie-setup
 /.github/skills/magpie-*
+!/.github/skills/magpie-setup
