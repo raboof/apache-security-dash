@@ -25,6 +25,7 @@ from model_pr.content import (
     build_agents_md,
     build_security_md,
     ensure_asf_header,
+    merge_ratignore,
 )
 
 
@@ -104,25 +105,25 @@ def test_open_argparse_model() -> None:
     assert args.pointer is None
 
 
-# --- ASF license header (Apache RAT compliance on generated files) ---
+# --- SPDX license header (short form) + RAT exemption on generated files ---
 
 
-def test_security_md_create_has_asf_header() -> None:
+def test_security_md_create_has_spdx_header() -> None:
     out = build_security_md(None, "apache/x", "[THREAT_MODEL.md](./THREAT_MODEL.md)")
     assert out.startswith("<!--")
-    assert "Apache License" in out.splitlines()[3] or "Apache License" in out[:400]
+    assert "SPDX-License-Identifier: Apache-2.0" in out[:200]
 
 
-def test_agents_md_create_has_asf_header() -> None:
+def test_agents_md_create_has_spdx_header() -> None:
     out = build_agents_md(None, "x")
     assert out.startswith("<!--")
-    assert "Apache License" in out[:400]
+    assert "SPDX-License-Identifier: Apache-2.0" in out[:200]
 
 
 def test_ensure_asf_header_prepends_when_missing() -> None:
     out = ensure_asf_header("# Apache Foo — Threat Model\n\nbody\n")
     assert out.startswith("<!--")
-    assert "Apache License" in out[:400]
+    assert "SPDX-License-Identifier: Apache-2.0" in out[:200]
     assert "# Apache Foo" in out
 
 
@@ -142,7 +143,32 @@ def test_ensure_asf_header_adds_when_apache_only_in_prose() -> None:
     doc = "# Apache Foo Threat Model\n\nFoo ships under the Apache License 2.0.\n"
     out = ensure_asf_header(doc)
     assert out.startswith("<!--")
-    assert out.count("Licensed under the Apache License") >= 1
+    assert "SPDX-License-Identifier: Apache-2.0" in out[:200]
+    assert out.count("# Apache Foo Threat Model") == 1
+
+
+def test_merge_ratignore_create() -> None:
+    out = merge_ratignore(None, ["THREAT_MODEL.md", "SECURITY.md", "AGENTS.md"])
+    for f in ("THREAT_MODEL.md", "SECURITY.md", "AGENTS.md"):
+        assert f in out.splitlines()
+    assert out.endswith("\n")
+
+
+def test_merge_ratignore_appends_preserving_existing() -> None:
+    existing = "target/\n*.log\n"
+    out = merge_ratignore(existing, ["THREAT_MODEL.md"])
+    assert out.startswith("target/\n*.log\n")
+    assert "THREAT_MODEL.md" in out.splitlines()
+
+
+def test_merge_ratignore_idempotent() -> None:
+    once = merge_ratignore("target/\n", ["THREAT_MODEL.md", "AGENTS.md"])
+    assert merge_ratignore(once, ["THREAT_MODEL.md", "AGENTS.md"]) == once
+
+
+def test_merge_ratignore_noop_when_all_present() -> None:
+    existing = "THREAT_MODEL.md\nSECURITY.md\n"
+    assert merge_ratignore(existing, ["THREAT_MODEL.md", "SECURITY.md"]) == existing
 
 
 def test_security_md_pointer_autolink_keeps_period_outside() -> None:
