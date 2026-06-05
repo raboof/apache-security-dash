@@ -635,8 +635,12 @@ Pre-flight is complete for Apache <PMC name>:
     PR(s)#NN+#NN>.
 
 Ready to queue whenever you give the green light — we
-don't auto-submit. Typical end-to-end cycle is days to
-a couple of weeks depending on queue position.
+don't auto-submit. One scheduling note worth flagging:
+this round of the program runs against a fixed window that
+closes 30 June 2026, so the earlier you can green-light (and
+land anything still in flight above), the more comfortably we
+can fit your run in before it closes. Typical end-to-end cycle
+is days to a couple of weeks depending on queue position.
 
 A program-shape note for context.
 

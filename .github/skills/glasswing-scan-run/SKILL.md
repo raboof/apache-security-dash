@@ -83,6 +83,49 @@ moves an engagement through it. This SKILL doesn't replicate
 that logic — it just figures out which stage each engagement
 is *in* and surfaces what to do next.
 
+## Program timeline — the window is now time-boxed (read this)
+
+Until late May 2026 the program ran on a *"no rush"* footing:
+scans went through the third-party **vendor-relay path**
+(Alpha-Omega runs the scan off a Google-Form submission and
+emails the report back), the queue was open-ended, and PMCs
+were told there was no deadline.
+
+That changed with Anthropic/Glasswing's **27 May 2026 donation
+of $1M in Mythos credits to the ASF**, which opens a
+**direct-internal path**: the ASF Security / Infra / Tooling
+teams run scans themselves on directly-granted Mythos access,
+with no vendor relay. Both paths feed the same internal queue
+and look identical from a PMC's seat (pre-flight → scan →
+sanity-check → forward); the operator works whichever lands
+fastest for a given PMC. But the donation carries hard
+conditions (per Sally Khudairi's 27 May ai-discuss update and
+her 30 May all-PMC mail, both already seen by PMCs):
+
+- **Hard expiry: 30 June 2026.** Access for this round ends
+  then; credits unused by that date are gone.
+- **Internal cybersecurity use only** — vulnerability
+  discovery, code review, defensive tooling; no general
+  engineering use.
+- **~1 dozen seats**, individually authenticated (no shared
+  credentials), reviewer ideally US-based + security-check
+  cleared.
+
+What this changes for *this* SKILL is the **patience posture**.
+Engagements parked in `awaiting-pmc-reply`,
+`blocked-on-discoverability`, `blocked-on-gate-2`,
+`model-verify-pending`, or
+`pmc-pitch-replied-awaiting-operator-decision` are no longer
+"fine to leave indefinitely" — every PMC that wants in *this*
+round has to clear its outstanding items with enough runway to
+be queued and scanned before 30 June. The overdue/nudge logic
+in Step 4 is tightened accordingly while the window is open, and
+a gentle-but-firm nudge canned response (topic `deadline`) exists
+for exactly these stalled PMCs. The signed-up PMCs already in the
+pipeline keep their spot — the nudge is about getting their (and
+new entrants') prerequisites in on time, not about re-qualifying
+them.
+
 ## When to invoke
 
 - **Start of a work session.** "Where do we stand on
@@ -205,6 +248,45 @@ straight to `glasswing-scan-response`).
    Superset) — pagination alone would not have caught them.
 
 ## Procedure
+
+### Shell-safety note — write `awk`/`jq` programs to a file, never inline
+
+Several steps below post-process tool output with `awk` or `jq`
+(the PR-attention triage in Step 3, the thread-direction
+extraction in Step 1, the spreadsheet projection in Step 2).
+**Do not pass non-trivial `awk`/`jq` programs as inline
+single-quoted strings to the Bash tool.** The session shell is
+`zsh`, and `awk` programs containing `!` (e.g. `!=`, `!isbot`)
+get mangled by history-expansion/quoting before `awk` ever sees
+them — the program arrives with stray backslashes (`$7\!=ours`)
+and dies with `awk: syntax error`. This repeatedly cost
+re-runs during the 2026-06-04 sweep.
+
+Instead, **write the program to a file in `$TMPDIR` / `/tmp/claude`
+and run it with `-f`:**
+
+```bash
+cat > /tmp/claude/pr_analyze.awk <<'AWK'
+BEGIN{FS="\t"}
+$3=="OPEN" && $4=="CHANGES_REQUESTED" { ... }
+AWK
+awk -f /tmp/claude/pr_analyze.awk /tmp/claude/pr_state.tsv
+```
+
+The quoted `<<'AWK'` heredoc (single-quoted delimiter) passes
+the body through verbatim — no history expansion, no variable
+interpolation, no `!` mangling. The same applies to multi-line
+`jq` filters: write them to a `.jq` file and use
+`jq -f file.jq`, or — when the JSON comes straight from a tool
+that emits its own `jq` (e.g. `gh ... --json ... --jq '<expr>'`)
+— prefer that tool's built-in `--jq`, which parses the JSON
+natively and sidesteps both the shell-quoting hazard and the
+control-characters-in-piped-bodies hazard (comment/review
+bodies contain raw newlines that a shell `echo "$json" | jq`
+round-trip chokes on).
+
+Rule of thumb: anything past a one-liner with no `!` goes in a
+file.
 
 ### Step 1 — Email sweep
 
@@ -460,8 +542,18 @@ classification:
 
 The "time-overdue" rule: any engagement in `awaiting-pmc-reply`
 or `submitted-awaiting-vendor` for more than 14 days gets
-flagged for a nudge. Don't draft the nudge automatically;
-surface it for the user.
+flagged for a nudge. **While the 30 June 2026 Mythos window is
+open (see "Program timeline — the window is now time-boxed"
+above), tighten this:** any PMC that still owes *us* something
+before it can be queued — `awaiting-pmc-reply`,
+`blocked-on-discoverability`, `blocked-on-gate-2`,
+`model-verify-pending`, or
+`pmc-pitch-replied-awaiting-operator-decision` — and has been
+quiet for more than ~7 days is a nudge candidate, because the
+runway to clear those items *and still queue before the
+deadline* is short. Don't draft the nudge automatically;
+surface it for the user and point at the `deadline`-topic
+canned response (gentle-but-firm) for these stalled PMCs.
 
 ### Step 5 — Produce the action list
 
