@@ -206,6 +206,45 @@ straight to `glasswing-scan-response`).
 
 ## Procedure
 
+### Shell-safety note — write `awk`/`jq` programs to a file, never inline
+
+Several steps below post-process tool output with `awk` or `jq`
+(the PR-attention triage in Step 3, the thread-direction
+extraction in Step 1, the spreadsheet projection in Step 2).
+**Do not pass non-trivial `awk`/`jq` programs as inline
+single-quoted strings to the Bash tool.** The session shell is
+`zsh`, and `awk` programs containing `!` (e.g. `!=`, `!isbot`)
+get mangled by history-expansion/quoting before `awk` ever sees
+them — the program arrives with stray backslashes (`$7\!=ours`)
+and dies with `awk: syntax error`. This repeatedly cost
+re-runs during the 2026-06-04 sweep.
+
+Instead, **write the program to a file in `$TMPDIR` / `/tmp/claude`
+and run it with `-f`:**
+
+```bash
+cat > /tmp/claude/pr_analyze.awk <<'AWK'
+BEGIN{FS="\t"}
+$3=="OPEN" && $4=="CHANGES_REQUESTED" { ... }
+AWK
+awk -f /tmp/claude/pr_analyze.awk /tmp/claude/pr_state.tsv
+```
+
+The quoted `<<'AWK'` heredoc (single-quoted delimiter) passes
+the body through verbatim — no history expansion, no variable
+interpolation, no `!` mangling. The same applies to multi-line
+`jq` filters: write them to a `.jq` file and use
+`jq -f file.jq`, or — when the JSON comes straight from a tool
+that emits its own `jq` (e.g. `gh ... --json ... --jq '<expr>'`)
+— prefer that tool's built-in `--jq`, which parses the JSON
+natively and sidesteps both the shell-quoting hazard and the
+control-characters-in-piped-bodies hazard (comment/review
+bodies contain raw newlines that a shell `echo "$json" | jq`
+round-trip chokes on).
+
+Rule of thumb: anything past a one-liner with no `!` goes in a
+file.
+
 ### Step 1 — Email sweep
 
 Search Gmail for `subject:GLASSWING OR subject:Glasswing`.
