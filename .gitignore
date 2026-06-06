@@ -29,3 +29,8 @@ __pycache__/
 !/.claude/skills/magpie-setup
 /.github/skills/magpie-*
 !/.github/skills/magpie-setup
+# Universal agent-skills target (.agents/skills/) — the neutral path
+# shared by Codex, Cursor, Gemini CLI, Copilot, OpenCode, … wired flat
+# into the snapshot. Same magpie-* glob + magpie-setup negation.
+/.agents/skills/magpie-*
+!/.agents/skills/magpie-setup
