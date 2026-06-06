@@ -47,10 +47,11 @@ extend-exclude = [
   # land here later).
   "*.tracker.txt",
   # Vendored Apache Magpie framework content — the gitignored snapshot
-  # and the one committed framework skill (`magpie-setup`). Upstream
-  # prose is spell-checked in apache/airflow-steward and reconciled here
-  # by `/magpie-setup upgrade`, so we don't hand-edit it to satisfy our
+  # and the one committed framework skill (`magpie-setup`), now canonical
+  # at `.agents/skills/magpie-setup/` (relayed into `.claude` / `.github`).
+  # Upstream prose is spell-checked in apache/airflow-steward and reconciled
+  # here by `/magpie-setup upgrade`, so we don't hand-edit it to satisfy our
   # local typos config (e.g. legitimate hyphenated "mis-apply").
   ".apache-magpie/**",
-  ".github/skills/magpie-setup/**",
+  ".agents/skills/magpie-setup/**",
 ]
