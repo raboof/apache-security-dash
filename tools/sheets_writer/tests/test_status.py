@@ -565,8 +565,9 @@ def _counts(e: dict, d: str) -> dict:
     return repo_state_counts_asof(e, d, PIPELINE_STATES)
 
 
-def test_repo_state_counts_progress_submitted_subset_rest_cap_at_ready() -> None:
-    # 3 requested, 1 submitted; full milestone history.
+def test_repo_state_counts_held_back_repos_stay_preflight_not_ready() -> None:
+    # 3 requested, 1 submitted; full milestone history. The 2 unsubmitted repos
+    # were held back once submission started -> they must NOT count as Ready.
     e = _funnel_entry(
         request_date="2026-05-01",
         model_verified_date="2026-05-05",
@@ -580,17 +581,33 @@ def test_repo_state_counts_progress_submitted_subset_rest_cap_at_ready() -> None
     assert _counts(e, "2026-04-30") == dict.fromkeys(PIPELINE_STATES, 0)
     # Requested only -> all 3 Pre-flight.
     assert _counts(e, "2026-05-01")["Pre-flight"] == 3
-    # Model verified -> all 3 Ready.
-    assert _counts(e, "2026-05-05")["Ready"] == 3
-    # Submitted -> 1 Submitted, 2 (unsubmitted) cap at Ready.
+    # Model verified but the PMC went on to submit only 1 -> the held-back 2 are
+    # Pre-flight, and the to-be-submitted 1 is Ready at this point.
+    c = _counts(e, "2026-05-05")
+    assert c["Ready"] == 1 and c["Pre-flight"] == 2
+    # Submitted -> 1 Submitted, 2 held-back stay Pre-flight (NOT Ready).
     c = _counts(e, "2026-05-10")
-    assert c["Submitted"] == 1 and c["Ready"] == 2
-    # Received -> 1 Triaging, 2 Ready.
+    assert c["Submitted"] == 1 and c["Pre-flight"] == 2 and c["Ready"] == 0
+    # Received -> 1 Triaging, 2 Pre-flight.
     c = _counts(e, "2026-05-15")
-    assert c["Triaging"] == 1 and c["Ready"] == 2
-    # Forwarded -> 1 Delivered, 2 Ready.
+    assert c["Triaging"] == 1 and c["Pre-flight"] == 2
+    # Forwarded -> 1 Delivered, 2 Pre-flight.
     c = _counts(e, "2026-05-20")
-    assert c["Delivered"] == 1 and c["Ready"] == 2
+    assert c["Delivered"] == 1 and c["Pre-flight"] == 2 and c["Ready"] == 0
+
+
+def test_repo_state_counts_wholesale_ready_pmc_repos_are_ready() -> None:
+    # Model verified, nothing submitted yet -> every requested repo is genuinely
+    # waiting only for the operator go-ahead, so all count as Ready.
+    e = _funnel_entry(
+        request_date="2026-05-01",
+        model_verified_date="2026-05-05",
+        repos_requested_count=4,
+        repos_submitted_count=0,
+    )
+    assert _counts(e, "2026-05-01")["Pre-flight"] == 4  # before model verified
+    assert _counts(e, "2026-05-05")["Ready"] == 4  # verified, nothing submitted
+    assert _counts(e, "2026-06-01")["Ready"] == 4
 
 
 def test_repo_state_counts_total_per_pmc_is_constant_after_request() -> None:
@@ -606,6 +623,7 @@ def test_repo_state_counts_total_per_pmc_is_constant_after_request() -> None:
 
 
 def test_repo_funnel_timeseries_aggregates_across_pmcs() -> None:
+    # e1: partially-submitted PMC (1 of 3) -> 2 held back stay Pre-flight.
     e1 = _funnel_entry(
         request_date="2026-05-01",
         model_verified_date="2026-05-05",
@@ -613,6 +631,7 @@ def test_repo_funnel_timeseries_aggregates_across_pmcs() -> None:
         repos_requested_count=3,
         repos_submitted_count=1,
     )
+    # e2: requested only, no model yet -> Pre-flight.
     e2 = _funnel_entry(
         request_date="2026-05-03",
         repos_requested_count=2,
@@ -623,8 +642,10 @@ def test_repo_funnel_timeseries_aggregates_across_pmcs() -> None:
     by_date = {d: dict(zip(PIPELINE_STATES, counts, strict=True)) for d, counts in series}
     # 2026-05-01: e1 3 Pre-flight; e2 not requested yet.
     assert by_date["2026-05-01"]["Pre-flight"] == 3
-    # 2026-05-05: e1 3 Ready; e2 2 Pre-flight.
-    assert by_date["2026-05-05"]["Ready"] == 3 and by_date["2026-05-05"]["Pre-flight"] == 2
-    # 2026-05-10: e1 1 Submitted + 2 Ready; e2 2 Pre-flight.
+    # 2026-05-05: e1 1 Ready (the to-be-submitted) + 2 Pre-flight (held back);
+    #             e2 2 Pre-flight. -> Ready 1, Pre-flight 4.
+    assert by_date["2026-05-05"]["Ready"] == 1 and by_date["2026-05-05"]["Pre-flight"] == 4
+    # 2026-05-10: e1 1 Submitted + 2 Pre-flight (held back, NOT Ready);
+    #             e2 2 Pre-flight. -> Submitted 1, Pre-flight 4, Ready 0.
     assert by_date["2026-05-10"]["Submitted"] == 1
-    assert by_date["2026-05-10"]["Ready"] == 2 and by_date["2026-05-10"]["Pre-flight"] == 2
+    assert by_date["2026-05-10"]["Ready"] == 0 and by_date["2026-05-10"]["Pre-flight"] == 4

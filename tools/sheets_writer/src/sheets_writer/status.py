@@ -973,12 +973,22 @@ def repo_state_counts_asof(e: dict, d: str, states: list[str]) -> dict[str, int]
 
     The repo analogue of ``_state_asof`` (which places a whole PMC in one state).
     A PMC's *submitted* repos (``repos_submitted_count``) progress through
-    Submitted -> Triaging -> Delivered as the PMC's milestone dates pass; the
-    requested-but-not-submitted remainder caps at Ready (they were never sent to
-    the vendor). Before a given milestone's date the repos sit in the latest
-    state actually reached, so each PMC's per-date total stays equal to its
-    requested-repo count — a clean stacked funnel that only ever shifts repos
-    rightward. ISO date strings compare lexically, so plain ``<=`` works.
+    Submitted -> Triaging -> Delivered as the PMC's milestone dates pass.
+
+    The requested-but-not-submitted remainder is the subtle part. A repo only
+    counts as **Ready** when it is genuinely *waiting only for the operator's
+    go-ahead* — i.e. its PMC is wholesale ready: model verified AND nothing
+    submitted yet. Once a PMC has *begun* submitting, the repos it left out were
+    deliberately held back (per-repo discoverability not yet in place, a
+    branch-scoped repo the form can't target, etc.) — those are not ready, so
+    they stay in **Pre-flight** rather than counting as Ready. (This is why e.g.
+    Logging's 17 deferred repos, which still lack AGENTS.md, must not show as
+    Ready.)
+
+    Before a given milestone's date the repos sit in the latest state actually
+    reached, so each PMC's per-date total stays equal to its requested-repo
+    count — a clean stacked funnel. ISO date strings compare lexically, so plain
+    ``<=`` works.
     """
     counts = dict.fromkeys(states, 0)
     n_sub = e.get("repos_submitted_count", 0)
@@ -991,6 +1001,7 @@ def repo_state_counts_asof(e: dict, d: str, states: list[str]) -> dict[str, int]
                 return st
         return None
 
+    # Submitted repos progress through the full pipeline.
     sub_state = _first(
         (
             ("forwarded_date", "Delivered"),
@@ -1002,14 +1013,26 @@ def repo_state_counts_asof(e: dict, d: str, states: list[str]) -> dict[str, int]
     )
     if sub_state and n_sub:
         counts[sub_state] += n_sub
-    non_state = _first(
-        (
-            ("model_verified_date", "Ready"),
-            ("request_date", "Pre-flight"),
-        )
-    )
-    if non_state and n_non:
-        counts[non_state] += n_non
+
+    # Non-submitted requested repos.
+    if n_non:
+        if e.get("submitted_date"):
+            # PMC already started submitting; the remainder was held back (not
+            # yet submittable), so it is NOT ready — it sits in Pre-flight from
+            # the request date onward, never advancing to Ready.
+            req = e.get("request_date")
+            non_state = "Pre-flight" if (req and req <= d) else None
+        else:
+            # Nothing submitted yet: a verified model means these repos are
+            # genuinely waiting only for the operator go-ahead -> Ready.
+            non_state = _first(
+                (
+                    ("model_verified_date", "Ready"),
+                    ("request_date", "Pre-flight"),
+                )
+            )
+        if non_state:
+            counts[non_state] += n_non
     return counts
 
 
