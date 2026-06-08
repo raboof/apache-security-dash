@@ -18,12 +18,16 @@
 from __future__ import annotations
 
 from sheets_writer.status import (
+    SCAN_QUEUE_HEADER,
     _parse_addrs,
     classify_model_origin,
     compute_pmc_status,
     compute_subscription_syncs,
     fill_registry_names,
+    parse_criticality,
+    parse_scan_queue,
     parse_subscription_registry,
+    scan_queue_auto_rows,
     subscription_email_rows,
 )
 
@@ -381,3 +385,155 @@ def test_fill_registry_names_no_blanks_skips_resolver() -> None:
         raise AssertionError("resolver should not be called")
 
     assert fill_registry_names(rows, resolver=_boom) == 0
+
+
+# --- Scan Queue tab --------------------------------------------------------
+
+
+def test_parse_criticality_handles_percent_fraction_and_blank() -> None:
+    assert parse_criticality("48.3%") == 48.3
+    assert parse_criticality("41.9") == 41.9
+    assert parse_criticality("0.483") == 48.3  # 0..1 fraction scaled to percent
+    assert parse_criticality("") is None
+    assert parse_criticality("   ") is None
+    assert parse_criticality("n/a") is None
+
+
+def _pmcs_grid() -> tuple[list[list[str]], dict]:
+    header = [
+        "PMC Name",
+        "PMC Slug",
+        "Repositories submitted",
+        "Date scan requested",
+        "Forwarded scan to PMC",
+    ]
+    grid = [
+        header,
+        ["Apache PDFBox", "pdfbox", "https://github.com/apache/pdfbox", "2026-06-08", ""],
+        [
+            "Apache StormCrawler",
+            "stormcrawler",
+            "https://github.com/apache/stormcrawler",
+            "2026-06-08",
+            "",
+        ],
+        # Delivered PMC: two repos, report already forwarded.
+        [
+            "Apache Dubbo",
+            "dubbo",
+            "https://github.com/apache/dubbo\nhttps://github.com/apache/dubbo-go",
+            "2026-06-01",
+            "2026-06-05",
+        ],
+        # Not submitted — must be excluded.
+        ["Apache Mahout", "mahout", "", "", ""],
+    ]
+    return grid, {h: i for i, h in enumerate(header)}
+
+
+def _repos_grid() -> list[list[str]]:
+    return [
+        ["Repository URL", "Repository Name", "PMC Slug", "Criticality Score (%)"],
+        ["https://github.com/apache/pdfbox", "pdfbox", "pdfbox", "48.3%"],
+        ["https://github.com/apache/stormcrawler", "stormcrawler", "stormcrawler", "41.9%"],
+        ["https://github.com/apache/dubbo", "dubbo", "dubbo", "63.0%"],
+        ["https://github.com/apache/dubbo-go", "dubbo-go", "dubbo", ""],  # blank score
+    ]
+
+
+def test_scan_queue_auto_rows_expands_sorts_and_carries_dates() -> None:
+    grid, col_idx = _pmcs_grid()
+    rows = scan_queue_auto_rows(grid, col_idx, _repos_grid())
+    # One row per submitted repo (4 total); Mahout excluded.
+    assert [r["repo"] for r in rows] == [
+        "https://github.com/apache/dubbo",  # 63.0 — highest
+        "https://github.com/apache/pdfbox",  # 48.3
+        "https://github.com/apache/stormcrawler",  # 41.9
+        "https://github.com/apache/dubbo-go",  # blank score sorts last
+    ]
+    by_repo = {r["repo"]: r for r in rows}
+    assert by_repo["https://github.com/apache/pdfbox"]["pmc"] == "Apache PDFBox"
+    assert by_repo["https://github.com/apache/pdfbox"]["when_ready"] == "2026-06-08"
+    assert by_repo["https://github.com/apache/pdfbox"]["when_report_sent"] == ""
+    # Delivered repo carries the forwarded date through automatically.
+    assert by_repo["https://github.com/apache/dubbo"]["when_report_sent"] == "2026-06-05"
+    assert by_repo["https://github.com/apache/dubbo-go"]["crit"] == ""
+
+
+def test_scan_queue_auto_rows_blank_repositories_sheet_leaves_crit_blank() -> None:
+    grid, col_idx = _pmcs_grid()
+    rows = scan_queue_auto_rows(grid, col_idx, [])
+    # No criticality data -> all blank, all sort last together (by URL).
+    assert all(r["crit"] == "" and r["crit_val"] is None for r in rows)
+    assert len(rows) == 4
+
+
+def test_parse_scan_queue_keys_manual_columns_by_repo() -> None:
+    sq_grid = [
+        ["Glasswing scan pipeline — Scan Queue · as of 2026-06-08"],
+        ["Every repo submitted ..."],
+        ["4 repo(s) submitted to the vendor."],
+        [""],
+        SCAN_QUEUE_HEADER,
+        [
+            "https://github.com/apache/dubbo",
+            "Apache Dubbo",
+            "63.0%",
+            "2026-06-01",
+            "2026-06-03",  # when scanned (manual)
+            "abc1234",  # commit hash (manual)
+            "2026-06-05",
+        ],
+        [
+            "https://github.com/apache/pdfbox",
+            "Apache PDFBox",
+            "48.3%",
+            "2026-06-08",
+            "",  # not yet scanned
+            "",
+            "",
+        ],
+    ]
+    manual = parse_scan_queue(sq_grid)
+    assert manual["https://github.com/apache/dubbo"] == ("2026-06-03", "abc1234")
+    # Blank manual cells round-trip as empty (no spurious entry suppression).
+    assert manual["https://github.com/apache/pdfbox"] == ("", "")
+
+
+def test_parse_scan_queue_unknown_layout_is_empty() -> None:
+    assert parse_scan_queue([]) == {}
+    assert parse_scan_queue([["wrong", "header"], ["x", "y"]]) == {}
+
+
+def test_scan_queue_manual_data_follows_repo_across_resort() -> None:
+    """The preservation contract: hand-entered values are keyed by repo, so when
+    a higher-criticality repo is added later the manual data stays attached to
+    its original repo even though the row index changes."""
+    # Round 1: only pdfbox + stormcrawler submitted; operator hand-fills pdfbox.
+    sq_round1 = [
+        ["title"],
+        ["summary"],
+        ["count"],
+        [""],
+        SCAN_QUEUE_HEADER,
+        [
+            "https://github.com/apache/pdfbox",
+            "Apache PDFBox",
+            "48.3%",
+            "2026-06-08",
+            "2026-06-09",  # manual when-scanned
+            "deadbee",  # manual commit
+            "",
+        ],
+    ]
+    manual = parse_scan_queue(sq_round1)
+    # Round 2: dubbo (higher criticality) now submitted -> it sorts ABOVE pdfbox.
+    grid, col_idx = _pmcs_grid()
+    rows = scan_queue_auto_rows(grid, col_idx, _repos_grid())
+    rendered = [(r["repo"], *manual.get(r["repo"], ("", ""))) for r in rows]
+    # pdfbox is no longer row 0, but its manual data is still attached to it.
+    pdfbox = next(t for t in rendered if t[0] == "https://github.com/apache/pdfbox")
+    assert pdfbox == ("https://github.com/apache/pdfbox", "2026-06-09", "deadbee")
+    # The newly-added higher-criticality repo has no manual data yet.
+    dubbo = next(t for t in rendered if t[0] == "https://github.com/apache/dubbo")
+    assert dubbo == ("https://github.com/apache/dubbo", "", "")
