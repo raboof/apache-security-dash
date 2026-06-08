@@ -27,9 +27,13 @@ from sheets_writer.status import (
     parse_criticality,
     parse_scan_queue,
     parse_subscription_registry,
+    repo_funnel_timeseries,
+    repo_state_counts_asof,
     scan_queue_auto_rows,
     subscription_email_rows,
 )
+
+PIPELINE_STATES = ["Pre-flight", "Ready", "Submitted", "Triaging", "Delivered"]
 
 
 def _row(header: list[str], **overrides) -> tuple[list[str], dict[str, int]]:
@@ -537,3 +541,90 @@ def test_scan_queue_manual_data_follows_repo_across_resort() -> None:
     # The newly-added higher-criticality repo has no manual data yet.
     dubbo = next(t for t in rendered if t[0] == "https://github.com/apache/dubbo")
     assert dubbo == ("https://github.com/apache/dubbo", "", "")
+
+
+# --- Repo funnel over time -------------------------------------------------
+
+
+def _funnel_entry(**over) -> dict:
+    """A PMC entry with the date + repo-count keys the repo funnel reads."""
+    e = {
+        "request_date": "",
+        "model_verified_date": "",
+        "submitted_date": "",
+        "received_date": "",
+        "forwarded_date": "",
+        "repos_requested_count": 0,
+        "repos_submitted_count": 0,
+    }
+    e.update(over)
+    return e
+
+
+def _counts(e: dict, d: str) -> dict:
+    return repo_state_counts_asof(e, d, PIPELINE_STATES)
+
+
+def test_repo_state_counts_progress_submitted_subset_rest_cap_at_ready() -> None:
+    # 3 requested, 1 submitted; full milestone history.
+    e = _funnel_entry(
+        request_date="2026-05-01",
+        model_verified_date="2026-05-05",
+        submitted_date="2026-05-10",
+        received_date="2026-05-15",
+        forwarded_date="2026-05-20",
+        repos_requested_count=3,
+        repos_submitted_count=1,
+    )
+    # Before any milestone -> nothing counted.
+    assert _counts(e, "2026-04-30") == dict.fromkeys(PIPELINE_STATES, 0)
+    # Requested only -> all 3 Pre-flight.
+    assert _counts(e, "2026-05-01")["Pre-flight"] == 3
+    # Model verified -> all 3 Ready.
+    assert _counts(e, "2026-05-05")["Ready"] == 3
+    # Submitted -> 1 Submitted, 2 (unsubmitted) cap at Ready.
+    c = _counts(e, "2026-05-10")
+    assert c["Submitted"] == 1 and c["Ready"] == 2
+    # Received -> 1 Triaging, 2 Ready.
+    c = _counts(e, "2026-05-15")
+    assert c["Triaging"] == 1 and c["Ready"] == 2
+    # Forwarded -> 1 Delivered, 2 Ready.
+    c = _counts(e, "2026-05-20")
+    assert c["Delivered"] == 1 and c["Ready"] == 2
+
+
+def test_repo_state_counts_total_per_pmc_is_constant_after_request() -> None:
+    e = _funnel_entry(
+        request_date="2026-05-01",
+        model_verified_date="2026-05-05",
+        submitted_date="2026-05-10",
+        repos_requested_count=5,
+        repos_submitted_count=2,
+    )
+    for d in ("2026-05-01", "2026-05-05", "2026-05-10", "2026-06-01"):
+        assert sum(_counts(e, d).values()) == 5  # repos only ever shift state
+
+
+def test_repo_funnel_timeseries_aggregates_across_pmcs() -> None:
+    e1 = _funnel_entry(
+        request_date="2026-05-01",
+        model_verified_date="2026-05-05",
+        submitted_date="2026-05-10",
+        repos_requested_count=3,
+        repos_submitted_count=1,
+    )
+    e2 = _funnel_entry(
+        request_date="2026-05-03",
+        repos_requested_count=2,
+        repos_submitted_count=0,
+    )
+    dates = ["2026-05-01", "2026-05-05", "2026-05-10"]
+    series = repo_funnel_timeseries([e1, e2], dates, PIPELINE_STATES)
+    by_date = {d: dict(zip(PIPELINE_STATES, counts, strict=True)) for d, counts in series}
+    # 2026-05-01: e1 3 Pre-flight; e2 not requested yet.
+    assert by_date["2026-05-01"]["Pre-flight"] == 3
+    # 2026-05-05: e1 3 Ready; e2 2 Pre-flight.
+    assert by_date["2026-05-05"]["Ready"] == 3 and by_date["2026-05-05"]["Pre-flight"] == 2
+    # 2026-05-10: e1 1 Submitted + 2 Ready; e2 2 Pre-flight.
+    assert by_date["2026-05-10"]["Submitted"] == 1
+    assert by_date["2026-05-10"]["Ready"] == 2 and by_date["2026-05-10"]["Pre-flight"] == 2

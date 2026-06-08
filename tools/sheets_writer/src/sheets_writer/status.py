@@ -968,6 +968,69 @@ def parse_scan_queue(sq_grid: list[list[str]]) -> dict[str, tuple[str, str]]:
     return out
 
 
+def repo_state_counts_asof(e: dict, d: str, states: list[str]) -> dict[str, int]:
+    """Pure: repo counts for one PMC entry in each pipeline state as of date ``d``.
+
+    The repo analogue of ``_state_asof`` (which places a whole PMC in one state).
+    A PMC's *submitted* repos (``repos_submitted_count``) progress through
+    Submitted -> Triaging -> Delivered as the PMC's milestone dates pass; the
+    requested-but-not-submitted remainder caps at Ready (they were never sent to
+    the vendor). Before a given milestone's date the repos sit in the latest
+    state actually reached, so each PMC's per-date total stays equal to its
+    requested-repo count — a clean stacked funnel that only ever shifts repos
+    rightward. ISO date strings compare lexically, so plain ``<=`` works.
+    """
+    counts = dict.fromkeys(states, 0)
+    n_sub = e.get("repos_submitted_count", 0)
+    n_non = max(0, e.get("repos_requested_count", 0) - n_sub)
+
+    def _first(seq: tuple[tuple[str, str], ...]) -> str | None:
+        for date_key, st in seq:
+            v = e.get(date_key)
+            if v and v <= d:
+                return st
+        return None
+
+    sub_state = _first(
+        (
+            ("forwarded_date", "Delivered"),
+            ("received_date", "Triaging"),
+            ("submitted_date", "Submitted"),
+            ("model_verified_date", "Ready"),
+            ("request_date", "Pre-flight"),
+        )
+    )
+    if sub_state and n_sub:
+        counts[sub_state] += n_sub
+    non_state = _first(
+        (
+            ("model_verified_date", "Ready"),
+            ("request_date", "Pre-flight"),
+        )
+    )
+    if non_state and n_non:
+        counts[non_state] += n_non
+    return counts
+
+
+def repo_funnel_timeseries(
+    entries: list[dict], dates: list[str], states: list[str]
+) -> list[tuple[str, list[int]]]:
+    """Pure: per-date repo counts summed across all PMC entries — one ``(date,
+    counts)`` pair per date in ``dates``, the inner list in ``states`` order.
+    The repo-granularity counterpart of the PMC funnel-over-time series.
+    """
+    out: list[tuple[str, list[int]]] = []
+    for d in dates:
+        agg = dict.fromkeys(states, 0)
+        for e in entries:
+            c = repo_state_counts_asof(e, d, states)
+            for s in states:
+                agg[s] += c[s]
+        out.append((d, [agg[s] for s in states]))
+    return out
+
+
 def sync_oss_subscriptions(
     service, spreadsheet_id: str, grid: list[list[str]], col_idx: dict
 ) -> int:
@@ -1134,6 +1197,11 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             if st:
                 counts[st] += 1
         timeseries.append((d, [counts[s] for s in PIPELINE_STATES]))
+
+    # Repo-granularity funnel over the same milestone dates: each PMC's repos
+    # progress through the pipeline (submitted repos reach Submitted+, the rest
+    # cap at Ready). Drives the second stacked-area chart on the Timeline tab.
+    repo_timeseries = repo_funnel_timeseries(entries, timeline_dates, PIPELINE_STATES)
 
     # 3. Build the "Status in progress" tab: just the in-flight table now (the
     #    colour legend lives on the README tab; totals on 'Program totals').
@@ -1411,9 +1479,9 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         )
 
     tl.row([""])
-    # Funnel over time: PMCs in each pipeline state as of each milestone date.
+    # Funnel over time (PMCs): PMCs in each pipeline state as of each milestone date.
     ts_head = tl.row(
-        ["Funnel over time", *PIPELINE_STATES], color=HEADING_FILL, span=6, header=True
+        ["PMC funnel over time", *PIPELINE_STATES], color=HEADING_FILL, span=6, header=True
     )
     for d, counts in timeseries:
         tl.row([d, *counts])
@@ -1427,6 +1495,29 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             domain=(ts_head, ts_end, 0),
             series=[(ts_head, ts_end, i + 1) for i in range(len(PIPELINE_STATES))],
             anchor=(1, 8),
+            width=640,
+            height=360,
+        )
+
+    tl.row([""])
+    # Funnel over time (repos): submitted repos progress through the pipeline;
+    # requested-but-unsubmitted repos cap at Ready. Same milestone dates, repo
+    # counts instead of PMC counts — a second stacked-area chart below the first.
+    rts_head = tl.row(
+        ["Repo funnel over time", *PIPELINE_STATES], color=HEADING_FILL, span=6, header=True
+    )
+    for d, counts in repo_timeseries:
+        tl.row([d, *counts])
+    rts_end = len(tl.values)
+    if repo_timeseries:
+        tl.border(rts_head, rts_end, 0, 6)
+        tl.chart(
+            title="Repo funnel over time",
+            chart_type="AREA",
+            stacked=True,
+            domain=(rts_head, rts_end, 0),
+            series=[(rts_head, rts_end, i + 1) for i in range(len(PIPELINE_STATES))],
+            anchor=(21, 8),
             width=640,
             height=360,
         )
@@ -1490,6 +1581,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     except Exception:  # noqa: BLE001 — tab may not exist yet on a first run
         sq_grid = []
     manual_by_repo = parse_scan_queue(sq_grid)
+    manual_filled = sum(1 for v in manual_by_repo.values() if any(v))
     queue_rows = scan_queue_auto_rows(grid, col_idx, repos_grid)
     sq = _Tab()
     sq.row([f"Glasswing scan pipeline — Scan Queue · as of {today}"], header=True)
@@ -1538,7 +1630,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             f"'{TIMELINE_SHEET}' ({len(entries)} events), "
             f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, "
             f"{len(additions)} new), '{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, "
-            f"{len(manual_by_repo)} with manual data), '{README_SHEET}' (auto overview "
+            f"{manual_filled} with manual data), '{README_SHEET}' (auto overview "
             f"+ legend). Model origins: "
             + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
             + "."
@@ -1629,7 +1721,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         f"'{TIMELINE_SHEET}' ({len(entries)} events), "
         f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, {len(additions)} new, "
         f"{names_filled} name(s) resolved), "
-        f"'{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, {len(manual_by_repo)} with manual data), "
+        f"'{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, {manual_filled} with manual data), "
         f"'{README_SHEET}' ({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."
