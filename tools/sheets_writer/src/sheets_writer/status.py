@@ -31,6 +31,7 @@ from sheets_writer import (
     PIPELINE_STATES,
     PROGRAM_TOTALS_SHEET,
     README_SHEET,
+    SCAN_QUEUE_SHEET,
     STATE_COLOR,
     STATUS_SHEET,
     TIMELINE_SHEET,
@@ -54,6 +55,7 @@ TAB_DESCRIPTIONS = {
     "PMCs": "every Apache PMC, its private list, and outreach-tracking columns.",
     "Repositories": "every public github.com/apache repo, mapped to its PMC.",
     "OSS Subscriptions": "expedited Claude-for-OSS subscriptions for PMC members.",
+    "Scan Queue": "every submitted repo, criticality-ranked, with manual scan/commit tracking.",
     "Timeline": "wide-format milestone dates per PMC, chart-ready.",
     "Canned Responses": "reusable answers to common PMC questions.",
 }
@@ -833,6 +835,139 @@ def fill_registry_names(rows: list[list[str]], resolver=resolve_apache_names) ->
     return filled
 
 
+# Schema of the 'Scan Queue' tab. "When scanned" and "Commit hash" are
+# hand-maintained (light-yellow) and preserved across refreshes keyed by Repo;
+# every other column is auto-derived from the PMCs + Repositories sheets on each
+# refresh. "When report sent" fills automatically from "Forwarded scan to PMC".
+SCAN_QUEUE_HEADER = [
+    "Repo",
+    "PMC",
+    "Criticality Score (%)",
+    "When ready",
+    "When scanned",
+    "Commit hash",
+    "When report sent",
+]
+# 0-based indexes of the two hand-maintained columns within SCAN_QUEUE_HEADER.
+SCAN_QUEUE_MANUAL_COLS = (4, 5)
+# Light yellow behind the hand-maintained Scan Queue cells, signalling "edit me".
+MANUAL_FILL = {"red": 1.0, "green": 0.97, "blue": 0.80}
+
+
+def parse_criticality(raw: str) -> float | None:
+    """Pure: parse an OSSF criticality cell ("48.3%", "0.483", "") into a float
+    in [0, 100], or None when blank/unparseable (those sort last).
+
+    A bare value <= 1 is treated as a 0..1 fraction and scaled to a percentage;
+    anything larger is taken as an already-percentage number.
+    """
+    s = (raw or "").strip().rstrip("%").strip()
+    if not s:
+        return None
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return v * 100 if v <= 1 else v
+
+
+def scan_queue_auto_rows(
+    grid: list[list[str]], col_idx: dict, repos_grid: list[list[str]]
+) -> list[dict]:
+    """Pure: one record per *submitted* repo, sorted by OSSF criticality
+    (descending; blank last), then repo URL.
+
+    A repo is "submitted" iff it appears in some PMC row's ``Repositories
+    submitted`` cell. Each record carries the auto-derived fields the Scan Queue
+    tab renders: ``repo`` (GitHub URL — the stable key the manual columns are
+    keyed by), ``pmc``, ``crit`` (display string from the Repositories sheet),
+    ``crit_val`` (float|None sort key), ``when_ready`` (``Date scan requested``),
+    and ``when_report_sent`` (``Forwarded scan to PMC``).
+    """
+    name_i = col_idx.get("PMC Name", -1)
+    slug_i = col_idx.get("PMC Slug", -1)
+    sub_i = col_idx.get("Repositories submitted", -1)
+    dsr_i = col_idx.get("Date scan requested", -1)
+    fwd_i = col_idx.get("Forwarded scan to PMC", -1)
+    if sub_i < 0:
+        return []
+
+    # Criticality display string per repo URL, from the Repositories sheet.
+    crit_by_url: dict[str, str] = {}
+    if repos_grid:
+        rhdr = {h: i for i, h in enumerate(repos_grid[0])}
+        url_j = rhdr.get("Repository URL", -1)
+        crit_j = rhdr.get("Criticality Score (%)", -1)
+        if url_j >= 0:
+            for rr in repos_grid[1:]:
+                url = rr[url_j].strip() if url_j < len(rr) else ""
+                if url:
+                    crit_by_url[url] = rr[crit_j].strip() if 0 <= crit_j < len(rr) else ""
+
+    def _cell(row: list[str], i: int) -> str:
+        return row[i].strip() if 0 <= i < len(row) else ""
+
+    out: list[dict] = []
+    for row in grid[1:]:
+        submitted = [
+            ln.strip()
+            for ln in _cell(row, sub_i).splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
+        if not submitted:
+            continue
+        pmc = _cell(row, name_i) or _cell(row, slug_i)
+        when_ready = _cell(row, dsr_i)
+        when_report = _cell(row, fwd_i)
+        for url in submitted:
+            crit_str = crit_by_url.get(url, "")
+            out.append(
+                {
+                    "repo": url,
+                    "pmc": pmc,
+                    "crit": crit_str,
+                    "crit_val": parse_criticality(crit_str),
+                    "when_ready": when_ready,
+                    "when_report_sent": when_report,
+                }
+            )
+    out.sort(key=lambda e: (-(e["crit_val"] if e["crit_val"] is not None else -1.0), e["repo"]))
+    return out
+
+
+def parse_scan_queue(sq_grid: list[list[str]]) -> dict[str, tuple[str, str]]:
+    """Pure: map ``repo URL -> (when_scanned, commit_hash)`` from the existing
+    'Scan Queue' tab, so hand-entered values survive a rebuild.
+
+    Locates the ``SCAN_QUEUE_HEADER`` row (the tab has title/summary rows above
+    it); rows below it with a non-empty Repo contribute their two manual
+    columns. Keying by Repo (not row position) is what lets the manual data
+    follow its repo when the table is re-sorted or new rows are inserted. A tab
+    that doesn't match the header yields ``{}`` (the rebuild re-seeds with blank
+    manual columns).
+    """
+    if not sq_grid:
+        return {}
+    width = len(SCAN_QUEUE_HEADER)
+    header_at = -1
+    for i, row in enumerate(sq_grid):
+        if [c.strip() for c in row[:width]] == SCAN_QUEUE_HEADER:
+            header_at = i
+            break
+    if header_at < 0:
+        return {}
+    ws_j, ch_j = SCAN_QUEUE_MANUAL_COLS
+    out: dict[str, tuple[str, str]] = {}
+    for row in sq_grid[header_at + 1 :]:
+        repo = row[0].strip() if row else ""
+        if not repo:
+            continue
+        ws = row[ws_j].strip() if ws_j < len(row) else ""
+        ch = row[ch_j].strip() if ch_j < len(row) else ""
+        out[repo] = (ws, ch)
+    return out
+
+
 def sync_oss_subscriptions(
     service, spreadsheet_id: str, grid: list[list[str]], col_idx: dict
 ) -> int:
@@ -1340,14 +1475,70 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     for cells in registry_rows:
         os_sub.row(cells, span=len(SUBSCRIPTION_REGISTRY_HEADER))
 
+    # 6c. Build the "Scan Queue" tab — every submitted repo, sorted by OSSF
+    #     criticality (descending). "When scanned" + "Commit hash" are
+    #     hand-maintained (light yellow) and preserved across refreshes keyed by
+    #     Repo, so they follow their repo across re-sorts and newly-added rows;
+    #     all other columns auto-derive each refresh, with "When report sent"
+    #     filling from "Forwarded scan to PMC".
+    try:
+        repos_grid = fetch_sheet_grid(service, args.spreadsheet_id, "Repositories") or []
+    except Exception:  # noqa: BLE001 — Repositories tab should exist; tolerate absence
+        repos_grid = []
+    try:
+        sq_grid = fetch_sheet_grid(service, args.spreadsheet_id, SCAN_QUEUE_SHEET) or []
+    except Exception:  # noqa: BLE001 — tab may not exist yet on a first run
+        sq_grid = []
+    manual_by_repo = parse_scan_queue(sq_grid)
+    queue_rows = scan_queue_auto_rows(grid, col_idx, repos_grid)
+    sq = _Tab()
+    sq.row([f"Glasswing scan pipeline — Scan Queue · as of {today}"], header=True)
+    sq.row(
+        [
+            "Every repo submitted to the scan vendor, sorted by OSSF Criticality "
+            "Score (highest first). 'When scanned' and 'Commit hash' are "
+            "maintained by hand (light yellow) and preserved across refreshes, "
+            "keyed by Repo; all other columns auto-refresh from the PMCs + "
+            "Repositories sheets. 'When report sent' fills automatically when the "
+            "scan is forwarded to the PMC."
+        ]
+    )
+    sq.row([f"{len(queue_rows)} repo(s) submitted to the vendor."], bold=True)
+    sq.row([""])
+    sq_hdr_i = sq.row(SCAN_QUEUE_HEADER, header=True)
+    sq_ws_j, sq_ch_j = SCAN_QUEUE_MANUAL_COLS
+    # Tint the two manual header cells light yellow too, so the column reads as
+    # hand-maintained at a glance (cell colours apply after the header fill).
+    sq.cell_color(sq_hdr_i, sq_ws_j, MANUAL_FILL)
+    sq.cell_color(sq_hdr_i, sq_ch_j, MANUAL_FILL)
+    if not queue_rows:
+        sq.row(["(none submitted yet)"])
+    for e in queue_rows:
+        ws, ch = manual_by_repo.get(e["repo"], ("", ""))
+        ri = sq.row(
+            [
+                e["repo"],
+                e["pmc"],
+                e["crit"],
+                e["when_ready"],
+                ws,
+                ch,
+                e["when_report_sent"],
+            ],
+            span=len(SCAN_QUEUE_HEADER),
+        )
+        sq.cell_color(ri, sq_ws_j, MANUAL_FILL)
+        sq.cell_color(ri, sq_ch_j, MANUAL_FILL)
+
     if args.dry_run:
         print(
-            f"Would write 6 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
+            f"Would write 7 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
             f"{len(in_flight)} in flight), '{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
             f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
             f"'{TIMELINE_SHEET}' ({len(entries)} events), "
             f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, "
-            f"{len(additions)} new), '{README_SHEET}' (auto overview "
+            f"{len(additions)} new), '{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, "
+            f"{len(manual_by_repo)} with manual data), '{README_SHEET}' (auto overview "
             f"+ legend). Model origins: "
             + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
             + "."
@@ -1374,6 +1565,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     cp_id = _ensure_sheet(service, args.spreadsheet_id, COMPLETED_SHEET, by_title)
     tl_id = _ensure_sheet(service, args.spreadsheet_id, TIMELINE_SHEET, by_title)
     os_id = _ensure_sheet(service, args.spreadsheet_id, OSS_SUBSCRIPTIONS_SHEET, by_title)
+    sq_id = _ensure_sheet(service, args.spreadsheet_id, SCAN_QUEUE_SHEET, by_title)
     rd_id = _ensure_sheet(service, args.spreadsheet_id, README_SHEET, by_title)
 
     # Re-read the (now-complete) tab list, in sheet order, for the README overview,
@@ -1427,6 +1619,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         wrap_col=4,
         frozen=_fz(os_id),
     )
+    _write_tab(service, args.spreadsheet_id, SCAN_QUEUE_SHEET, sq_id, sq, frozen=_fz(sq_id))
     _write_tab(service, args.spreadsheet_id, README_SHEET, rd_id, rd, frozen=_fz(rd_id))
 
     print(
@@ -1436,6 +1629,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         f"'{TIMELINE_SHEET}' ({len(entries)} events), "
         f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, {len(additions)} new, "
         f"{names_filled} name(s) resolved), "
+        f"'{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, {len(manual_by_repo)} with manual data), "
         f"'{README_SHEET}' ({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."
