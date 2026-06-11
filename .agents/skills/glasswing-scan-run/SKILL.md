@@ -350,6 +350,21 @@ where `latest_is_ours = (latest message's labelIds contains
 Only after this record is built do you classify the thread in
 Step 4.
 
+**Exhaust message pagination *inside* each thread, not only the
+thread list.** "Who sent the last message" is correct only if
+you have actually fetched the *last* message. `get_thread`
+returns a thread's messages in order, but a long thread can
+exceed one page — if the response carries a `nextPageToken` (or
+otherwise signals the `messages` array is capped with more to
+come), follow it until the token is empty and take the true
+final message. A thread can sit awaiting *us* with the operative
+PMC reply on the last message-page while earlier pages still
+show our older reply; stopping at page 1 of the *messages*
+repeats the page-1-of-*threads* mistake one level down. Both
+axes — the thread list (above) **and** the message list within
+every changed thread — must be drained to exhaustion before any
+`awaiting` verdict is recorded.
+
 **Thread-state cache (do this so you don't re-pull every
 thread every sweep).** Email is append-only: a message, once
 sent, is immutable and a thread's message list only ever
@@ -457,9 +472,48 @@ name written to the sheet; the team's actual activity in
 that state is a pre-forward sanity check, not per-finding
 triage — see `glasswing-scan-forward`.)
 
-### Step 3 — GitHub PR sweep (state + attention triage)
+### Step 3 — Open-PR + change sweep (state + attention triage)
 
-For each PMC with a non-empty `PR/Issues` cell:
+This pass must cover **every open PR/change the operator has
+authored**, not only the ones recorded on the tracker — the
+tracker's `PR/Issues` cells lag reality (model and
+discoverability PRs get opened mid-discussion and added to the
+sheet later, if at all; the 2026-06 audit found several
+operator-opened model PRs — ozone, santuario, solr, creadur —
+that no tracker cell pointed at). Build the candidate set from
+**three** sources and dedupe:
+
+1. **Tracker-listed** — every URL in a non-empty `PR/Issues`
+   cell.
+2. **Author-discovered (exhaustive)** — query GitHub for *all*
+   open PRs authored by the operator, paginating to exhaustion:
+
+   ```
+   gh search prs --author=@me --state=open --limit 100 \
+     --json url,repository,title,updatedAt
+   ```
+
+   `gh search` caps at 100 results; if the result hits the cap,
+   re-query with date-window narrowing (`--updated <range>`)
+   until every window is drained. Do **not** restrict to
+   GLASSWING-spawned or `asf-security/*` branches — any open PR
+   waiting on us counts, including ones opened from a past
+   discussion that never made it onto the sheet.
+3. **Gerrit changes** — the operator also opens changes on
+   Apache-adjacent Gerrit hosts (e.g. `gerrit.cloudera.org` for
+   Kudu) that GitHub never sees. For each Gerrit instance the
+   team uses, list the operator's open changes
+   (`is:open owner:self`) and fold them into the candidate set.
+   When a Gerrit host can't be reached from this environment
+   (not allowlisted / auth not set up), **surface it as an
+   explicit manual-check item** in the action list rather than
+   silently dropping it — an unreachable host is an unresolved
+   direction, not an absent PR.
+
+Dedupe the union by `owner/repo#num` (a tracker URL and an
+author-discovered hit are the same PR; keep the PMC association
+from the tracker where one exists, else label the PR's repo).
+Then for each candidate:
 
 - Parse the URL(s).
 - Query each PR's current state. Pull enough to triage
@@ -632,6 +686,19 @@ Output format:
 ## Completed since last sweep
 - <PMC> — forwarded <date>; end-to-end <D days>.
 
+## Who waits for whom — direction ledger (every thread + every open PR/change)
+- **Awaiting us (N):** <PMC / owner/repo#num> — <thread or PR> —
+  they acted last @ <date>; what we owe: <one line>.
+- **Awaiting them (N):** <PMC / owner/repo#num> — we acted last
+  @ <date>; nothing owed unless overdue.
+- **Direction UNRESOLVED (N) — drive this to zero before the
+  sweep is done:** <thread / PR / Gerrit change> — why it
+  couldn't be resolved (thread or message list not fully paged,
+  Gerrit host unreachable, ambiguous last actor). Each entry is
+  a gap to close *now*, not to defer — re-page the
+  thread/message list or do the manual Gerrit check until the
+  direction is definite.
+
 ## Status sheet refresh
 - Status tab refreshed at <time>. <N> in flight, <N>
   completed, <N> timeline events.
@@ -721,6 +788,17 @@ classification logic in this SKILL and the state machine in
 diverging, that's a bug to fix.
 
 ### Step 7 — Hand off
+
+Before surfacing, confirm the direction ledger accounts for
+**every** in-flight thread *and* every open PR / Gerrit change
+with a definite "awaiting us" / "awaiting them" verdict, and
+that the UNRESOLVED bucket is empty. If it isn't, the sweep is
+**not finished** — go back and drain the missing thread/message
+pages (Step 1) or do the outstanding manual Gerrit check
+(Step 3) first. A sweep is complete only when who-waits-for-whom
+is clear for every thread and every open PR/change; "I didn't
+get to page 2" or "that Gerrit host wasn't reachable" is an
+open action, not a closed sweep.
 
 Surface the action list and stop. The user picks an item and
 invokes the matching SKILL by name. Do not chain into a SKILL
