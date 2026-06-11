@@ -15,6 +15,11 @@ __pycache__/
 # detect drift.
 /.apache-magpie.local.lock
 
+# User-scope override — per-developer config (e.g. personal Gmail
+# OAuth credentials path). The .apache-magpie-overrides/ directory and
+# skill-scope overrides stay committed; this user-scope file does not.
+/.apache-magpie-overrides/user.md
+
 # Project-local per-machine settings (sandbox allowlist etc.).
 /.claude/settings.local.json
 
