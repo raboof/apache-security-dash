@@ -391,6 +391,47 @@ def test_fill_registry_names_no_blanks_skips_resolver() -> None:
     assert fill_registry_names(rows, resolver=_boom) == 0
 
 
+def test_fill_registry_names_resolves_annotated_email() -> None:
+    # Expedite addresses carry status annotations (e.g. "(registered)"); the
+    # bare address must still resolve to a name.
+    rows = [
+        ["", "jamesfredley@apache.org (registered)", "grails", "2026-05-13", ""],
+        ["", "matrei@apache.org (nominated; registration unconfirmed)", "grails", "2026-05-13", ""],
+    ]
+    filled = fill_registry_names(rows, resolver=_stub_resolver)
+    assert filled == 2
+    assert rows[0][0] == "James Fredley"
+    assert rows[1][0] == "Mattias Reichel"
+
+
+def test_subscription_email_rows_strips_status_annotations() -> None:
+    grid, idx = _reg_grid(
+        {
+            "PMC Slug": "superset",
+            "Request date": "2026-06-08",
+            "Date scan requested": "2026-06-11",
+            "Expedite Claude OSS Requests": (
+                "rusackas@apache.org (registered)\n"
+                "villebro@apache.org (nominated; registration unconfirmed)"
+            ),
+        }
+    )
+    assert subscription_email_rows(grid, idx) == [
+        ("rusackas@apache.org", "superset", "2026-06-08"),
+        ("villebro@apache.org", "superset", "2026-06-08"),
+    ]
+
+
+def test_parse_registry_normalizes_annotated_email() -> None:
+    os_grid = [
+        ["Name", "Email", "PMC", "Date", "Submitted manually"],
+        ["", "rusackas@apache.org (registered)", "superset", "2026-06-08", ""],
+    ]
+    rows, emails = parse_subscription_registry(os_grid)
+    assert rows[0][1] == "rusackas@apache.org"  # annotation stripped on read
+    assert emails == {"rusackas@apache.org"}
+
+
 # --- Scan Queue tab --------------------------------------------------------
 
 
