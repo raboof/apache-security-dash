@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import re
 import sys
 
 from sheets_writer import (
@@ -667,6 +668,22 @@ def _parse_addrs(cell: str) -> list[str]:
     return out
 
 
+_ADDR_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
+
+
+def _normalize_addr(s: str) -> str:
+    """Extract the bare email address from a possibly-annotated cell entry.
+
+    Expedite/subscription cells carry status annotations after the address,
+    e.g. ``rusackas@apache.org (registered)`` or
+    ``villebro@apache.org (nominated; registration unconfirmed)``. The person
+    registry stores — and dedups + resolves names on — the bare address only.
+    Returns the first email found, else the stripped input.
+    """
+    m = _ADDR_RE.search(s or "")
+    return m.group(0) if m else (s or "").strip()
+
+
 def compute_subscription_syncs(
     grid: list[list[str]], col_idx: dict
 ) -> list[tuple[int, list[str], list[str]]]:
@@ -735,12 +752,13 @@ def subscription_email_rows(grid: list[list[str]], col_idx: dict) -> list[tuple[
     for row in grid[1:]:
         if dsr_i >= 0 and not _cell(row, dsr_i):
             continue  # not yet submitted — expedite not relayed
-        current = _parse_addrs(_cell(row, sub_i))
-        emails = current + [a for a in _parse_addrs(_cell(row, exp_i)) if a not in current]
+        current = [_normalize_addr(a) for a in _parse_addrs(_cell(row, sub_i))]
+        expedited = [_normalize_addr(a) for a in _parse_addrs(_cell(row, exp_i))]
+        emails = current + [a for a in expedited if a not in current]
         slug = _cell(row, slug_i)
         date = _cell(row, req_i)
         for e in emails:
-            if e in seen:
+            if not e or e in seen:
                 continue
             seen.add(e)
             out.append((e, slug, date))
@@ -772,10 +790,12 @@ def parse_subscription_registry(
     rows: list[list[str]] = []
     emails: set[str] = set()
     for row in os_grid[header_at + 1 :]:
-        email = row[1].strip() if len(row) > 1 else ""
+        email = _normalize_addr(row[1]) if len(row) > 1 else ""
         if not email:
             continue
-        rows.append([(row[j].strip() if j < len(row) else "") for j in range(width)])
+        norm = [(row[j].strip() if j < len(row) else "") for j in range(width)]
+        norm[1] = email  # store the bare address — self-heals annotated rows
+        rows.append(norm)
         emails.add(email)
     return rows, emails
 
@@ -793,7 +813,11 @@ def resolve_apache_names(emails: list[str]) -> dict[str, str]:
     status refresh still succeeds — unresolved names simply stay blank. Only
     ``@apache.org`` addresses are looked up; others are ignored.
     """
-    ids = {e.split("@", 1)[0]: e for e in emails if e.strip().endswith("@apache.org")}
+    ids: dict[str, str] = {}
+    for e in emails:
+        addr = _normalize_addr(e)
+        if addr.endswith("@apache.org"):
+            ids[addr.split("@", 1)[0]] = addr
     if not ids:
         return {}
     import json
@@ -805,10 +829,10 @@ def resolve_apache_names(emails: list[str]) -> dict[str, str]:
     except Exception:  # noqa: BLE001 — name resolution is best-effort
         return {}
     out: dict[str, str] = {}
-    for apache_id, email in ids.items():
+    for apache_id, addr in ids.items():
         name = (people.get(apache_id) or {}).get("name", "").strip()
         if name:
-            out[email] = name
+            out[addr] = name
     return out
 
 
@@ -821,14 +845,16 @@ def fill_registry_names(rows: list[list[str]], resolver=resolve_apache_names) ->
     always preserved — manual edits win. ``resolver`` is injectable for tests.
     Returns the number of names filled. Mutates ``rows`` in place.
     """
-    pending = [r[1].strip() for r in rows if len(r) > 1 and not r[0].strip() and r[1].strip()]
+    pending = [
+        _normalize_addr(r[1]) for r in rows if len(r) > 1 and not r[0].strip() and r[1].strip()
+    ]
     if not pending:
         return 0
     name_map = resolver(pending)
     filled = 0
     for r in rows:
         if len(r) > 1 and not r[0].strip():
-            name = name_map.get(r[1].strip(), "")
+            name = name_map.get(_normalize_addr(r[1]), "")
             if name:
                 r[0] = name
                 filled += 1
