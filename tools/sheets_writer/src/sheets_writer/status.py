@@ -729,17 +729,24 @@ SUBSCRIPTION_REGISTRY_HEADER = ["Name", "Email", "PMC", "Date", "Submitted manua
 
 def subscription_email_rows(grid: list[list[str]], col_idx: dict) -> list[tuple[str, str, str]]:
     """Pure: ``(email, pmc_slug, date)`` for every OSS-subscription address
-    across *submitted* PMCs, deduped by email (first PMC wins).
+    across **all** PMCs that carry an expedite/subscription address, deduped by
+    email (first PMC wins).
 
     The address set per PMC is the union of ``Claude OSS Subscriptions
     Submitted`` and ``Expedite Claude OSS Requests``; ``date`` is the PMC's
     ``Request date`` (so an auto-appended person carries the same date shape as
     the hand-seeded rows).
+
+    The registry tracks **everyone who registered** for the OSS expedite, not
+    only PMCs whose scan has already been submitted: a person registers at
+    claude-for-oss independently of when their PMC's scan is relayed, so they
+    belong in the registry the moment their address lands in the Expedite cell.
+    (The ``Claude OSS Subscriptions Submitted`` *cell* on the PMCs sheet stays
+    submission-gated — see ``compute_subscription_syncs``.)
     """
     slug_i = col_idx.get("PMC Slug", -1)
     exp_i = col_idx.get("Expedite Claude OSS Requests", -1)
     sub_i = col_idx.get("Claude OSS Subscriptions Submitted", -1)
-    dsr_i = col_idx.get("Date scan requested", -1)
     req_i = col_idx.get("Request date", -1)
     if sub_i < 0 and exp_i < 0:
         return []
@@ -750,8 +757,6 @@ def subscription_email_rows(grid: list[list[str]], col_idx: dict) -> list[tuple[
     seen: set[str] = set()
     out: list[tuple[str, str, str]] = []
     for row in grid[1:]:
-        if dsr_i >= 0 and not _cell(row, dsr_i):
-            continue  # not yet submitted — expedite not relayed
         current = [_normalize_addr(a) for a in _parse_addrs(_cell(row, sub_i))]
         expedited = [_normalize_addr(a) for a in _parse_addrs(_cell(row, exp_i))]
         emails = current + [a for a in expedited if a not in current]

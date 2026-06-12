@@ -81,8 +81,13 @@ Google Sheets API v4 directly.
   per-person view of all this: a persistent registry with
   columns `Name · Email · PMC · Date · Submitted manually`, also rebuilt by
   `build-status-tab` on every refresh. It is **append-only** — the
-  tool only ever *appends* a new person (never removes) when a
-  submitted PMC gains a new expedite address.
+  tool only ever *appends* a new person (never removes) when **any**
+  PMC gains a new expedite address. A registrant is tracked the
+  moment their address lands in the `Expedite Claude OSS Requests`
+  cell — *regardless* of whether the PMC's scan has been submitted
+  yet (a person registers at claude-for-oss independently of the
+  scan timeline). This is broader than the `Claude OSS Subscriptions
+  Submitted` *column* sync above, which stays submission-gated.
   - **`Name` is auto-resolved.** On every refresh the tool resolves the
     person's full name from the Apache committer directory (Whimsy
     `public_ldap_people.json`, keyed by the `@apache.org` local-part =
@@ -334,6 +339,17 @@ private mailing-list bouncer creds, etc.). The
    touches a field the views derive from (state dates, model
    status, repos, PR/Issues). Skip only for pure-metadata edits
    the views don't read (e.g. a `Submission notes` tweak).
+
+   **Always run it after editing `Expedite Claude OSS Requests`
+   or `Claude OSS Subscriptions Submitted`.** This is the one
+   non-skippable case: `build-status-tab` is the *only* thing
+   that propagates expedite/subscription addresses into the
+   per-person `OSS Subscriptions` registry tab. Update an
+   expedite cell and stop, and the new registrant(s) never reach
+   the registry — the names silently go missing. So any
+   name/address change to those two columns **must** be followed
+   immediately by a live `build-status-tab` run, in the same
+   work session, before you consider the update done.
 
 ## Helper script reference
 
