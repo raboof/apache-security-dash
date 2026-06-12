@@ -1,11 +1,15 @@
 # JetBrainz IDEs
-/.idea/
+.idea/
 *.iml
+
 # Caches
 /report-cache/
 /email-classification/
 __pycache__/
 *.pyc
+
+# Environment files
+.env
 
 # apache-magpie — gitignored snapshot of the framework, refreshed
 # by /magpie-setup upgrade. Build artefact, not source.

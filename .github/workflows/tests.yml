@@ -90,6 +90,7 @@ jobs:
           - form_submitter
           - sheets_writer
           - model_pr
+          - populate_cache
         # Single supported interpreter. Widen this list to re-introduce a
         # cross-version matrix; nothing else in the workflow needs to change.
         python-version: ["3.13"]
