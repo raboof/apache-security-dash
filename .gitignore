@@ -5,6 +5,7 @@
 /report-cache/
 /email-classification/
 __pycache__/
+*.pyc
 
 # apache-magpie — gitignored snapshot of the framework, refreshed
 # by /magpie-setup upgrade. Build artefact, not source.
