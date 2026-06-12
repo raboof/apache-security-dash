@@ -29,7 +29,7 @@ imports the shared names from here.
 
 import email
 import re
-from datetime import date
+from datetime import UTC, datetime
 from email.policy import default
 from email.utils import parseaddr, parsedate_to_datetime
 
@@ -87,15 +87,29 @@ def reporter_from(original):
     return original["From"]
 
 
-def message_date(original):
-    """The message's Date as yyyy-mm-dd, falling back to today if unparsable."""
+def message_datetime(original):
+    """The message's Date as a UTC-aware datetime, or None if unparsable.
+
+    The Date header carries the sender's timezone; normalise it to UTC so the
+    cache date does not depend on where the reporter happens to be. A header with
+    no/unknown timezone (``-0000``, which `parsedate_to_datetime` returns naive)
+    is treated as UTC."""
     raw = original["Date"]
-    if raw:
-        try:
-            return parsedate_to_datetime(raw).strftime("%Y-%m-%d")
-        except (TypeError, ValueError):
-            pass
-    return date.today().strftime("%Y-%m-%d")
+    if not raw:
+        return None
+    try:
+        dt = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def message_date(original):
+    """The message's Date as yyyy-mm-dd in UTC, falling back to today (UTC)."""
+    dt = message_datetime(original) or datetime.now(UTC)
+    return dt.strftime("%Y-%m-%d")
 
 
 def extract_attachments(original):

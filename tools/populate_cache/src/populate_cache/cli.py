@@ -63,7 +63,7 @@ import re
 import shutil
 import sys
 from email.policy import default
-from email.utils import parseaddr, parsedate_to_datetime
+from email.utils import parseaddr
 from pathlib import Path
 
 from populate_cache import email_utils, gmail, pmc, skip
@@ -183,15 +183,13 @@ def list_id(original) -> str | None:
 
 
 def report_date(original) -> str:
-    """The Date header as ``YYYY/MM/DD HH:MM:SS`` for the front-matter ``date``
-    field (the schema shared with the Ponymail sweep)."""
+    """The Date header as an ISO 8601 UTC timestamp (``YYYY-MM-DDTHH:MM:SSZ``)
+    for the front-matter ``date`` field, regardless of the sender's timezone."""
+    dt = email_utils.message_datetime(original)
+    if dt is not None:
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     raw = original["Date"]
-    if raw:
-        try:
-            return parsedate_to_datetime(raw).strftime("%Y/%m/%d %H:%M:%S")
-        except (TypeError, ValueError):
-            return _clean_header(raw)
-    return ""
+    return _clean_header(raw) if raw else ""
 
 
 def date_dir(original) -> str:
@@ -230,7 +228,7 @@ def build_meta(original, *, pmc_slug, candidates, tags) -> dict:
         "wf": None,
         "handled": False,
         "status": "downloaded",
-        "fetched_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+        "fetched_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 
 

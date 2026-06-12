@@ -429,7 +429,7 @@ archive_url:    # null
 list:           # List-Id, formatted <security.apache.org>, or null
 to:             # To: header (recipient routing; null if absent)
 cc:             # Cc: header (null if absent)
-date:           # original message date, "yyyy/mm/dd hh:mm:ss"
+date:           # original message date, ISO 8601 UTC (e.g. 2026-06-12T16:00:00Z)
 references:     # References header, or null (null == thread head)
 attachments:    # list of {filename, content_type, size, hash}
 fetched_at:     # ISO-8601 UTC download time
