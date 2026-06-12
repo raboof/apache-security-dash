@@ -119,7 +119,8 @@ def test_write_bundle_unsorted_routing(tmp_path):
     assert meta["pmc_candidates"] is None
 
 
-def test_write_bundle_records_gmail_labels(tmp_path):
+def test_write_bundle_records_gmail_labels_as_tags(tmp_path):
+    # The message's existing Gmail labels seed the unified `tags` field.
     msg, raw = make_msg()
     bundle = cli.write_bundle(
         tmp_path,
@@ -127,17 +128,17 @@ def test_write_bundle_records_gmail_labels(tmp_path):
         raw,
         pmc_slug="tomcat",
         candidates=["tomcat"],
-        gmail_labels=["tomcat/2026-05-27 xxe-digester"],
+        tags=["tomcat/2026-05-27 xxe-digester"],
     )
     meta, _ = read_md(bundle / BUNDLE_FILE)
-    assert meta["gmail_labels"] == ["tomcat/2026-05-27 xxe-digester"]
+    assert meta["tags"] == ["tomcat/2026-05-27 xxe-digester"]
 
 
 def test_write_bundle_without_labels_is_none(tmp_path):
     msg, raw = make_msg()
     bundle = cli.write_bundle(tmp_path, msg, raw, pmc_slug="tomcat", candidates=["tomcat"])
     meta, _ = read_md(bundle / BUNDLE_FILE)
-    assert meta["gmail_labels"] is None
+    assert meta["tags"] is None
 
 
 def test_load_seen_message_ids_roundtrip(tmp_path):

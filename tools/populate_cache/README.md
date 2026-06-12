@@ -46,15 +46,17 @@ safety net in case the parsing or Markdown conversion ever drops something. The
 SKILL's labelling step assigns the label, places the `_unsorted` bundles,
 renames the leaf to the keyword slug, and promotes the status.
 
-Any **custom Gmail labels** already on the message are recorded in
-`gmail_labels` (system labels like `INBOX`/`UNREAD` are ignored). These are a
-routing hint, not a sign the report was already handled: a message still in the
-inbox is untriaged (a handled one would have been archived, see *Reconcile*
-below). Gmail auto-applies some labels by subject keyword, e.g. a follow-up that
-names a public CVE number gets that CVE's existing label; the SKILL uses such a
-label to relate the report to a prior one, then triages it normally. A report
-with no such match has `gmail_labels: null`. Reading labels needs only the
-`gmail.readonly` scope.
+Any **custom Gmail labels** already on the message seed the message's `tags`
+field (system labels like `INBOX`/`UNREAD` are ignored). `tags` are the
+message's Gmail labels: the tool records what is there at download, the SKILL
+extends the same field as it labels, and a later tool reconciles `tags` against
+Gmail. A pre-existing label is a routing hint, not a sign the report was already
+handled: a message still in the inbox is untriaged (a handled one would have
+been archived, see *Reconcile* below). Gmail auto-applies some labels by subject
+keyword, e.g. a follow-up that names a public CVE number gets that CVE's
+existing label; the SKILL uses such a label to relate the report to a prior one,
+then triages it normally. A report with no labels yet has `tags: null`. Reading
+labels needs only the `gmail.readonly` scope.
 
 The tool is **read-only** on the mailbox: it authenticates with the
 `gmail.readonly` scope, which cannot modify, move or delete mail. It only writes

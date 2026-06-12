@@ -281,10 +281,10 @@ non-issue / hardening / CVE).
 
 ```mermaid
 flowchart TD
-    IN([Inbound report<br/>security@apache.org]):::ext --> SW{{triage-populate-cache<br/>sweep.py — deterministic<br/>Ponymail sweep}}:::skill
-    SW --> INBOX[(report-cache/_inbox/<br/>one report.md per bundle)]:::cache
-    INBOX --> CL{{agent reads + classifies<br/>each bundle}}:::skill
-    CL -->|spam / bounce / marketing| DIS([dismiss<br/>file.py --remove<br/>operator confirms]):::drop
+    IN([Inbound report<br/>security@apache.org]):::ext --> SW{{triage-populate-cache<br/>populate-cache - read-only<br/>Gmail API download}}:::skill
+    SW --> INBOX[(report-cache/ status: downloaded<br/>one report.md per bundle)]:::cache
+    INBOX --> CL{{agent labels each bundle<br/>Haiku subagent reads}}:::skill
+    CL -->|spam / bounce / marketing| DIS([mark spam<br/>file.py --spam<br/>kept as tombstone]):::drop
     CL -->|genuine report| FILE[(filed under<br/>date / pmc / keywords)]:::cache
     FILE --> REC{Addressed to?}:::gate
     REC -->|PMC's own<br/>security list| TRK([track only<br/>PMC already has it]):::done
@@ -307,17 +307,20 @@ flowchart TD
 ```
 
 **Phase 1 — populate the cache**
-([`triage-populate-cache`](.github/skills/triage-populate-cache/SKILL.md)). A
-deterministic `sweep.py` queries the `security@apache.org` Ponymail archive
-incrementally (off a watermark), keeps only thread-head messages addressed to a
-triageable `security@` alias (not a project's own specialized security list, not
-Cc'd to a `private@` list), downloads each survivor's body + attachments
-straight off the Ponymail HTTP API, and writes one `report.md` (YAML
-front-matter + body) per bundle into a local `report-cache/_inbox/`. The agent
-then reads each bundle and either **files** a genuine report under
-`<date>/<pmc>/<keywords>/` or **dismisses** spam / marketing / bounces —
-dismissals are confirmed with the operator first, since they delete files. The
-`report-cache/` tree is local-only (not committed).
+([`triage-populate-cache`](.github/skills/triage-populate-cache/SKILL.md)). The
+deterministic `populate-cache` tool reads the `security@apache.org` Gmail inbox
+through the read-only Gmail API, keeps only thread-head messages (dropping
+automated CVE-process / VINCE / svn notifications and anything already cached),
+and writes one `report.md` (YAML front-matter + body) plus a verbatim `raw.eml`
+per bundle into its dated, per-PMC home under `report-cache/`
+(`<date>/<pmc>/<message-id-slug>/`, or `_unsorted/` when no PMC is in the
+headers). The agent then gives each `status: downloaded` bundle a disposition
+with `file.py`: **file** a genuine report under `<date>/<pmc>/<keywords>/`,
+label a digest or a known non-issue, or **mark spam** (kept as a dedup
+tombstone, never deleted). Nothing is deleted, so a re-run never re-downloads a
+triaged message; once a report is archived out of the inbox the tool moves its
+bundle to `report-cache/handled/`. The `report-cache/` tree is local-only (not
+committed).
 
 **Phase 2 — assess and draft**
 ([`triage-assess`](.github/skills/triage-assess/SKILL.md)). For each filed

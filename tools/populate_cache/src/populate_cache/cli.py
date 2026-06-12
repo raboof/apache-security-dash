@@ -199,12 +199,13 @@ def date_dir(original) -> str:
     return email_utils.message_date(original)
 
 
-def build_meta(original, *, pmc_slug, candidates, gmail_labels) -> dict:
+def build_meta(original, *, pmc_slug, candidates, tags) -> dict:
     """The report.md front-matter for a Gmail-sourced report. ``ponymail_id`` /
-    ``archive_url`` are null (no archive); ``keywords`` / ``tag`` are filled by
-    the SKILL's labelling step. ``gmail_labels`` are the custom Gmail labels
-    already on the message (e.g. a prior ``<pmc>/<date> <keywords>`` triage
-    label)."""
+    ``archive_url`` are null (no archive); ``keywords`` is filled by the SKILL's
+    labelling step. ``tags`` are the message's Gmail labels - the custom triage
+    labels already on it at download (e.g. a prior ``<pmc>/<date> <keywords>``,
+    or a subject-CVE auto-label). The SKILL extends this same field as it labels,
+    and a later tool reconciles it against Gmail."""
     reporter = email_utils.reporter_from(original) or original["From"] or ""
     name, addr = parseaddr(str(reporter))
     return {
@@ -220,11 +221,12 @@ def build_meta(original, *, pmc_slug, candidates, gmail_labels) -> dict:
         "date": report_date(original),
         "references": _clean_header(original["References"]) or None,
         "attachments": [],  # filled by write_bundle
-        "tag": None,
         "pmc": pmc_slug,
         "pmc_candidates": candidates or None,
+        "collection": None,
+        "cve": None,
         "keywords": None,
-        "gmail_labels": gmail_labels or None,
+        "tags": tags or None,
         "wf": None,
         "handled": False,
         "status": "downloaded",
@@ -232,9 +234,7 @@ def build_meta(original, *, pmc_slug, candidates, gmail_labels) -> dict:
     }
 
 
-def write_bundle(
-    cache: Path, original, raw: bytes, *, pmc_slug, candidates, gmail_labels=None
-) -> Path:
+def write_bundle(cache: Path, original, raw: bytes, *, pmc_slug, candidates, tags=None) -> Path:
     """Write one report.md bundle into
     ``<date>/<pmc-or-_unsorted>/<message-id-slug>/``: ``report.md`` (front-matter
     + body), ``raw.eml`` (the verbatim RFC822 message, kept as a safety net in
@@ -271,7 +271,7 @@ def write_bundle(
             }
         )
 
-    meta = build_meta(original, pmc_slug=pmc_slug, candidates=candidates, gmail_labels=gmail_labels)
+    meta = build_meta(original, pmc_slug=pmc_slug, candidates=candidates, tags=tags)
     meta["attachments"] = att_meta
     write_md(bundle / BUNDLE_FILE, meta, email_utils.body_to_text(original))
     return bundle
@@ -363,9 +363,7 @@ def main(argv: list[str] | None = None) -> int:
         original = email.message_from_bytes(raw, policy=default)
         candidates = pmc.tier1_pmcs(f"{original['To'] or ''} {original['Cc'] or ''}", known_slugs)
         pmc_slug = candidates[0] if candidates else None
-        gmail_labels = gmail.resolve_labels(
-            metadata.get(gmail_id, {}).get("label_ids", []), label_names
-        )
+        tags = gmail.resolve_labels(metadata.get(gmail_id, {}).get("label_ids", []), label_names)
         if not args.dry_run:
             write_bundle(
                 cache,
@@ -373,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
                 raw,
                 pmc_slug=pmc_slug,
                 candidates=candidates,
-                gmail_labels=gmail_labels,
+                tags=tags,
             )
         subject = _clean_header(original["Subject"])
         subj = (subject[:54] + "...") if len(subject) > 57 else subject
