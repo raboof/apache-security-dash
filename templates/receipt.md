@@ -9,6 +9,10 @@ Note that as we often receive a lot of incoming reports, issues are generally de
 
 Our process for how we handle security issues is here https://apache.org/security/committers.html
 
+The security model for \<PMC name> can be found at \<link>
+
+
 Kind regards,
 
 \<Triager full name>
+ASF Security

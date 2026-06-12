@@ -46,6 +46,21 @@ def pmc_entry(committees: dict, slug: str) -> dict:
     return entry
 
 
+def mail_list_of(entry: dict) -> str | None:
+    """The committee's ``mail_list`` token, used to derive its mailing lists.
+
+    A PMC's private list is ``private@<mail_list>.apache.org``; the token
+    usually equals the slug but differs for some PMCs (e.g. ``httpcomponents``
+    has ``mail_list`` ``hc``). Returns None when the field is absent or is
+    already a full address (the handful of board committees whose ``mail_list``
+    is itself an email) so callers can fall back to the slug.
+    """
+    ml = entry.get("mail_list")
+    if not isinstance(ml, str) or not ml or "@" in ml:
+        return None
+    return ml
+
+
 def chair_of(entry: dict) -> tuple[str, str]:
     """Extract (chair_apache_id, chair_name) from a PMC entry.
 

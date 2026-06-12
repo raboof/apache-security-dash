@@ -30,6 +30,7 @@ import urllib.request
 from whimsy_lookup import (
     COMMITTEE_INFO_URL,
     LDAP_PEOPLE_URL,
+    PODLINGS_URL,
     REQ_TIMEOUT_S,
     SECURITY_COORDINATES_URL,
 )
@@ -63,9 +64,34 @@ def fetch_ldap_people(timeout: float = REQ_TIMEOUT_S) -> dict:
     return fetch_json(LDAP_PEOPLE_URL, timeout=timeout)
 
 
+def merge_podlings(committees: dict, podlings: dict) -> dict:
+    """``committees`` augmented with still-incubating podlings.
+
+    Podlings (from public_podlings.json) aren't in committee-info until they
+    graduate; the ones with ``status == "current"`` are added under their
+    resource slug with a synthetic ``mail_list`` so the guesser matches them
+    and derives ``private@<resource>.apache.org``. Existing committees win on a
+    slug collision.
+    """
+    merged = dict(committees)
+    for entry in (podlings or {}).get("podling", {}).values():
+        if not isinstance(entry, dict) or entry.get("status") != "current":
+            continue
+        resource = entry.get("resource")
+        if resource and resource not in merged:
+            merged[resource] = {"mail_list": resource}
+    return merged
+
+
 def fetch_committee_info(timeout: float = REQ_TIMEOUT_S) -> dict:
-    """GET the public Whimsy committee-info JSON dump."""
-    return fetch_json(COMMITTEE_INFO_URL, timeout=timeout)
+    """GET the committee mapping (slug -> entry), incubating podlings included.
+
+    Returns the ``committees`` map directly, with current podlings from
+    public_podlings.json merged in so they are guessable until they graduate
+    to top-level projects.
+    """
+    committees = fetch_json(COMMITTEE_INFO_URL, timeout=timeout).get("committees", {})
+    return merge_podlings(committees, fetch_json(PODLINGS_URL, timeout=timeout))
 
 
 def fetch_security_coordinates(timeout: float = REQ_TIMEOUT_S) -> dict:

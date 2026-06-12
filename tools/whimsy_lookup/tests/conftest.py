@@ -53,6 +53,7 @@ LDAP_PEOPLE_SAMPLE = {
 COMMITTEE_INFO_SAMPLE = {
     "committees": {
         "hbase": {
+            "mail_list": "hbase",
             "chair": {"ndimiduk": {"name": "Nick Dimiduk"}},
             "roster": {
                 "ndimiduk": {"name": "Nick Dimiduk", "date": "2014-08-10"},
@@ -61,6 +62,7 @@ COMMITTEE_INFO_SAMPLE = {
             },
         },
         "santuario": {
+            "mail_list": "santuario",
             "chair": {"coheigea": {"name": "Colm O hEigeartaigh"}},
             "roster": {
                 "coheigea": {
@@ -70,6 +72,10 @@ COMMITTEE_INFO_SAMPLE = {
                 "dkulp": {"name": "Daniel Kulp", "date": "2018-10-01"},
             },
         },
+        # httpcomponents is the canonical case where mail_list ('hc') differs
+        # from the slug; brand has a full-address mail_list (no bare token).
+        "httpcomponents": {"mail_list": "hc", "chair": {}, "roster": {}},
+        "brand": {"mail_list": "trademarks@apache.org", "chair": {}, "roster": {}},
         # Edge case — chair entry exists but is empty (happens
         # transiently during chair transitions). chair_of() must
         # return ("?", "?") rather than crash.
@@ -117,10 +123,27 @@ SECURITY_COORDINATES_SAMPLE = {
 }
 
 
+# Sample public_podlings.json. 'amoro' is still incubating (merged into the
+# committee map); 'wave' graduated and 'odftoolkit' retired (both ignored).
+PODLINGS_SAMPLE = {
+    "podling": {
+        "amoro": {"name": "Amoro", "status": "current", "resource": "amoro"},
+        "wave": {"name": "Wave", "status": "graduated", "resource": "wave"},
+        "odftoolkit": {"name": "ODF Toolkit", "status": "retired", "resource": "odftoolkit"},
+    }
+}
+
+
 @pytest.fixture
 def ldap_people() -> dict:
     """Sample ``public_ldap_people.json`` payload."""
     return LDAP_PEOPLE_SAMPLE
+
+
+@pytest.fixture
+def podlings() -> dict:
+    """Sample ``public_podlings.json`` payload."""
+    return PODLINGS_SAMPLE
 
 
 @pytest.fixture
@@ -163,10 +186,12 @@ def urlopen_failing(exc: Exception) -> MagicMock:
 __all__ = [
     "COMMITTEE_INFO_SAMPLE",
     "LDAP_PEOPLE_SAMPLE",
+    "PODLINGS_SAMPLE",
     "SECURITY_COORDINATES_SAMPLE",
     "committee_info",
     "ldap_people",
     "mock_urlopen",
+    "podlings",
     "security_coordinates",
     "urlopen_failing",
     "urlopen_returning",

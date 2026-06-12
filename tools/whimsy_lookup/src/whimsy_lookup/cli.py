@@ -29,6 +29,7 @@ from whimsy_lookup.fetch import (
     fetch_security_coordinates,
 )
 from whimsy_lookup.ldap import resolve_ids
+from whimsy_lookup.pmc_guess import guess_pmcs
 from whimsy_lookup.security_alias import classify_security_alias
 
 
@@ -50,7 +51,7 @@ def cmd_resolve_id(args: argparse.Namespace) -> int:
 
 def cmd_pmc_info(args: argparse.Namespace) -> int:
     """Dump chair + roster for a PMC."""
-    committees = fetch_committee_info().get("committees", {})
+    committees = fetch_committee_info()
     entry = pmc_entry(committees, args.slug)
     chair_id, chair_name = chair_of(entry)
     roster = entry.get("roster", {})
@@ -67,7 +68,7 @@ def cmd_pmc_info(args: argparse.Namespace) -> int:
 
 def cmd_check_pmc_member(args: argparse.Namespace) -> int:
     """Boolean PMC-membership check for one or more Apache IDs."""
-    committees = fetch_committee_info().get("committees", {})
+    committees = fetch_committee_info()
     entry = pmc_entry(committees, args.slug)
     roster = entry.get("roster", {})
 
@@ -112,6 +113,26 @@ def cmd_check_security_alias(args: argparse.Namespace) -> int:
         f"{args.slug:24} ABSENT   (no entry in project-coordinates.json). Do NOT CC {expected!r}."
     )
     return 1
+
+
+def cmd_guess_pmc(args: argparse.Namespace) -> int:
+    """Guess the PMC(s) referenced by free text and show their security page.
+
+    Exit 0 if at least one candidate is found, 1 otherwise.
+    """
+    committees = fetch_committee_info()
+    coordinates = fetch_security_coordinates()
+    candidates = guess_pmcs(args.text, committees, coordinates)
+    if not candidates:
+        print("No PMC could be guessed from the supplied text.")
+        return 1
+    print("PMC guess(es):")
+    for pmc in candidates:
+        if pmc.security_link is None:
+            print(f"  {pmc.id:24} (no security page on record)")
+        else:
+            print(f"  {pmc.id:24} {pmc.security_link}")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -161,6 +182,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_alias.add_argument("slug", help="PMC slug (e.g. 'tomcat', 'kafka').")
 
+    p_guess = sub.add_parser(
+        "guess-pmc",
+        help=(
+            "Guess the PMC(s) referenced by free text (e.g. an email's "
+            "headers) and print each one's security page URL. Exit 0 if a "
+            "candidate is found, 1 otherwise."
+        ),
+    )
+    p_guess.add_argument(
+        "text",
+        help="Free text to scan (addresses + standalone slug tokens).",
+    )
+
     return p
 
 
@@ -169,6 +203,7 @@ DISPATCH = {
     "pmc-info": cmd_pmc_info,
     "check-pmc-member": cmd_check_pmc_member,
     "check-security-alias": cmd_check_security_alias,
+    "guess-pmc": cmd_guess_pmc,
 }
 
 

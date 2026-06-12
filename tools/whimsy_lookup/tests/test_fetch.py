@@ -20,12 +20,13 @@ from __future__ import annotations
 import pytest
 
 from tests.conftest import http_error_500, urlopen_failing, urlopen_returning
-from whimsy_lookup import COMMITTEE_INFO_URL, LDAP_PEOPLE_URL
+from whimsy_lookup import COMMITTEE_INFO_URL, LDAP_PEOPLE_URL, PODLINGS_URL
 from whimsy_lookup.fetch import (
     FetchError,
     fetch_committee_info,
     fetch_json,
     fetch_ldap_people,
+    merge_podlings,
     normalize_name,
 )
 
@@ -79,7 +80,33 @@ def test_fetch_ldap_people_uses_canonical_url(mock_urlopen, ldap_people) -> None
     assert mock_urlopen.call_args.args[0] == LDAP_PEOPLE_URL
 
 
-def test_fetch_committee_info_uses_canonical_url(mock_urlopen, committee_info) -> None:
-    mock_urlopen.return_value = urlopen_returning(committee_info)
-    fetch_committee_info()
-    assert mock_urlopen.call_args.args[0] == COMMITTEE_INFO_URL
+def test_fetch_committee_info_fetches_committee_and_podlings(
+    mock_urlopen, committee_info, podlings
+) -> None:
+    # The two GETs are served by URL so the merge is actually exercised.
+    payloads = {COMMITTEE_INFO_URL: committee_info, PODLINGS_URL: podlings}
+    mock_urlopen.side_effect = lambda url, *a, **k: urlopen_returning(payloads[url])
+
+    committees = fetch_committee_info()
+
+    fetched = {c.args[0] for c in mock_urlopen.call_args_list}
+    assert fetched == {COMMITTEE_INFO_URL, PODLINGS_URL}
+    # Returns the committees map directly (not the wrapping JSON object), with
+    # the still-incubating podling merged in.
+    assert "hbase" in committees
+    assert committees["amoro"] == {"mail_list": "amoro"}
+
+
+def test_merge_podlings_includes_incubating(podlings) -> None:
+    merged = merge_podlings({"tomcat": {"mail_list": "tomcat"}}, podlings)
+    assert merged["amoro"] == {"mail_list": "amoro"}
+
+
+def test_merge_podlings_does_not_clobber_committee(podlings) -> None:
+    base = {"amoro": {"mail_list": "real-amoro"}}
+    assert merge_podlings(base, podlings)["amoro"] == {"mail_list": "real-amoro"}
+
+
+def test_merge_podlings_empty_inputs() -> None:
+    assert merge_podlings({}, {}) == {}
+    assert merge_podlings({"x": {}}, None) == {"x": {}}

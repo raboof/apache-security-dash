@@ -23,6 +23,7 @@ from whimsy_lookup.committee import (
     PMCNotFound,
     chair_of,
     check_membership,
+    mail_list_of,
     pmc_entry,
 )
 
@@ -82,3 +83,19 @@ def test_check_membership_preserves_input_order(committee_info) -> None:
 def test_check_membership_empty_id_list(committee_info) -> None:
     roster = committee_info["committees"]["hbase"]["roster"]
     assert check_membership(roster, []) == {}
+
+
+def test_mail_list_of_bare_token(committee_info) -> None:
+    # Usually equals the slug, but httpcomponents' list is 'hc'.
+    assert mail_list_of(committee_info["committees"]["hbase"]) == "hbase"
+    assert mail_list_of(committee_info["committees"]["httpcomponents"]) == "hc"
+
+
+def test_mail_list_of_full_address_returns_none(committee_info) -> None:
+    # A mail_list that is itself an email (board committees) is unusable for
+    # deriving private@<token>.apache.org, so callers fall back to the slug.
+    assert mail_list_of(committee_info["committees"]["brand"]) is None
+
+
+def test_mail_list_of_missing_returns_none() -> None:
+    assert mail_list_of({}) is None
