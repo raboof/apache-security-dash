@@ -316,7 +316,9 @@ def test_subscription_email_rows_unions_dedups_and_carries_request_date() -> Non
     ]
 
 
-def test_subscription_email_rows_skips_unsubmitted() -> None:
+def test_subscription_email_rows_includes_unsubmitted() -> None:
+    # A registrant is tracked the moment their address lands in the Expedite
+    # cell — even before the PMC's scan is submitted (no Date scan requested).
     grid, idx = _reg_grid(
         {
             "PMC Slug": "grails",
@@ -324,7 +326,9 @@ def test_subscription_email_rows_skips_unsubmitted() -> None:
             "Expedite Claude OSS Requests": "g@apache.org",
         }
     )
-    assert subscription_email_rows(grid, idx) == []
+    assert subscription_email_rows(grid, idx) == [
+        ("g@apache.org", "grails", "2026-05-13"),
+    ]
 
 
 def test_parse_registry_reads_data_rows_and_emails() -> None:
