@@ -7,8 +7,8 @@ and the PR-creation flow consistent with how the apache/security maintainers pre
 ## What this repo is
 
 apache/security is the ASF Security team's private skill set + tooling for managing the Glasswing scan-outreach program.
-SKILLs live under `.github/skills/` and are symlinked from `.claude/skills/`
-so Claude Code can find them.
+SKILLs live under `.agents/skills/` and are symlinked into `.claude/skills/` and `.github/skills/`.
+This lets different agent runtimes find them with their preferred directory layout.
 Helper tools that have outgrown the single-file-inside-a-SKILL pattern live under `tools/` as proper Python projects (`pyproject.toml` + tests + CI); see the [README's "Two helper tiers" section](README.md#two-helper-tiers--inline-scripts-vs-tools-projects).
 The [README](README.md) at the repo root is the entry point and the canonical workflow reference (diagrams, per-PMC state machine, sequence diagram).
 

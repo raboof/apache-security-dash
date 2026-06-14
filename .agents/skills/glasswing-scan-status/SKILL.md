@@ -313,7 +313,7 @@ that's a different artefact (the scan output markdown), not the outreach tracker
      For each, report min / median / max in days.
    - **Backlog age**: for PMCs with `Request date` filled but `Forwarded scan to PMC` blank,
      sort by `Request date` ascending and show the top few —
-     these are the longest- waiting requests.
+     these are the longest-waiting requests.
      Tag each by the next unfilled date column (`awaiting submit` / `scan running` / `pending forward`) so the bottleneck is visible at a glance.
      Internal pressure signal; do not paste into a PMC-facing reply.
    - **Repository coverage**: of the repos owned by `Scan Requested = Yes` PMCs,

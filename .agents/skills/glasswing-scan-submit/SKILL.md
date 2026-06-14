@@ -222,7 +222,7 @@ Before running the form-submission gate:
 
 7. **Submitter identity — `@apache.org`-rooted.** The "Your Email Address" field on the form is the submitter's `@apache.org` address (e.g. `potiuk@apache.org`), not a personal email —
    the submission represents the ASF Security Committee acting on behalf of the PMC.
-   The the `form-submitter` CLI (in `tools/form_submitter/`) helper reads this from a config file (`~/.config/asf-security/glasswing/submitter.json`) so it doesn't need to be repeated per-submission.
+   The `form-submitter` CLI (in `tools/form_submitter/`) helper reads this from a config file (`~/.config/asf-security/glasswing/submitter.json`) so it doesn't need to be repeated per-submission.
    If the config file is missing, surface as a question before submitting.
 
    The Google account the submitter signs in with during `form-submitter setup` can be any account they prefer —
@@ -254,7 +254,7 @@ Before running the form-submission gate:
 10. **After form submissions are confirmed AND the user sends the PMC notification email, hand off to `glasswing-scan-update`** to write two cells on the PMC's row to the dates the work actually happened:
 
     - `Date scan requested` — the date the form submissions were completed (the `form-submitter` CLI (in `tools/form_submitter/`) returns this).
-    - `Repositories submitted` — the exact list of repo URLs that were submitted via the form, newline- separated, in the same descending-Criticality order the forms were submitted in.
+    - `Repositories submitted` — the exact list of repo URLs that were submitted via the form, newline-separated, in the same descending-Criticality order the forms were submitted in.
 
     The `Mirko thread (ponymail)` column stays blank for form-based submissions —
     there's no email thread on a public list to permalink to.
@@ -541,7 +541,7 @@ it returns the values for `glasswing-scan-update` to apply.
 ## Provenance
 
 This SKILL captures the handoff step between the ASF Security team's pre-flight (which lives in `glasswing-model-verify`) and the scan vendor actually running the scan.
-The 2026-05-19 form-based submission flow replaces the earlier `mirko@alpha-omega.dev`-by-email flow (which itself was the 2026-05-17 evolution of an even earlier auto-fire-on- pre-flight-pass shape).
+The 2026-05-19 form-based submission flow replaces the earlier `mirko@alpha-omega.dev`-by-email flow (which itself was the 2026-05-17 evolution of an even earlier auto-fire-on-pre-flight-pass shape).
 The vendor's project-enrollment Google Form is now the canonical submission channel.
 
 Reasons for the form transition:

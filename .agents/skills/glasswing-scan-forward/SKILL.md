@@ -113,7 +113,7 @@ Skip when:
    If the check passed cleanly with nothing to note, omit the block —
    don't pad with "everything looked fine".
 
-9. **Always archive the scan into `scans/` before forwarding.** Per the spec in [`scans/README.md`](../../../scans/README.md), every Mirko-delivered scan that the team forwards must first land in `scans/<project>/<repo>/<project>-<repo>-<YYYY- MM-DD>-<short-sha>.md` (plus `.json` raw + `.notes.md` decision-log sidecars) and be committed with a `[scan]` prefixed message.
+9. **Always archive the scan into `scans/` before forwarding.** Per the spec in [`scans/README.md`](../../../scans/README.md), every Mirko-delivered scan that the team forwards must first land in `scans/<project>/<repo>/<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md` (plus `.json` raw + `.notes.md` decision-log sidecars) and be committed with a `[scan]` prefixed message.
    The archive commit happens **before** the Gmail draft is created so the forwarding email can cite the canonical filename.
    A scan that has been forwarded without an archive entry is a process bug.
 

@@ -34,7 +34,7 @@ The helper (`sheets-writer` CLI in [`tools/sheets_writer/`](../../../tools/sheet
   If the PMC explicitly opts out of the OSS subscription offer, write the literal string `none` rather than leaving the cell blank —
   empty means "not yet asked / not yet replied"; `none` means "asked + PMC declined".
 - Anthropic confirms a subscription grant for one of the expedite-asked addresses.
-  Append the confirmed `@apache.org` address to the `Claude OSS Subscriptions Submitted` cell (preserve existing addresses; newline- separated).
+  Append the confirmed `@apache.org` address to the `Claude OSS Subscriptions Submitted` cell (preserve existing addresses; newline-separated).
   This cell tracks addresses for which the OSS-subscription expedite has been **submitted to the vendor** — distinct from `Expedite Claude OSS Requests`, which tracks what the PMC asked us to expedite for.
 
   **Auto-synced on every refresh.** You normally don't edit this cell by hand:
@@ -75,12 +75,12 @@ This skill mutates the sheet.
 ## Hard rules (do not skip)
 
 1. **Always diff before writing.** Run the helper in `--dry-run` first, show the diff to the user (every cell: current value `->` proposed value), and wait for explicit approval before re-running without `--dry-run`.
-   This is the same draft-and- confirm rule that applies to outbound messages —
+   This is the same draft-and-confirm rule that applies to outbound messages —
    the spreadsheet is a shared coordination artefact and a wrong cell can mislead reviewers as badly as a wrong email.
 
 2. **Match by a stable identifier.** Use `PMC Slug` for PMC-sheet updates and `Repository URL` for repo-sheet updates.
    Do not match on `PMC Name`, `Contact Person`, or anything else editable;
-   the helper will refuse multi-match and silently- correct results,
+   the helper will refuse multi-match and silently-correct results,
    but the matching key should be unambiguous to start with.
 
 3. **Never touch rows for PMCs whose data was sourced from `private@<pmc>` correspondence the team should not echo publicly into a shared sheet.**
@@ -151,7 +151,7 @@ After setup, future invocations of `apply` reuse the refresh token silently.
 
 ### Why this directory
 
-`~/.config/asf-security/glasswing/` is XDG-compliant, user- scoped, outside any git working tree, and not shared with the team.
+`~/.config/asf-security/glasswing/` is XDG-compliant, user-scoped, outside any git working tree, and not shared with the team.
 Each Security-team member runs their own setup and keeps their own token —
 there is no shared service account,
 so every write is attributable to the actual person who ran it.

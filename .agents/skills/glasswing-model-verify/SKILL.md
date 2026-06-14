@@ -759,7 +759,7 @@ This SKILL does not write to the spreadsheet or call Gmail tools directly.
   the rubric exists to help, not to impose.
 - **Don't restate what the recipient already knows.**
   A quick acknowledgment of where things stand is fine;
-  full re- explanation of the pre-flight pipeline / sanity-check mechanics / why discoverability matters belongs in the initial scan-response thread, not in every follow-up.
+  full re-explanation of the pre-flight pipeline / sanity-check mechanics / why discoverability matters belongs in the initial scan-response thread, not in every follow-up.
   Keep status updates short: what passed, what didn't, what's the ask.
   Trust prior thread context.
 - **Maintainer voice in the *output*, not Security-team voice.**
@@ -788,11 +788,11 @@ This SKILL does not write to the spreadsheet or call Gmail tools directly.
 - A grab-bag remediation that combines the `AGENTS.md` link fix with model-section additions in one PR.
   Violates hard rule 2 — split.
 - Calling the spreadsheet write directly from this SKILL.
-  Always hand off to `glasswing-scan-update` so the diff-and- confirm gate fires.
+  Always hand off to `glasswing-scan-update` so the diff-and-confirm gate fires.
 
 ## Provenance
 
-This SKILL formalizes the pre-flight discoverability + model- completeness check that `glasswing-scan-response`'s "Hard pre-flight" rule alludes to.
+This SKILL formalizes the pre-flight discoverability + model-completeness check that `glasswing-scan-response`'s "Hard pre-flight" rule alludes to.
 The completeness rubric is the minimum-bar subset of [`threat-model-producer`](../threat-model-producer/SKILL.md); the full producer rubric is the standard a model aspires to, this SKILL enforces only the slice the scan agent depends on mechanically.
 
 The remediation patterns (small structural fix → PR; substantive gap → issue) match what Jarek has been doing manually for the first wave of opted-in PMCs.
