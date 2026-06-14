@@ -27,7 +27,8 @@ Framework changes go via PR to [`apache/airflow-steward`](https://github.com/apa
 
 ## Pre-commit hooks
 
-**Required before any PR.** The repo uses [`prek`](https://github.com/j178/prek) (a faster Rust-based drop-in replacement for `pre-commit`) for static checks.
+**Required before any PR.**
+The repo uses [`prek`](https://github.com/j178/prek) (a faster Rust-based drop-in replacement for `pre-commit`) for static checks.
 Every push to a branch that will become a PR must first pass `prek run --all-files` locally
 — agents and humans both.
 The hooks catch the easy mistakes before a maintainer's review cycle is spent on them.

@@ -1,7 +1,8 @@
 ---
 name: glasswing-scan-update
 description: >-
-  Apply updates to the Glasswing / Mythos scan-outreach tracker (Piotr Karwasz's Google Sheet) on behalf of the ASF Security team — mark a PMC as scan-requested, fill in Request date / Date scan requested / Date scan received / Forwarded scan to PMC, set Security Model + Security model verified, update a repo's PMC mapping, etc. Uses a bundled Python helper that authenticates via OAuth as the running user (Claude Workspace MCP for Google Drive is read-only and cannot do these writes).
+  Apply updates to the Glasswing / Mythos scan-outreach tracker (Piotr Karwasz's Google Sheet) on behalf of the ASF Security team — mark a PMC as scan-requested, fill in Request date / Date scan requested / Date scan received / Forwarded scan to PMC, set Security Model + Security model verified, update a repo's PMC mapping, etc.
+  Uses a bundled Python helper that authenticates via OAuth as the running user (Claude Workspace MCP for Google Drive is read-only and cannot do these writes).
   Always reads the current row, shows a diff, and waits for explicit confirmation before writing.
   Use whenever Jarek says "mark PMC X as requested", "set the scan date for Y", "the scan for Z is back / has been forwarded", or anything else that mutates a row in the sheet.
 ---
