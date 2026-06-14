@@ -119,6 +119,14 @@ Changes to files under `.github/skills/<skill>/SKILL.md` become canonical immedi
 
 Cross-references between SKILLs (e.g. "per `glasswing-scan-response` hard rule 5") need to stay accurate; when you renumber a rule, grep for the rule reference across all SKILLs and update them in the same commit.
 
+## Semantic line breaks
+
+`SKILL.md` files and this `AGENTS.md` are written with [semantic line breaks](https://sembr.org/).
+Start every sentence on its own line.
+You may break a long sentence further at clause boundaries (after a comma, semicolon, or colon) when it aids readability.
+Never hard-wrap prose to a fixed column, and never run several sentences together on one line; let the editor soft-wrap.
+The payoff is small, reviewable diffs: editing one sentence touches one line, not a whole reflowed paragraph.
+
 ## Live spreadsheet writes
 
 The Glasswing program coordinates state in a Google Sheet that lives outside this repo (the `mythos-tracker` user-scope memory entry holds its ID + URL). SKILLs that mutate the sheet go through [`tools/sheets_writer/`](tools/sheets_writer/) — invoked as `uv run --project tools/sheets_writer sheets-writer <subcommand>`. The helper authenticates via per-user OAuth (`~/.config/asf-security/glasswing/`).
