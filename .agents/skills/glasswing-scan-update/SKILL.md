@@ -9,58 +9,83 @@ description: >-
 # Glasswing scan-update SKILL
 
 Write-side companion to `glasswing-scan-status`.
-The status skill **reads** the tracker via the Google Drive MCP; this skill **writes** to it via a bundled Python helper that holds its own OAuth credentials.
+The status skill **reads** the tracker via the Google Drive MCP;
+this skill **writes** to it via a bundled Python helper that holds its own OAuth credentials.
 
-The write path is needed because the Claude Workspace Google Drive MCP only exposes read tools (no `values.update` / `batchUpdate`).
+The write path is needed because the Claude Workspace Google Drive MCP
+only exposes read tools (no `values.update` / `batchUpdate`).
 The helper (`sheets-writer` CLI in [`tools/sheets_writer/`](../../../tools/sheets_writer/)) calls the Google Sheets API v4 directly.
 
 ## When to invoke
 
 - Jarek says "mark PMC X as scan-requested" (or any equivalent mutation of the `Scan Requested`, `Repositories requested`, `Repositories submitted`, `Request date`, `Date scan requested`, `Date scan received`, `Forwarded scan to PMC`, `Contact Person`, `Backup contact`, `Security Model`, `Security model verified`, `Notes`, `Initial Model assessment`, `Expedite Claude OSS Requests`, `Claude OSS Subscriptions Submitted`, `PR/Issues`, `PMC thread (ponymail)`, or `Mirko thread (ponymail)` columns).
-- The scan for a PMC progresses through one of its workflow stages: request received (`Request date`), submitted to Glasswing (`Date scan requested`), results back (`Date scan received`), or forwarded to the PMC (`Forwarded scan to PMC`).
+- The scan for a PMC progresses through one of its workflow stages:
+  request received (`Request date`), submitted to Glasswing (`Date scan requested`),
+  results back (`Date scan received`), or forwarded to the PMC (`Forwarded scan to PMC`).
   Each transition writes one or more date cells.
 - The pre-flight discoverability check passes — set `Security model verified`.
 - A repo needs its `PMC Slug` / `PMC Agreed` / `Security model` column updated (e.g. an `(unmapped)` repo gets mapped to its owning PMC after research).
 - A genuinely-new PMC needs a row added to the `PMCs` sheet (e.g. a PMC that didn't exist when the sheet was last regenerated, or one that was trimmed).
-  Use the `append-pmc` subcommand — `apply` errors on zero-match by design and won't create rows.
+  Use the `append-pmc` subcommand —
+  `apply` errors on zero-match by design and won't create rows.
 - A PMC replies to the pre-flight-pass OSS-tooling offer from `glasswing-scan-response` with the list of `@apache.org` addresses they want included in the Claude-for-OSS subscription expedite request.
   Write them (newline-separated) to the `Expedite Claude OSS Requests` cell.
   **Prerequisite**: the PMC must have confirmed those addresses already registered via https://claude.com/contact-sales/claude-for-oss — don't write addresses to this cell that haven't been registered yet because the expedite ask would be a no-op against Anthropic's side.
-  If the PMC explicitly opts out of the OSS subscription offer, write the literal string `none` rather than leaving the cell blank — empty means "not yet asked / not yet replied"; `none` means "asked + PMC declined".
+  If the PMC explicitly opts out of the OSS subscription offer, write the literal string `none` rather than leaving the cell blank —
+  empty means "not yet asked / not yet replied"; `none` means "asked + PMC declined".
 - Anthropic confirms a subscription grant for one of the expedite-asked addresses.
   Append the confirmed `@apache.org` address to the `Claude OSS Subscriptions Submitted` cell (preserve existing addresses; newline- separated).
   This cell tracks addresses for which the OSS-subscription expedite has been **submitted to the vendor** — distinct from `Expedite Claude OSS Requests`, which tracks what the PMC asked us to expedite for.
 
-  **Auto-synced on every refresh.** You normally don't edit this cell by hand: `build-status-tab` appends each *submitted* PMC's `Expedite Claude OSS Requests` addresses into `Claude OSS Subscriptions Submitted` on every live refresh (append-only — never removes an address already there).
+  **Auto-synced on every refresh.** You normally don't edit this cell by hand:
+  `build-status-tab` appends each *submitted* PMC's `Expedite Claude OSS Requests` addresses into `Claude OSS Subscriptions Submitted` on every live refresh (append-only — never removes an address already there).
   "Submitted" means the PMC's `Date scan requested` is set, because the expedite list rides the headline scan-submission form.
-  So once a PMC is submitted with a non-empty expedite list, its addresses flow into this cell automatically at the next refresh; manual appends are only needed for out-of-band additions.
+  So once a PMC is submitted with a non-empty expedite list,
+  its addresses flow into this cell automatically at the next refresh;
+  manual appends are only needed for out-of-band additions.
 
-  **The `OSS Subscriptions` tab** is the human-facing, per-person view of all this: a persistent registry with columns `Name · Email · PMC · Date · Submitted manually`, also rebuilt by `build-status-tab` on every refresh.
-  It is **append-only** — the tool only ever *appends* a new person (never removes) when **any** PMC gains a new expedite address.
+  **The `OSS Subscriptions` tab** is the human-facing, per-person view of all this:
+  a persistent registry with columns `Name · Email · PMC · Date · Submitted manually`,
+  also rebuilt by `build-status-tab` on every refresh.
+  It is **append-only** —
+  the tool only ever *appends* a new person (never removes) when **any** PMC gains a new expedite address.
   A registrant is tracked the moment their address lands in the `Expedite Claude OSS Requests` cell — *regardless* of whether the PMC's scan has been submitted yet (a person registers at claude-for-oss independently of the scan timeline).
   This is broader than the `Claude OSS Subscriptions Submitted` *column* sync above, which stays submission-gated.
   - **`Name` is auto-resolved.** On every refresh the tool resolves the person's full name from the Apache committer directory (Whimsy `public_ldap_people.json`, keyed by the `@apache.org` local-part = the Apache id) for any row whose `Name` is blank — both newly appended people **and** historical blank-name rows are backfilled.
-    A **hand-entered `Name` is always preserved** (manual edits win); the resolver only fills blanks.
-    Resolution is best-effort and network-bound — if Whimsy is unreachable the refresh still succeeds and the name just stays blank until the next run.
+    A **hand-entered `Name` is always preserved** (manual edits win);
+    the resolver only fills blanks.
+    Resolution is best-effort and network-bound —
+    if Whimsy is unreachable the refresh still succeeds and the name just stays blank until the next run.
     (A non-`@apache.org` address, or an id not in the directory, also stays blank.)
     The refresh prints `N name(s) resolved`.
-  - **`Submitted manually` is maintained by hand** — record when/how the subscription was actually submitted or granted; it is **preserved** across refreshes (the tool appends a new person with it blank).
-  So edit `Submitted manually` directly on that tab; correct a wrong auto-resolved `Name` by typing the right one (it will be preserved).
-  Never expect the tool to *remove* people — it preserves what's there and only adds missing ones + fills blank names.
+  - **`Submitted manually` is maintained by hand** —
+    record when/how the subscription was actually submitted or granted;
+    it is **preserved** across refreshes (the tool appends a new person with it blank).
+  So edit `Submitted manually` directly on that tab;
+  correct a wrong auto-resolved `Name` by typing the right one (it will be preserved).
+  Never expect the tool to *remove* people —
+  it preserves what's there and only adds missing ones + fills blank names.
 
-Skip this skill when the user is only asking for the *current* state — that's `glasswing-scan-status`.
-Skip it when the user is drafting an email reply — that's `glasswing-scan-response`.
+Skip this skill when the user is only asking for the *current* state —
+that's `glasswing-scan-status`.
+Skip it when the user is drafting an email reply —
+that's `glasswing-scan-response`.
 This skill mutates the sheet.
 
 ## Hard rules (do not skip)
 
 1. **Always diff before writing.** Run the helper in `--dry-run` first, show the diff to the user (every cell: current value `->` proposed value), and wait for explicit approval before re-running without `--dry-run`.
-   This is the same draft-and- confirm rule that applies to outbound messages — the spreadsheet is a shared coordination artefact and a wrong cell can mislead reviewers as badly as a wrong email.
+   This is the same draft-and- confirm rule that applies to outbound messages —
+   the spreadsheet is a shared coordination artefact and a wrong cell can mislead reviewers as badly as a wrong email.
 
 2. **Match by a stable identifier.** Use `PMC Slug` for PMC-sheet updates and `Repository URL` for repo-sheet updates.
-   Do not match on `PMC Name`, `Contact Person`, or anything else editable; the helper will refuse multi-match and silently- correct results, but the matching key should be unambiguous to start with.
+   Do not match on `PMC Name`, `Contact Person`, or anything else editable;
+   the helper will refuse multi-match and silently- correct results,
+   but the matching key should be unambiguous to start with.
 
-3. **Never touch rows for PMCs whose data was sourced from `private@<pmc>` correspondence the team should not echo publicly into a shared sheet.** The tracker is internal but not airtight — names + contacts are fine, quoted private discussion is not.
+3. **Never touch rows for PMCs whose data was sourced from `private@<pmc>` correspondence the team should not echo publicly into a shared sheet.**
+   The tracker is internal but not airtight —
+   names + contacts are fine, quoted private discussion is not.
    If asked to paste a sensitive note, summarize abstractly in the `Notes` cell.
 
 4. **Confirm before sending** applies twice: once to the cell diff (rule 1), and once to the absence of side-effects on other rows (rule 2).
@@ -89,7 +114,9 @@ Both artefacts live at `~/.config/asf-security/glasswing/`, outside the code fol
 5. **Place the JSON** at `~/.config/asf-security/glasswing/oauth_client_secret.json` (create the directory if it doesn't exist; the helper does not create it for security reasons).
 
 6. **Confirm the user has edit access** to the sheet.
-   The OAuth flow authenticates the running user; they must already be on the sheet's share list with editor rights, or the API will return 403 on the first write.
+   The OAuth flow authenticates the running user;
+   they must already be on the sheet's share list with editor rights,
+   or the API will return 403 on the first write.
    Ask Piotr (the sheet owner) for edit access before running setup.
 
 7. **Run the OAuth flow once**:
@@ -105,31 +132,42 @@ After setup, future invocations of `apply` reuse the refresh token silently.
 ### Troubleshooting setup
 
 - **`setup` exits with "Place your OAuth client secret JSON at …".** Step 5 above (placing `oauth_client_secret.json`) has not happened yet.
-  The script does *not* create the JSON for you — you have to go through steps 1–4 in the Google Cloud Console, download the JSON, and `mv` it to the documented path.
+  The script does *not* create the JSON for you —
+  you have to go through steps 1–4 in the Google Cloud Console, download the JSON, and `mv` it to the documented path.
   Re-run `setup` after.
-  The error message is brief (one line + exit code 1) and easy to miss if scrolled past; the script is *not* hanging silently if the browser doesn't open — scroll back and check stderr.
+  The error message is brief (one line + exit code 1) and easy to miss if scrolled past;
+  the script is *not* hanging silently if the browser doesn't open —
+  scroll back and check stderr.
 
 - **`test -f ~/.config/asf-security/glasswing/token.json` returns false from inside Claude Code.** The default sandbox denies reads of `~/.config/asf-security/`.
-  A negative result from `test -f` (or `Path.exists()`) here doesn't mean the file is missing — it can also mean the sandbox blocked the read.
+  A negative result from `test -f` (or `Path.exists()`) here doesn't mean the file is missing —
+  it can also mean the sandbox blocked the read.
   Verify with `dangerouslyDisableSandbox: true` before assuming OAuth isn't set up.
 
 - **`gh gist create` / other GitHub API calls fail with `tls: failed to verify certificate: x509: OSStatus -26276` on macOS.** Known macOS / `gh` CLI cert-chain issue inside the sandbox.
-  Bypass with `dangerouslyDisableSandbox: true` for the affected commands (`gh gist create`, `gh pr view`, etc.). Operations against the *Sheets* API use a different HTTP path and work fine; only `gh`'s GraphQL path hits this.
+  Bypass with `dangerouslyDisableSandbox: true` for the affected commands (`gh gist create`, `gh pr view`, etc.).
+  Operations against the *Sheets* API use a different HTTP path and work fine;
+  only `gh`'s GraphQL path hits this.
 
 ### Why this directory
 
 `~/.config/asf-security/glasswing/` is XDG-compliant, user- scoped, outside any git working tree, and not shared with the team.
-Each Security-team member runs their own setup and keeps their own token — there is no shared service account, so every write is attributable to the actual person who ran it.
+Each Security-team member runs their own setup and keeps their own token —
+there is no shared service account,
+so every write is attributable to the actual person who ran it.
 
-`~/.config/asf-security/` (the parent) is also a natural place to add future ASF-Security secrets (other tracker tokens, the private mailing-list bouncer creds, etc.). The `glasswing/` subdirectory keeps this tool's artefacts scoped.
+`~/.config/asf-security/` (the parent) is also a natural place to add future ASF-Security secrets (other tracker tokens, the private mailing-list bouncer creds, etc.).
+The `glasswing/` subdirectory keeps this tool's artefacts scoped.
 
 ## Procedure
 
 1. **Resolve the sheet ID** from user reference memory (`mythos-tracker`).
-   If the entry is missing, point the user at the `glasswing-scan-status` SKILL — that one creates the entry on first use.
+   If the entry is missing, point the user at the `glasswing-scan-status` SKILL —
+   that one creates the entry on first use.
 
 2. **Resolve the target rows** by reading the current sheet state.
-   Prefer reusing the read SKILL's output if it's already in the conversation; otherwise call `mcp__claude_ai_Google_Drive__read_file_content` with the file ID.
+   Prefer reusing the read SKILL's output if it's already in the conversation;
+   otherwise call `mcp__claude_ai_Google_Drive__read_file_content` with the file ID.
    Identify each row by `PMC Slug` (for PMCs sheet) or `Repository URL` (for Repositories sheet).
 
 3. **Build the updates JSON.** Each entry is one row update:
@@ -190,9 +228,12 @@ Each Security-team member runs their own setup and keeps their own token — the
 
    The helper prints `Applied. totalUpdatedCells=N totalUpdatedRows=M …` on success.
 
-7. **Verify** by re-reading the affected rows (one `mcp__claude_ai_Google_Drive__read_file_content` call is fine; you can also re-run the helper with `--dry-run` against the same updates JSON — it should now show every cell as `'<value>' -> '<value>'`, i.e. nothing to change).
+7. **Verify** by re-reading the affected rows (one `mcp__claude_ai_Google_Drive__read_file_content` call is fine;
+   you can also re-run the helper with `--dry-run` against the same updates JSON —
+   it should now show every cell as `'<value>' -> '<value>'`, i.e. nothing to change).
 
-8. **Refresh the derived views + dashboard.** A write to the PMCs sheet leaves the read-only derived tabs and the dashboard gist stale.
+8. **Refresh the derived views + dashboard.**
+   A write to the PMCs sheet leaves the read-only derived tabs and the dashboard gist stale.
    After a confirmed apply, run `build-status-tab` (live, no `--dry-run`) so they reflect the new rows:
 
    ```
@@ -201,17 +242,22 @@ Each Security-team member runs their own setup and keeps their own token — the
    ```
 
    This regenerates the `Status in progress`, `Program totals`, `Completed`, `Timeline`, and `README` tabs from the source rows **and** overwrites the private dashboard gist (see the [`glasswing-dashboard`](../glasswing-dashboard/SKILL.md) SKILL).
-   It is idempotent — run it after every write that touches a field the views derive from (state dates, model status, repos, PR/Issues).
+   It is idempotent —
+   run it after every write that touches a field the views derive from (state dates, model status, repos, PR/Issues).
    Skip only for pure-metadata edits the views don't read (e.g. a `Submission notes` tweak).
 
-   **Always run it after editing `Expedite Claude OSS Requests` or `Claude OSS Subscriptions Submitted`.** This is the one non-skippable case: `build-status-tab` is the *only* thing that propagates expedite/subscription addresses into the per-person `OSS Subscriptions` registry tab.
-   Update an expedite cell and stop, and the new registrant(s) never reach the registry — the names silently go missing.
+   **Always run it after editing `Expedite Claude OSS Requests` or `Claude OSS Subscriptions Submitted`.**
+   This is the one non-skippable case:
+   `build-status-tab` is the *only* thing that propagates expedite/subscription addresses into the per-person `OSS Subscriptions` registry tab.
+   Update an expedite cell and stop, and the new registrant(s) never reach the registry —
+   the names silently go missing.
    So any name/address change to those two columns **must** be followed immediately by a live `build-status-tab` run, in the same work session, before you consider the update done.
 
 ## Helper script reference
 
 `sheets-writer` is a packaged Python project at [`tools/sheets_writer/`](../../../tools/sheets_writer/).
-It declares its runtime dependencies (`google-api-python-client`, `google-auth`, `google-auth-oauthlib`) in its `pyproject.toml`, so `uv run --project tools/sheets_writer` resolves and runs it without a separate virtualenv setup.
+It declares its runtime dependencies (`google-api-python-client`, `google-auth`, `google-auth-oauthlib`) in its `pyproject.toml`,
+so `uv run --project tools/sheets_writer` resolves and runs it without a separate virtualenv setup.
 If `uv` is unavailable, fall back to a regular `pip install` from the project directory and then `python -m sheets_writer …`.
 Full reference (setup gotchas, all subcommands, security notes) in [`tools/sheets_writer/README.md`](../../../tools/sheets_writer/README.md).
 Unit tests at `tools/sheets_writer/tests/` cover the pure-function layer (column math, row matching, state machine, apply diff builder, canned/PMC row builders, CLI argparse).
@@ -232,15 +278,19 @@ Subcommands:
 
 Safety properties baked into the helper:
 
-- Match step requires exactly one row; multi-match and zero-match both abort with a clear error.
+- Match step requires exactly one row;
+  multi-match and zero-match both abort with a clear error.
 - Unknown column names in `match` or `set` abort.
-- Defaults to `--dry-run` *off*, but the SKILL always runs `--dry-run` first per rule 1; nothing applies without the agent explicitly omitting the flag after user approval.
+- Defaults to `--dry-run` *off*,
+  but the SKILL always runs `--dry-run` first per rule 1;
+  nothing applies without the agent explicitly omitting the flag after user approval.
 - `USER_ENTERED` value-input-option: dates / numbers are parsed as if a user typed them.
   Pass dates as ISO `YYYY-MM-DD`.
 
 ## Companion: `jira-writer` (Apache JIRA writes)
 
-Some PMC follow-ups also require a JIRA ticket (HBase's "PR title needs a JIRA id" convention is the canonical case; several other PMCs use the same convention).
+Some PMC follow-ups also require a JIRA ticket (HBase's "PR title needs a JIRA id" convention is the canonical case;
+several other PMCs use the same convention).
 For those, this SKILL hands off to the `jira-writer` CLI in [`tools/jira_writer/`](../../../tools/jira_writer/) — a small stdlib-only Python project with PAT-authenticated Bearer auth to <https://issues.apache.org/jira>.
 
 Invocation (matches the dry-run-and-confirm gate the rest of this SKILL uses):
@@ -282,7 +332,9 @@ Tests at `tools/jira_writer/tests/` run via `uv run pytest` from the project roo
 
 ## Canned responses (workflow)
 
-The `Canned Responses` sheet accumulates reusable answer fragments — every time the `glasswing-scan-response` SKILL drafts a *novel* answer that's been approved by the user, it's a candidate to save here so the next similar request can reuse it verbatim or with light edits.
+The `Canned Responses` sheet accumulates reusable answer fragments —
+every time the `glasswing-scan-response` SKILL drafts a *novel* answer that's been approved by the user,
+it's a candidate to save here so the next similar request can reuse it verbatim or with light edits.
 
 ### One-time bootstrap
 
@@ -305,12 +357,16 @@ The `Canned Responses` sheet accumulates reusable answer fragments — every tim
 
    Review the diff, then re-run without `--dry-run` to load.
 
-   The seed file is a bootstrap snapshot — once it's loaded, the spreadsheet becomes the source of truth and the seed file is no longer authoritative.
-   Don't edit the seed file to mutate live canned responses; edit the spreadsheet via the response SKILL or the `apply` subcommand.
+   The seed file is a bootstrap snapshot —
+   once it's loaded, the spreadsheet becomes the source of truth and the seed file is no longer authoritative.
+   Don't edit the seed file to mutate live canned responses;
+   edit the spreadsheet via the response SKILL or the `apply` subcommand.
 
 ### Adding a new canned response
 
-When the `glasswing-scan-response` SKILL has drafted a novel answer the user has approved, and the user agrees it's worth saving for reuse, build a one-element entries file at `$TMPDIR/canned-add-<timestamp>.json`:
+When the `glasswing-scan-response` SKILL has drafted a novel answer the user has approved,
+and the user agrees it's worth saving for reuse,
+build a one-element entries file at `$TMPDIR/canned-add-<timestamp>.json`:
 
 ```json
 [
@@ -350,15 +406,19 @@ Example updates JSON:
 ]
 ```
 
-If multiple rows share the same `Question pattern` (they shouldn't, but it can happen if the sheet wasn't curated), the helper aborts rather than guessing — manually disambiguate first by adjusting the patterns.
+If multiple rows share the same `Question pattern` (they shouldn't, but it can happen if the sheet wasn't curated),
+the helper aborts rather than guessing —
+manually disambiguate first by adjusting the patterns.
 
 ## Style notes
 
 - The skill writes; it does not summarize.
   After applying, the agent's reply should be a short confirmation ("Applied — 3 cells in PMCs row 17."), not a re-statement of the entire row.
 - Don't batch unrelated updates into one apply call without user approval of the combined diff.
-  "While you're in there, also set X" is the wrong instinct here — every change goes through the same diff-and-confirm gate.
-- The PMC sheet has no free-form `Status` cell — workflow stage is implicit from which of the four date columns (`Request date`, `Date scan requested`, `Date scan received`, `Forwarded scan to PMC`) is the last one filled.
+  "While you're in there, also set X" is the wrong instinct here —
+  every change goes through the same diff-and-confirm gate.
+- The PMC sheet has no free-form `Status` cell —
+  workflow stage is implicit from which of the four date columns (`Request date`, `Date scan requested`, `Date scan received`, `Forwarded scan to PMC`) is the last one filled.
   Don't invent a Status column; write the relevant date instead.
 - All four date columns plus `Security model verified` are dates, not datetimes.
   Use `YYYY-MM-DD`.
@@ -367,16 +427,20 @@ If multiple rows share the same `Question pattern` (they shouldn't, but it can h
 ## Examples of bad updates (avoid)
 
 - Updating the row by `PMC Name` instead of `PMC Slug`.
-  The slug is the join key with the repos sheet; updating by name invites typos and capitalization mismatches.
+  The slug is the join key with the repos sheet;
+  updating by name invites typos and capitalization mismatches.
 - Filling `Date scan received` or `Forwarded scan to PMC` before the underlying event actually happened — those cells exist to track real leg turnaround, and pre-filling them pollutes the metric.
   Each date column should be written only when its event genuinely occurred.
 - Setting `Scan Requested = Yes` for a PMC that has only expressed informal interest (e.g. on a public mailing list).
-  The column means "the PMC sent a `[GLASSWING]` request from an `@apache.org` identity" — anything looser muddies the Security-team queue.
+  The column means "the PMC sent a `[GLASSWING]` request from an `@apache.org` identity" —
+  anything looser muddies the Security-team queue.
 - Quoting `private@<pmc>` correspondence into the `Notes` cell.
   Summarize abstractly instead.
 
 ## Provenance
 
 This SKILL was added when the team realised that the read-only status SKILL needed a write counterpart, and that the Claude Workspace Drive MCP could not provide one.
-The helper script's shape mirrors what Piotr Karwasz manually does in the sheet when he tracks scan progress — the skill exists so the agent can do those same updates while leaving an auditable diff trail.
-Credentials live outside the repo by deliberate choice; the sheet itself remains Piotr's source of truth.
+The helper script's shape mirrors what Piotr Karwasz manually does in the sheet when he tracks scan progress —
+the skill exists so the agent can do those same updates while leaving an auditable diff trail.
+Credentials live outside the repo by deliberate choice;
+the sheet itself remains Piotr's source of truth.
