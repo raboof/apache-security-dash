@@ -16,6 +16,7 @@
 # under the License.
 
 import email
+from datetime import datetime
 from email.policy import default
 from email.utils import formataddr, parseaddr
 from inbox_manager import imap, email_utils, cache
@@ -506,6 +507,9 @@ def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
 # CVE reservations), so replies/noise are dropped without downloading bodies.
 HEADER_FETCH = "BODY.PEEK[HEADER.FIELDS (MESSAGE-ID IN-REPLY-TO FROM SUBJECT)]"
 
+# The server's receive time, fetched so the inbox can be processed oldest-first.
+INTERNAL_DATE = "INTERNALDATE"
+
 # Fetched alongside the headers: Gmail's per-message and per-thread ids. They are
 # the IMAP form of the Gmail API's `id` / `threadId` (hex of these), so the
 # thread-head test `id == threadId` becomes `X-GM-MSGID == X-GM-THRID`.
@@ -659,9 +663,19 @@ def main(argv: list[str] | None = None) -> int:
     if index:
         print(f"(report-cache: {len(index)} reports indexed)")
     inbox = imap.connect()
-    uids = list(inbox.search(["ALL"]))
-    fetched = inbox.fetch(uids, [HEADER_FETCH, *GMAIL_ID_FETCH]) if uids else {}
-    for uid in uids:
+    uids = inbox.search(["ALL"])
+    fetched = (
+        inbox.fetch(uids, [HEADER_FETCH, INTERNAL_DATE, *GMAIL_ID_FETCH])
+        if uids
+        else {}
+    )
+
+    # Process oldest-first by server receive time. Gmail's INBOX UIDs are not in
+    # date order, so a UID sort is not chronological - sort on INTERNALDATE.
+    def _received(u):
+        return (fetched.get(u) or {}).get(b"INTERNALDATE") or datetime.min
+
+    for uid in sorted(uids, key=_received):
         data = fetched.get(uid)
         if data is None:
             continue
