@@ -123,6 +123,37 @@ def test_guess_resolves_full_pmc():
     assert tomcat.security_link == "https://tomcat.apache.org/security.html"
     assert tomcat.security_contact == "security@tomcat.apache.org"
     assert tomcat.mail_list == "tomcat"
+    assert tomcat.specialized is True
+
+
+def test_pmc_for_specialized_flag():
+    # Project-scoped contact -> specialized; the foundation-wide fallback and a
+    # PMC with no contact at all -> not specialized.
+    assert pmc_for("tomcat", KNOWN, COORDINATES).specialized is True
+    assert pmc_for("kafka", KNOWN, COORDINATES).specialized is False  # security@apache.org
+    assert pmc_for("ant", KNOWN, COORDINATES).specialized is False  # no contact key
+    assert pmc_for("nosuch", KNOWN, COORDINATES).specialized is False  # no entry
+
+
+def test_internal_security_contact():
+    # Where the Security team forwards: own security@ for a specialized PMC,
+    # else private@ keyed off the mail_list (slug fallback). Never the
+    # foundation-wide security@apache.org.
+    assert (
+        pmc_for("tomcat", KNOWN, COORDINATES).internal_security_contact
+        == "security@tomcat.apache.org"
+    )
+    assert pmc_for("kafka", KNOWN, COORDINATES).internal_security_contact == (
+        "private@kafka.apache.org"  # security@apache.org fallback -> private@
+    )
+    assert pmc_for("ant", KNOWN, COORDINATES).internal_security_contact == "private@ant.apache.org"
+    assert pmc_for("httpcomponents", KNOWN, COORDINATES).internal_security_contact == (
+        "private@hc.apache.org"  # private@ keyed off the differing mail_list 'hc'
+    )
+    assert (
+        pmc_for("nosuch", KNOWN, COORDINATES).internal_security_contact
+        == "private@nosuch.apache.org"  # no committee entry -> slug fallback
+    )
 
 
 def test_mail_list_present_and_differing():
@@ -135,18 +166,23 @@ def test_mail_list_none_for_address_or_missing():
     assert mail_list(KNOWN, "missing") is None  # no committee entry
 
 
-def test_pmc_for_drops_generic_contact():
-    # The foundation-wide security@apache.org fallback is not a project alias.
-    assert pmc_for("kafka", KNOWN, COORDINATES).security_contact is None
+def test_pmc_for_security_contact_resolves_fallback():
+    # security_contact always resolves to a usable address: the PMC's own when
+    # registered, else the foundation-wide security@apache.org (raw contact is
+    # security@apache.org for kafka, or absent for ant -> both resolve to it).
     assert pmc_for("tomcat", KNOWN, COORDINATES).security_contact == "security@tomcat.apache.org"
+    assert pmc_for("kafka", KNOWN, COORDINATES).security_contact == "security@apache.org"
+    assert pmc_for("ant", KNOWN, COORDINATES).security_contact == "security@apache.org"
 
 
 def test_pmc_for_unknown_slug_is_bare():
     pmc = pmc_for("nosuch", KNOWN, COORDINATES)
     assert pmc.id == "nosuch"
     assert pmc.name is None and pmc.security_link is None
-    assert pmc.security_contact is None and pmc.contributing is None
+    assert pmc.contact is None and pmc.contributing is None
     assert pmc.mail_list is None
+    # the raw contact is None, but security_contact resolves to the fallback
+    assert pmc.security_contact == "security@apache.org"
 
 
 def test_security_link_present():

@@ -37,6 +37,14 @@ def test_argparse_routing() -> None:
     assert args.slug == "hbase"
     assert args.apache_ids == ["ndimiduk", "apurtell"]
 
+    args = build_parser().parse_args(["pmc-security-info", "tomcat"])
+    assert args.cmd == "pmc-security-info"
+    assert args.slug == "tomcat"
+    assert args.json is False
+
+    args = build_parser().parse_args(["pmc-security-info", "tomcat", "--json"])
+    assert args.json is True
+
 
 def test_argparse_check_pmc_member_requires_at_least_one_id() -> None:
     with pytest.raises(SystemExit):
@@ -114,6 +122,50 @@ def test_check_pmc_member_some_missing_exits_one(mock_urlopen, committee_info, c
     assert rc == 1
     assert "YES" in out
     assert "NO" in out
+
+
+def test_pmc_security_info_own_contact(mock_urlopen, security_coordinates, capsys) -> None:
+    """A PMC with its own alias: security_contact is it; always exits 0."""
+    mock_urlopen.return_value = urlopen_returning(security_coordinates)
+    rc = main(["pmc-security-info", "tomcat"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "security_contact: security@tomcat.apache.org" in out
+    assert "threat_model:     https://tomcat.apache.org/security.html" in out
+
+
+def test_pmc_security_info_fallback_contact(mock_urlopen, security_coordinates, capsys) -> None:
+    """No own alias (foundation-wide fallback): security_contact resolves to it."""
+    mock_urlopen.return_value = urlopen_returning(security_coordinates)
+    rc = main(["pmc-security-info", "hop"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "security_contact: security@apache.org" in out
+
+
+def test_pmc_security_info_missing(mock_urlopen, security_coordinates, capsys) -> None:
+    """Slug absent from coordinates: name unknown, security_contact is the fallback."""
+    mock_urlopen.return_value = urlopen_returning(security_coordinates)
+    rc = main(["pmc-security-info", "cassandra"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "name:             (unknown" in out
+    assert "security_contact: security@apache.org" in out
+
+
+def test_pmc_security_info_json(mock_urlopen, security_coordinates, capsys) -> None:
+    import json as _json
+
+    mock_urlopen.return_value = urlopen_returning(security_coordinates)
+    rc = main(["pmc-security-info", "tomcat", "--json"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    rec = _json.loads(out)
+    assert rec["slug"] == "tomcat"
+    assert rec["security_contact"] == "security@tomcat.apache.org"
+    assert rec["threat_model"] == "https://tomcat.apache.org/security.html"
+    assert "specialized" not in rec
+    assert "alias_status" not in rec
 
 
 def test_fetch_error_exits_two(mock_urlopen, capsys) -> None:

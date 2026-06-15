@@ -29,13 +29,14 @@ answers four structural questions deterministically:
 - `resolve-id "<full name>"` — find Apache ID(s) matching a human name
 - `pmc-info <slug>` — chair + full roster of a PMC committee
 - `check-pmc-member <slug> <apache-id> [...]` — true/false per ID
-- `check-security-alias <slug>` — does `security@<slug>.apache.org` exist?
+- `pmc-security-info <slug> [--json]` — a PMC's security coordinates:
+  the `security_contact` to Cc (its own `security@<slug>.apache.org` when registered, else `security@apache.org`) and the threat-model link
 
 **Use this from SKILL prompts instead of WebFetch on the JSON URLs.**
 WebFetch on these endpoints is unreliable and should be treated as
 a bug.
 
-The `check-security-alias` lookup hits a different source —
+The `pmc-security-info` lookup hits a different source —
 `apache/security-site:scripts/project-coordinates.json` — but
 the same WebFetch hazard applies (multi-KB JSON, summarising
 the contents has been observed to fabricate entries), so
@@ -53,15 +54,18 @@ uv run --project tools/whimsy_lookup whimsy-lookup pmc-info hbase
 # Boolean PMC-membership check (exit 0 if all present, 1 if any missing):
 uv run --project tools/whimsy_lookup whimsy-lookup check-pmc-member hbase ndimiduk apurtell
 
-# Per-PMC security alias check (exit 0 = safe to CC, 1 = bounces; cassandra/impala observed):
-uv run --project tools/whimsy_lookup whimsy-lookup check-security-alias tomcat
-uv run --project tools/whimsy_lookup whimsy-lookup check-security-alias cassandra
+# PMC security coordinates — the security_contact to Cc + the threat-model link.
+# security_contact is the PMC's own security@<pmc> when registered, else the
+# foundation-wide security@apache.org fallback, so a caller can just Cc it:
+uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info tomcat
+uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info cassandra
+uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info kafka --json
 ```
 
 ## Exit codes
 
-- `0` — success (resolve-id found at least one match; pmc-info OK; check-pmc-member all-present; check-security-alias = alias is `PRESENT`)
-- `1` — domain failure (no match; PMC slug not in committee-info; some IDs missing from roster; check-security-alias = alias is `ABSENT` — bounce expected)
+- `0` — success (resolve-id found at least one match; pmc-info OK; check-pmc-member all-present; pmc-security-info ran the lookup — read the security_contact from its output)
+- `1` — domain failure (no match; PMC slug not in committee-info; some IDs missing from roster)
 - `2` — fetch failure (network error, JSON parse error, timeout against Whimsy or security-site)
 
 CLI callers (the SKILL prompt) can distinguish "no answer" from

@@ -90,10 +90,10 @@ COMMITTEE_INFO_SAMPLE = {
 
 
 # Sample security-site project-coordinates JSON. Tomcat has a project-
-# scoped alias (security@tomcat.apache.org); Cassandra is the
-# observed-bounce case — entry missing from coordinates entirely. Hop
-# has an entry but ``contact`` is the foundation-wide fallback, which
-# means the per-PMC alias still doesn't exist. APISIX is contact-null
+# scoped alias (security@tomcat.apache.org); Cassandra is missing from
+# coordinates entirely (security@cassandra just routes to security@apache.org).
+# Hop has an entry but ``contact`` is the foundation-wide fallback, which
+# means there is no distinct per-PMC list. APISIX is contact-null
 # (some entries omit the field entirely) and must classify the same
 # way as "generic".
 SECURITY_COORDINATES_SAMPLE = {

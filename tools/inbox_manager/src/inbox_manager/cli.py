@@ -85,11 +85,6 @@ def prompt_for_pmc(committees, coordinates):
     return pmc_for(pmc_id, committees, coordinates)
 
 
-def private_list(pmc):
-    """The PMC's private@ list, keyed off its mail_list (falls back to the slug)."""
-    return f"private@{pmc.mail_list or pmc.id}.apache.org"
-
-
 def print_pmc_guess(pmcs):
     """Print the given PMC guesses and their security coordinates."""
     if not pmcs:
@@ -97,10 +92,10 @@ def print_pmc_guess(pmcs):
         return
     for pmc in pmcs:
         if pmc.security_link is None:
-            print(f"PMC: {pmc.id} ({pmc.security_contact or private_list(pmc)})")
+            print(f"PMC: {pmc.id} ({pmc.internal_security_contact})")
         else:
             print(
-                f"PMC: {pmc.id} ({pmc.security_contact or private_list(pmc)}) {pmc.security_link}"
+                f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_link}"
             )
 
 
@@ -325,7 +320,7 @@ def accept_message(inbox, original, uid, pmc, committees, coordinates):
         pmc = prompt_for_pmc(committees, coordinates)
     contact = ""
     if pmc:
-        contact = pmc.security_contact or private_list(pmc)
+        contact = pmc.internal_security_contact
     to_addr = input_with_prefill("Forward to: ", contact).strip()
     if not to_addr:
         print("not forwarded - no recipient\n")
@@ -398,7 +393,7 @@ def handle_cached(inbox, original, uid, bundle, committees, coordinates):
                 email_utils.fill_receipt_template(pmc, nm or ad, "", TRIAGER_NAME), pmc
             )
         default_to = bundle.forwarded_to or (
-            (pmc.security_contact or private_list(pmc)) if pmc else ""
+            pmc.internal_security_contact if pmc else ""
         )
         to_addr = input_with_prefill("Forward to: ", default_to).strip()
         if not to_addr:

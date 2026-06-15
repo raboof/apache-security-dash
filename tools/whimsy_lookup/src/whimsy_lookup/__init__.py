@@ -35,7 +35,7 @@ CLI:
     whimsy-lookup resolve-id "<full name>"
     whimsy-lookup pmc-info <slug>
     whimsy-lookup check-pmc-member <slug> <apache-id> [<apache-id> ...]
-    whimsy-lookup check-security-alias <slug>
+    whimsy-lookup pmc-security-info <slug> [--json]
 """
 
 __version__ = "0.2.0"

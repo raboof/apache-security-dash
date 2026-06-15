@@ -56,13 +56,15 @@ it leaves the provenance block alone and **never sends**.
 
 ## Inputs
 
-- **`coordinates.yaml`** (in this skill dir):
-  per-PMC `specialized` flag, `contact`, and `threat_model` link.
-  Generated from apache/security-site's `project-coordinates.json` by `build_coordinates.py`;
-  re-run it to refresh.
-  A PMC absent from the file is treated as central triage with no known threat model.
-  The `specialized` flag does **not** gate triage (rule 2);
-  on a *forward* it picks the recipient address (the PMC's own `contact` vs `private@<pmc>`) and the receipt variant (see Draft).
+- **PMC security coordinates** via the `whimsy-lookup pmc-security-info <slug>` tool (`draft.py` calls it directly):
+  the `security_contact` (the PMC's own `security@<pmc>` when registered, else the foundation-wide `security@apache.org` fallback)
+  and the `threat_model` link,
+  read live from apache/security-site's `project-coordinates.json`.
+  A PMC absent from that file is treated as central triage with no known threat model.
+  A PMC counts as *specialized* (runs its own security team) when its `security_contact` is its own address rather than the fallback;
+  that does **not** gate triage (rule 2), but on a *forward* it picks the recipient address (the PMC's own `security_contact` vs `private@<pmc>`) and the receipt variant (see Draft).
+  To inspect a PMC by hand:
+  `uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <slug>` (add `--json` for the raw record).
 - **Project source** under `--workspace` (default `~/workspace`):
   the SKILL reads `<workspace>/<pmc>` to check the report against real code.
   If that checkout is absent,
@@ -135,7 +137,8 @@ For each filed bundle (`status: filed`) under `report-cache/`:
 
 ```bash
 A=.github/skills/triage-assess
-$A/build_coordinates.py                       # (re)generate coordinates.yaml
+# PMC security coordinates (security_contact to Cc / threat model):
+uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <pmc> [--json]
 $A/archive_lookup.py --pmc <pmc> --keywords "<words>"   # prior reports for this PMC
 $A/draft.py track   <id>
 $A/draft.py forward <id> --summary-file SUM.md  [--reporter-note NOTE.md] [--wf MARKER] [--triager "Name"] [--model "..."]
@@ -165,7 +168,9 @@ it appends `wf <marker>` to the tag and records `wf` in the front-matter.
 
 ## Scope
 
-- Reads `report-cache/`, `coordinates.yaml`, templates, project source, and the `email-classification/` archive (which it may create as a worktree).
+- Reads `report-cache/`, templates, project source,
+  the PMC security coordinates (via `whimsy-lookup pmc-security-info`, from security-site),
+  and the `email-classification/` archive (which it may create as a worktree).
 - May WebFetch threat-model links on `*.apache.org` / `github.com`.
 - Writes only draft Markdown + `report.md` front-matter status inside the bundle.
 - Never sends, never edits the provenance block, never touches Ponymail.

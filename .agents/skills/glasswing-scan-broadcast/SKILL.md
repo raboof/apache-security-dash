@@ -88,7 +88,10 @@ while a per-thread, state-aware note reads as the status update each PMC actuall
 
 7. **CC discipline** (same as `glasswing-scan-response` Hard Rule 2):
    To = primary contact;
-   CC = backup contact + `private@<pmc>` + `security@apache.org` + the `security@<pmc>` alias **only when `whimsy-lookup check-security-alias <pmc>` confirms it exists**.
+   CC = backup contact,
+   `private@<pmc>`,
+   and the PMC's verified `security_contact` from `whimsy-lookup pmc-security-info <pmc>`
+   (its own `security@<pmc>` when registered, else `security@apache.org`).
 
 ## Procedure
 
@@ -225,7 +228,7 @@ keep the two in sync.)
 | Per-PMC state classification | `glasswing-scan-run` (sweep) |
 | One-off reply to a PMC question | `glasswing-scan-response` |
 | Reusable answer wording | Canned Responses tab (`program-status`, `timing`, `deadline`) via `glasswing-scan-update` |
-| `security@<pmc>` alias check | `whimsy-lookup check-security-alias <pmc>` |
+| PMC `security_contact` (to Cc) | `whimsy-lookup pmc-security-info <pmc>` |
 | Record the broadcast in the tracker | `glasswing-scan-update` (apply, `Notes`) |
 | Draft creation (oauth backend) | `oauth-draft` (per `.apache-magpie-overrides/user.md`) |
 

@@ -44,17 +44,20 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
-
 SKILL_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SKILL_DIR.parents[2]
 DEFAULT_CACHE = REPO_ROOT / "report-cache"
 TEMPLATES = REPO_ROOT / "templates"
-COORDINATES = SKILL_DIR / "coordinates.yaml"
 DEFAULT_MODEL = "Claude Opus 4.7"
 
 sys.path.insert(0, str(SKILL_DIR.parent / "triage-populate-cache"))
 from report_md import BUNDLE_FILE, read as read_md, write as write_md  # noqa: E402
+
+# Per-PMC security coordinates (security_contact, threat-model link) come from the whimsy-lookup tool,
+# which reads apache/security-site's project-coordinates.json.
+sys.path.insert(0, str(REPO_ROOT / "tools" / "whimsy_lookup" / "src"))
+from whimsy_lookup.fetch import FetchError, fetch_security_coordinates  # noqa: E402
+from whimsy_lookup.security_info import pmc_security_info  # noqa: E402
 
 # A report is the PMC's own (track-only) iff it was addressed To: a per-PMC
 # security@<pmc>.apache.org list. Reaching the central security@apache.org list
@@ -83,10 +86,22 @@ def git_user_name() -> str:
         return ""
 
 
-def load_coordinates() -> dict:
-    if COORDINATES.exists():
-        return yaml.safe_load(COORDINATES.read_text()) or {}
-    return {}
+def pmc_coords(pmc: str) -> dict:
+    """Security coordinates for a PMC via whimsy-lookup (security-site).
+
+    Returns the ``pmc_security_info`` record (name / security_contact / threat_model / ...).
+    On a fetch failure, or for a PMC absent from coordinates.json, returns an empty-ish record,
+    so the caller falls back to central triage (forward to private@<pmc>, generic PMC name).
+    """
+    if not pmc:
+        return {}
+    try:
+        coordinates = fetch_security_coordinates()
+    except FetchError as e:
+        print(f"warning: could not fetch security coordinates ({e}); "
+              "assuming central triage.", file=sys.stderr)
+        return {}
+    return pmc_security_info(coordinates, pmc)
 
 
 def find_bundle(cache: Path, ident: str) -> Path:
@@ -191,7 +206,7 @@ def main() -> int:
     bundle = find_bundle(args.cache_dir, args.id)
     meta, body = read_md(bundle / BUNDLE_FILE)
     pmc = meta.get("pmc") or ""
-    coords = load_coordinates().get(pmc, {})
+    coords = pmc_coords(pmc)
     pmc_name = coords.get("name") or (f"Apache {pmc.title()}" if pmc else "the project")
     subject = meta.get("subject") or "(no subject)"
     triager = args.triager or git_user_name() or "the Apache Security Team"
@@ -218,11 +233,13 @@ def main() -> int:
         if not args.summary_file:
             raise SystemExit("forward needs --summary-file")
         summary = args.summary_file.read_text(encoding="utf-8").strip()
-        # A PMC that runs its own security team (specialized) gets the report at
-        # its own address, and the reporter is pointed there for follow-up; a
-        # centrally-handled PMC gets it on its private@ list.
-        specialized = bool(coords.get("specialized"))
-        pmc_address = coords.get("contact") or f"security@{pmc}.apache.org"
+        # A PMC that runs its own security team (its security_contact is a
+        # project-scoped address, not the foundation-wide fallback) gets the
+        # report at its own address, and the reporter is pointed there for
+        # follow-up; a centrally-handled PMC gets it on its private@ list.
+        sc = coords.get("security_contact")
+        specialized = bool(sc and sc != "security@apache.org")
+        pmc_address = sc if specialized else f"security@{pmc}.apache.org"
         fwd_to = pmc_address if specialized else f"private@{pmc}.apache.org"
         fwd = header(f"{fwd_to}  (verify the PMC list)", f"Fwd: {subject}")
         fwd += render(

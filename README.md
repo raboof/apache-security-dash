@@ -333,9 +333,9 @@ in-scope, plausible vulnerability. A high-confidence false positive or hardening
 item gets a **non-assertive reply to the reporter**; anything plausible gets a
 **forward to the PMC** (`private@<pmc>` or the project's specialized security
 list) plus a **receipt to the reporter**. Which PMCs are "specialized" (route to
-their own security list) comes from a committed `coordinates.yaml`, regenerated
-from the security-site project coordinates by `build_coordinates.py`. Every
-output is a draft for a human to review and send.
+their own security list) and where each project's threat model lives come from
+the `whimsy-lookup pmc-security-info` tool, which reads the security-site project
+coordinates live. Every output is a draft for a human to review and send.
 
 ## How to use the SKILLs
 

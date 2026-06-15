@@ -14,6 +14,7 @@
       "Bash(lychee *)",
       "WebFetch(domain:*.apache.org)",
       "Bash(uv run --project tools/populate_cache populate-cache *)",
+      "Bash(uv run --project tools/whimsy_lookup whimsy-lookup *)",
       "Bash(.agents/skills/triage-populate-cache/file.py *)"
     ],
     "deny": [

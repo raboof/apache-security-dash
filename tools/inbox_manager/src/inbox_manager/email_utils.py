@@ -293,17 +293,26 @@ def _drop_lines(template, placeholder):
 
 
 def fill_receipt_template(pmc, reporter_name, note, triager_name):
-    """The templates/receipt.md boilerplate with its placeholders filled in.
+    """The templates/receipt(-specialized).md boilerplate with placeholders filled.
 
-    The security-model line is filled when the PMC has a documented security
-    page, otherwise that whole line is dropped. An empty ``note`` likewise
-    drops its line. Remaining gaps are collapsed.
+    A *specialized* PMC (one that runs its own security team) gets ``receipt-specialized.md``,
+    which informs the reporter about the project's own ``<PMC security address>``;
+    every other PMC gets ``receipt.md``.
+    A security-model line is filled when the PMC has a documented security page and dropped otherwise.
+    An empty ``note`` likewise drops its line. Remaining gaps are collapsed.
     """
-    template = (TEMPLATE_DIR / "receipt.md").read_text(encoding="utf-8")
+    specialized = bool(pmc and pmc.specialized)
+    name = "receipt-specialized.md" if specialized else "receipt.md"
+    template = (TEMPLATE_DIR / name).read_text(encoding="utf-8")
     template = template.replace("\\<", "<")  # drop the markdown escapes on placeholders
     template = template.replace("<Reporter name>", reporter_name).replace(
         "<Triager full name>", triager_name
     )
+    if specialized:
+        # specialized == pmc.security_contact is the project's own address.
+        template = template.replace("<PMC name>", pmc.name or pmc.id).replace(
+            "<PMC security address>", pmc.security_contact
+        )
     if pmc and pmc.security_link:
         template = template.replace("<PMC name>", pmc.name or pmc.id).replace(
             "<link>", pmc.security_link

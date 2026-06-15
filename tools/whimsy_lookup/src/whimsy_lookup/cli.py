@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from whimsy_lookup.committee import PMCNotFound, chair_of, check_membership, pmc_entry
@@ -30,7 +31,7 @@ from whimsy_lookup.fetch import (
 )
 from whimsy_lookup.ldap import resolve_ids
 from whimsy_lookup.pmc_guess import guess_pmcs
-from whimsy_lookup.security_alias import classify_security_alias
+from whimsy_lookup.security_info import pmc_security_info
 
 
 def cmd_resolve_id(args: argparse.Namespace) -> int:
@@ -86,33 +87,30 @@ def cmd_check_pmc_member(args: argparse.Namespace) -> int:
     return 1 if any_missing else 0
 
 
-def cmd_check_security_alias(args: argparse.Namespace) -> int:
-    """Verify whether security@<slug>.apache.org exists per coordinates.json.
+def cmd_pmc_security_info(args: argparse.Namespace) -> int:
+    """Print a PMC's security coordinates: who to CC and the threat-model link.
 
-    Exit codes:
+    Reads apache/security-site's project-coordinates.json and reports, for one PMC slug:
+    the ``security_contact`` to CC
+    (the PMC's own ``security@<slug>.apache.org`` when registered,
+     else the foundation-wide ``security@apache.org`` fallback)
+    and the project's ``threat_model`` link.
 
-      * 0 — alias is present (contact matches ``security@<slug>.apache.org``);
-        safe to CC the alias on PMC-facing email.
-      * 1 — alias is NOT present (slug missing from coordinates.json,
-        OR contact is the foundation-wide ``security@apache.org``);
-        do NOT CC the per-PMC alias — qmail will bounce.
+    ``--json`` emits the full record as one JSON object (for programmatic use, e.g. triage-assess);
+    the default is a human-readable key/value block.
     """
     coordinates = fetch_security_coordinates()
-    status, contact = classify_security_alias(coordinates, args.slug)
-    expected = f"security@{args.slug}.apache.org"
-    if status == "present":
-        print(f"{args.slug:24} PRESENT  ({expected})")
-        return 0
-    if status == "generic":
-        print(
-            f"{args.slug:24} ABSENT   (coordinates contact = "
-            f"{contact!r}, not {expected!r}). Do NOT CC the alias."
-        )
-        return 1
-    print(
-        f"{args.slug:24} ABSENT   (no entry in project-coordinates.json). Do NOT CC {expected!r}."
-    )
-    return 1
+    info = pmc_security_info(coordinates, args.slug)
+
+    if args.json:
+        print(json.dumps(info, ensure_ascii=False))
+    else:
+        print(f"slug:             {info['slug']}")
+        print(f"name:             {info['name'] or '(unknown — not in coordinates.json)'}")
+        print(f"security_contact: {info['security_contact']}")
+        print(f"threat_model:     {info['threat_model'] or '(none on record)'}")
+
+    return 0
 
 
 def cmd_guess_pmc(args: argparse.Namespace) -> int:
@@ -172,15 +170,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="One or more Apache IDs to check against the PMC roster.",
     )
 
-    p_alias = sub.add_parser(
-        "check-security-alias",
+    p_sec = sub.add_parser(
+        "pmc-security-info",
         help=(
-            "Verify whether security@<pmc>.apache.org exists per the "
-            "security-site project-coordinates.json. Exit 0 = present "
-            "(safe to CC), exit 1 = absent (do NOT CC; qmail will bounce)."
+            "Print a PMC's security coordinates from the security-site "
+            "project-coordinates.json: the security_contact to CC (the PMC's "
+            "own security@<pmc> when registered, else security@apache.org) and "
+            "the threat-model link."
         ),
     )
-    p_alias.add_argument("slug", help="PMC slug (e.g. 'tomcat', 'kafka').")
+    p_sec.add_argument("slug", help="PMC slug (e.g. 'tomcat', 'kafka').")
+    p_sec.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the full record as one JSON object instead of a key/value block.",
+    )
 
     p_guess = sub.add_parser(
         "guess-pmc",
@@ -202,7 +206,7 @@ DISPATCH = {
     "resolve-id": cmd_resolve_id,
     "pmc-info": cmd_pmc_info,
     "check-pmc-member": cmd_check_pmc_member,
-    "check-security-alias": cmd_check_security_alias,
+    "pmc-security-info": cmd_pmc_security_info,
     "guess-pmc": cmd_guess_pmc,
 }
 

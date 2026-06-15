@@ -57,34 +57,23 @@ The SKILL never sends mail directly.
    *"when you're ready to formally request, the request will need at least one `@apache.org` address listed, since that's where the scan results go"* —
    as a forward-looking note, not a gate on the current discussion.
 
-2. **Always CC `security@apache.org` on the reply,
-   and CC the project's own `security@<pmc>.apache.org` alias *only when mechanically verified to exist*.**
-   The Foundation-level CC keeps the Security team's audit trail;
-   the per-project CC makes sure the PMC's collective security team sees the thread
-   regardless of which individual reached out.
-
-   **Mandatory mechanical verification of `security@<pmc>` before adding it to CC.**
-   Not every PMC has registered the alias —
-   qmail bounces (`#5.1.1 "Sorry, no mailbox here by that name"`) on the ones that haven't.
-   Confirmed bounces so far: Cassandra (2026-05-28), Impala (2026-05-29).
-   Many silent bounces in earlier replies before the verification was made mechanical.
-
+2. **Cc the PMC's verified `security_contact`.**
    Run, for every PMC, before constructing the CC list:
 
-       uv run --project tools/whimsy_lookup whimsy-lookup \ check-security-alias <pmc-slug>
+       uv run --project tools/whimsy_lookup whimsy-lookup \
+         pmc-security-info <pmc-slug>
 
-   - Exit 0 (`PRESENT`) → add `security@<pmc>.apache.org` to CC.
-   - Exit 1 (`ABSENT`) → do **not** add the alias.
-     Foundation- level `security@apache.org` and the project's `private@<pmc>.apache.org` list cover the audit trail adequately.
+   and Cc the `security_contact` it reports.
+   That is the PMC's own `security@<pmc>.apache.org` when it has registered one
+   (which itself auto-Ccs `security@apache.org`), or the foundation-wide
+   `security@apache.org` otherwise.
 
-   The check consults `apache/security-site:scripts/project- coordinates.json` (the authoritative source) and is the only acceptable evidence —
-   visual inspection of the JSON is fine for one-offs
-   but the CLI is the rule for SKILL operations so the workflow is mechanical and not memory-dependent.
-   Do **not** WebFetch the URL: same summarisation hazard as the LDAP / committee JSON.
+   The lookup consults `apache/security-site:scripts/project-coordinates.json` (the authoritative source) and is the only acceptable evidence;
+   do **not** WebFetch the URL (same summarisation hazard as the LDAP / committee JSON).
 
    If the original thread was on a project's `private@<pmc>.apache.org` list, keep that list on To/CC (don't quietly drop it).
    CC is enough;
-   do not move the substantive discussion to `security@apache.org` unless the requester does.
+   do not move the substantive discussion to `security_contact` unless the requester does.
 
 3. **Confirm before sending.**
    Per the user's "draft and show first" rule,

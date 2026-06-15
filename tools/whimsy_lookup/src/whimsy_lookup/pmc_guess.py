@@ -32,14 +32,14 @@ ranked list of candidates the operator reviews — never an automated action.
 
 The PMC security page link comes from
 ``apache/security-site:scripts/project-coordinates.json`` (the ``link``
-field), the same source ``security_alias`` reads — see ``fetch`` for why we
+field), the same source ``security_info`` reads — see ``fetch`` for why we
 go through the CLI/helper rather than WebFetch on the raw JSON.
 """
 
 from __future__ import annotations
 
 import re
-from collections import namedtuple
+from dataclasses import dataclass
 
 from whimsy_lookup.committee import mail_list_of
 
@@ -47,12 +47,43 @@ _ADDR_HOST = re.compile(r"@([a-z0-9][a-z0-9-]*)\.apache\.org", re.IGNORECASE)
 _EMAIL = re.compile(r"\S+@\S+")
 _TOKEN = re.compile(r"[a-z0-9][a-z0-9-]*")
 
-# A guessed PMC: its committee id, the documented security-page name/link and
-# contact/contributing links from project-coordinates.json, and the mail_list
-# token from committee-info.
-Pmc = namedtuple(
-    "Pmc", ["id", "name", "security_link", "security_contact", "contributing", "mail_list"]
-)
+
+@dataclass(frozen=True)
+class Pmc:
+    """A guessed PMC:
+    its committee id,
+    the documented security-page name/link and contact/contributing links
+    from project-coordinates.json,
+    and the mail_list token from committee-info.
+
+    ``contact`` is the raw project-coordinates value (``None`` when the PMC has no entry).
+    """
+
+    id: str
+    name: str | None
+    security_link: str | None
+    contact: str | None
+    contributing: str | None
+    mail_list: str | None
+
+    @property
+    def security_contact(self) -> str:
+        return self.contact or "security@apache.org"
+
+    @property
+    def specialized(self) -> bool:
+        return self.security_contact != "security@apache.org"
+
+    @property
+    def internal_security_contact(self) -> str:
+        """Where the Security team forwards a report for this PMC:
+        its own ``security@<pmc>`` when it runs its own security team,
+        else its ``private@<pmc>`` list.
+        """
+        if self.specialized:
+            return self.security_contact
+        return f"private@{self.mail_list or self.id}.apache.org"
+
 
 # Product names that don't contain their PMC slug as a token, mapped to it. The
 # weakest signal - a project's prose/product name rather than its slug. The
@@ -122,14 +153,13 @@ def pmc_for(slug: str, committees: dict, coordinates: dict) -> Pmc:
     entry = coordinates.get(slug)
     if not isinstance(entry, dict):
         entry = {}
-    contact = entry.get("contact")
-    if contact and contact.lower() == "security@apache.org":
-        contact = None
+    # The raw contact is stored as-is (None when absent); Pmc.security_contact /
+    # Pmc.specialized resolve the foundation-wide fallback off it.
     return Pmc(
         slug,
         entry.get("name"),
         entry.get("link"),
-        contact,
+        entry.get("contact"),
         entry.get("contributing"),
         mail_list(committees, slug),
     )
