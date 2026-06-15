@@ -18,18 +18,20 @@
 from populate_cache.gmail import resolve_labels, thread_heads
 
 
-def test_gmail_root_and_no_in_reply_to_are_heads():
+def test_gmail_root_and_no_references_are_heads():
     messages = [
         {"id": "A", "threadId": "A"},  # Gmail root -> head
-        {"id": "B", "threadId": "A"},  # reply in A's thread (has In-Reply-To) -> dropped
-        {"id": "C", "threadId": "C"},  # Gmail root, orphan reply (has In-Reply-To) -> head
+        {"id": "B", "threadId": "A"},  # reply in A's thread (has References) -> dropped
+        {"id": "C", "threadId": "C"},  # Gmail root, orphan reply (has References) -> head
         {"id": "D", "threadId": "X"},  # fresh mail Gmail merged by subject -> head
+        {"id": "E", "threadId": "A"},  # forward in A's thread (has References) -> dropped
     ]
     metadata = {
-        "A": {"in_reply_to": ""},
-        "B": {"in_reply_to": "<parent@a>"},
-        "C": {"in_reply_to": "<external@elsewhere>"},
-        "D": {"in_reply_to": ""},
+        "A": {"references": ""},
+        "B": {"references": "<parent@a>"},
+        "C": {"references": "<external@elsewhere>"},
+        "D": {"references": ""},
+        "E": {"references": "<parent@a>"},
     }
     assert thread_heads(messages, metadata) == ["A", "C", "D"]
 
@@ -40,13 +42,13 @@ def test_order_preserved():
         {"id": "Y", "threadId": "Z"},
         {"id": "X", "threadId": "X"},
     ]
-    metadata = {"Z": {}, "Y": {"in_reply_to": "<z@x>"}, "X": {}}
+    metadata = {"Z": {}, "Y": {"references": "<z@x>"}, "X": {}}
     assert thread_heads(messages, metadata) == ["Z", "X"]
 
 
-def test_reply_with_in_reply_to_and_merged_thread_dropped():
+def test_reply_with_references_and_merged_thread_dropped():
     messages = [{"id": "B", "threadId": "A"}]
-    metadata = {"B": {"in_reply_to": "<a@x>"}}
+    metadata = {"B": {"references": "<a@x>"}}
     assert thread_heads(messages, metadata) == []
 
 

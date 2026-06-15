@@ -113,23 +113,25 @@ def thread_heads(messages: list[dict], metadata: dict[str, dict]) -> list[str]:
 
     * it is the Gmail thread root (``id == threadId``) - this keeps a standalone
       reply whose parent is not in this mailbox, which forms its own thread; or
-    * it has no ``In-Reply-To`` header - a fresh message that Gmail nonetheless
+    * it has no ``References`` header - a fresh message that Gmail nonetheless
       merged into an existing thread by subject (so ``id != threadId``), e.g. a
       recurring ``Currently open security reports for <pmc>`` mail.
 
-    Genuine replies (``id != threadId`` *and* an ``In-Reply-To``) are dropped.
+    Genuine replies and forwards (``id != threadId`` *and* a ``References``
+    header) are dropped. ``References`` is used rather than ``In-Reply-To``
+    because forwards carry ``References`` but often omit ``In-Reply-To``.
     ``metadata`` is the mapping returned by :func:`fetch_metadata`.
     """
     out: list[str] = []
     for message in messages:
         info = metadata.get(message["id"], {})
-        if message["id"] == message["threadId"] or not info.get("in_reply_to"):
+        if message["id"] == message["threadId"] or not info.get("references"):
             out.append(message["id"])
     return out
 
 
 # Headers the head detection + dedup + skip pass needs, without the body.
-_META_HEADERS = ["Message-Id", "Subject", "From", "In-Reply-To", "Received"]
+_META_HEADERS = ["Message-Id", "Subject", "From", "References", "Received"]
 
 
 def _parse_metadata(response: dict) -> dict:
@@ -138,7 +140,7 @@ def _parse_metadata(response: dict) -> dict:
         "message_id": "",
         "subject": "",
         "from": "",
-        "in_reply_to": "",
+        "references": "",
         "received": [],
         "label_ids": response.get("labelIds", []) or [],
     }
@@ -151,8 +153,8 @@ def _parse_metadata(response: dict) -> dict:
             info["subject"] = value
         elif name == "from":
             info["from"] = value
-        elif name == "in-reply-to":
-            info["in_reply_to"] = value
+        elif name == "references":
+            info["references"] = value
         elif name == "received":
             info["received"].append(value)
     return info

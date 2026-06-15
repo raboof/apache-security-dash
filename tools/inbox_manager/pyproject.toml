@@ -40,6 +40,9 @@ dependencies = [
     "whimsy-lookup",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
 [tool.uv.sources]
 whimsy-lookup = { path = "../whimsy_lookup", editable = true }
 
@@ -48,3 +51,7 @@ inbox-manager = "inbox_manager.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/inbox_manager"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]

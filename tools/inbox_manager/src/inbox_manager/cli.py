@@ -504,7 +504,7 @@ def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
 
 # Header fields sufficient to decide the body-free skips below (and to detect
 # CVE reservations), so replies/noise are dropped without downloading bodies.
-HEADER_FETCH = "BODY.PEEK[HEADER.FIELDS (MESSAGE-ID IN-REPLY-TO FROM SUBJECT)]"
+HEADER_FETCH = "BODY.PEEK[HEADER.FIELDS (MESSAGE-ID REFERENCES FROM SUBJECT)]"
 
 # Fetched alongside the headers: Gmail's per-message and per-thread ids. They are
 # the IMAP form of the Gmail API's `id` / `threadId` (hex of these), so the
@@ -524,13 +524,15 @@ def is_thread_head(data, headers):
     """Whether the message starts its thread - the same rule populate_cache uses.
 
     A message is a head when it is its Gmail thread's root
-    (``X-GM-MSGID == X-GM-THRID``) or it carries no ``In-Reply-To`` (a fresh
+    (``X-GM-MSGID == X-GM-THRID``) or it carries no ``References`` (a fresh
     mail Gmail merged into an existing thread by subject, e.g. a recurring
-    "Currently open security reports" digest). A genuine reply - a different
-    message and thread id *and* an ``In-Reply-To`` - is not a head.
+    "Currently open security reports" digest). A genuine reply or forward - a
+    different message and thread id *and* a ``References`` header - is not a
+    head. ``References`` is used rather than ``In-Reply-To`` because forwards
+    carry ``References`` but often omit ``In-Reply-To``.
     """
     return (
-        data.get(b"X-GM-MSGID") == data.get(b"X-GM-THRID") or not headers["In-Reply-To"]
+        data.get(b"X-GM-MSGID") == data.get(b"X-GM-THRID") or not headers["References"]
     )
 
 
