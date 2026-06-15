@@ -256,95 +256,96 @@ def message_date(original):
     return date.today().strftime("%Y-%m-%d")
 
 
-def fill_forward_template(pmc, summary, model, triager_name):
-    """The templates/forward.md boilerplate with its placeholders filled in.
+# Every marker any template can carry. draft.py fills the content ones
+# (summary/reason/note/model/duplicate); fill_markers() fills the rest. After
+# filling, a line still holding any of these is dropped so no raw <placeholder>
+# leaks into the sent mail.
+_ALL_MARKERS = (
+    "PMC name",
+    "PMC security address",
+    "Reporter name",
+    "Triager full name",
+    "link",
+    "model link",
+    "contributing link",
+    "dashboard link",
+    "summary",
+    "reason",
+    "note",
+    "model",
+    "duplicate",
+)
 
-    With an empty ``summary`` the summary line is dropped along with the AI
-    disclaimer that refers to it, so an unfilled report reads cleanly.
+
+def _apply(text, mapping):
+    """Replace each marker (escaped ``\\<key>`` or bare ``<key>``) with its value."""
+    for key, val in mapping.items():
+        text = text.replace(f"\\<{key}>", val).replace(f"<{key}>", val)
+    return text
+
+
+def fill_markers(text, pmc, original, triager_name):
+    """Fill the identity / PMC / infra markers a draft.py draft leaves open,
+    then drop any line whose marker stayed empty.
+
+    ``draft.py`` fills the content markers (summary / reason / note / model /
+    duplicate); this fills the rest from the PMC coordinates, the live message,
+    and the operator identity, then removes any line still carrying an unfilled
+    marker (a PMC with no threat-model link, an empty receipt note, ...). The
+    same function serves the cached drafts and the fallback templates.
     """
-    template = (TEMPLATE_DIR / "forward.md").read_text(encoding="utf-8")
-    template = template.replace("\\<", "<")  # drop the markdown escapes on placeholders
-    pmc_name = (pmc.name or pmc.id) if pmc else ""
-    template = template.replace("<PMC name>", pmc_name).replace(
-        "<Triager full name>", triager_name
-    )
+    name, addr = parseaddr(reporter_from(original) or "")
+    values = {
+        "Reporter name": name or addr or "there",
+        "Triager full name": triager_name or "the Apache Security Team",
+    }
     if pmc:
-        template = template.replace(
-            "<dashboard link>", f"https://dash.security.apache.org/project/{pmc.id}"
-        )
-    else:
-        template = _drop_lines(template, "<dashboard link>")
-    if summary:
-        return template.replace("<summary>", summary).replace("<model>", model)
-    # No summary yet: drop its line and the disclaimer, then collapse the gap.
-    kept = [
+        values["PMC name"] = pmc.name or pmc.id
+        values["dashboard link"] = f"https://dash.security.apache.org/project/{pmc.id}"
+        if pmc.specialized:
+            values["PMC security address"] = pmc.security_contact
+        if pmc.security_link:
+            values["link"] = pmc.security_link
+            values["model link"] = pmc.security_link
+        if pmc.contributing:
+            values["contributing link"] = pmc.contributing
+    text = _apply(text, values)
+    text = "".join(
         ln
-        for ln in template.splitlines(keepends=True)
-        if "<summary>" not in ln and not ln.startswith("Disclaimer:")
-    ]
-    return re.sub(r"\n{3,}", "\n\n", "".join(kept))
-
-
-def _drop_lines(template, placeholder):
-    """Remove every line of ``template`` that still contains ``placeholder``."""
-    return "".join(
-        ln for ln in template.splitlines(keepends=True) if placeholder not in ln
+        for ln in text.splitlines(keepends=True)
+        if not any(f"<{m}>" in ln for m in _ALL_MARKERS)
     )
+    return re.sub(r"\n{3,}", "\n\n", text)
 
 
-def fill_receipt_template(pmc, reporter_name, note, triager_name):
-    """The templates/receipt(-specialized).md boilerplate with placeholders filled.
-
-    A *specialized* PMC (one that runs its own security team) gets ``receipt-specialized.md``,
-    which informs the reporter about the project's own ``<PMC security address>``;
-    every other PMC gets ``receipt.md``.
-    A security-model line is filled when the PMC has a documented security page and dropped otherwise.
-    An empty ``note`` likewise drops its line. Remaining gaps are collapsed.
-    """
-    specialized = bool(pmc and pmc.specialized)
-    name = "receipt-specialized.md" if specialized else "receipt.md"
-    template = (TEMPLATE_DIR / name).read_text(encoding="utf-8")
-    template = template.replace("\\<", "<")  # drop the markdown escapes on placeholders
-    template = template.replace("<Reporter name>", reporter_name).replace(
-        "<Triager full name>", triager_name
-    )
-    if specialized:
-        # specialized == pmc.security_contact is the project's own address.
-        template = template.replace("<PMC name>", pmc.name or pmc.id).replace(
-            "<PMC security address>", pmc.security_contact
-        )
-    if pmc and pmc.security_link:
-        template = template.replace("<PMC name>", pmc.name or pmc.id).replace(
-            "<link>", pmc.security_link
-        )
-    else:
-        template = _drop_lines(template, "<link>")
-    if note:
-        template = template.replace("<note>", note)
-    else:
-        template = _drop_lines(template, "<note>")
-    return re.sub(r"\n{3,}", "\n\n", template)
+def fill_forward_template(pmc, original, summary, model, triager_name):
+    """Fallback forward.md (no cached draft): fill the content here, rest via
+    fill_markers. An empty summary/model just drops its line."""
+    content = {}
+    if summary:
+        content["summary"] = summary
+    if model:
+        content["model"] = model
+    text = _apply((TEMPLATE_DIR / "forward.md").read_text(encoding="utf-8"), content)
+    return fill_markers(text, pmc, original, triager_name)
 
 
-def fill_reject_template(pmc, reporter_name, triager_name):
-    """The templates/reject.md boilerplate with its placeholders filled in.
+def fill_receipt_template(pmc, original, note, triager_name):
+    """Fallback receipt (no cached draft): receipt-specialized.md for a
+    specialized PMC, else receipt.md. Content (note) filled here, the rest via
+    fill_markers; an empty note drops its line."""
+    name = "receipt-specialized.md" if (pmc and pmc.specialized) else "receipt.md"
+    content = {"note": note} if note else {}
+    text = _apply((TEMPLATE_DIR / name).read_text(encoding="utf-8"), content)
+    return fill_markers(text, pmc, original, triager_name)
 
-    ``<model link>`` is the PMC's documented security page (the coordinates
-    'link') and ``<contributing link>`` its 'contributing' field. Either is
-    substituted only when the PMC has it on record; otherwise the placeholder
-    is left in place so the operator fills it in when editing the reply (the
-    surrounding sentence carries the reasoning, so the line is never dropped).
-    """
-    template = (TEMPLATE_DIR / "reject.md").read_text(encoding="utf-8")
-    template = template.replace("\\<", "<")  # drop the markdown escapes on placeholders
-    template = template.replace("<Reporter name>", reporter_name).replace(
-        "<Triager full name>", triager_name
-    )
-    if pmc and pmc.security_link:
-        template = template.replace("<model link>", pmc.security_link)
-    if pmc and pmc.contributing:
-        template = template.replace("<contributing link>", pmc.contributing)
-    return template
+
+def fill_reject_template(pmc, original, reason, triager_name):
+    """Fallback reject.md (no cached draft): the reason is filled here, the rest
+    via fill_markers; an empty reason drops its line."""
+    content = {"reason": reason} if reason else {}
+    text = _apply((TEMPLATE_DIR / "reject.md").read_text(encoding="utf-8"), content)
+    return fill_markers(text, pmc, original, triager_name)
 
 
 def quote_original(original):
@@ -409,34 +410,6 @@ def make_receipt(original, body_md):
     receipt = _reply_envelope(original)
     _set_md_body(receipt, body_md)
     return receipt
-
-
-def fill_draft_placeholders(body, pmc):
-    """Fill the placeholders triage-assess leaves for the sender to resolve.
-
-    ``draft.py`` renders the team templates but cannot fill ``<dashboard link>``
-    (the per-PMC dashboard URL) or the receipt's ``<link>`` (the PMC security
-    page); inbox_manager has the PMC from Whimsy, so it fills them here. The
-    placeholders survive in the draft markdown-escaped as ``\\<...>``. Any
-    placeholder still unfilled (no PMC, or no security page) has its whole line
-    dropped so no raw ``<...>`` leaks into the sent mail.
-    """
-    if pmc:
-        dash = f"https://dash.security.apache.org/project/{pmc.id}"
-        body = body.replace("\\<dashboard link>", dash).replace(
-            "<dashboard link>", dash
-        )
-        if pmc.security_link:
-            body = body.replace("\\<link>", pmc.security_link).replace(
-                "<link>", pmc.security_link
-            )
-    if "<dashboard link>" in body or "<link>" in body:
-        body = "".join(
-            ln
-            for ln in body.splitlines(keepends=True)
-            if "<dashboard link>" not in ln and "<link>" not in ln
-        )
-    return re.sub(r"\n{3,}", "\n\n", body)
 
 
 # MIME/content headers that describe the body we are about to replace, so they

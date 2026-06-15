@@ -8,39 +8,45 @@
 """Render triage drafts into a filed report bundle, or mark it tracked.
 
 The deterministic half of the triage-assess SKILL. The model assesses a filed
-report against the project's threat model + source and decides the outcome;
-this helper does the mechanical part: fill the team templates, write the draft
-Markdown files into the bundle, and stamp the bundle's report.md front-matter.
-It never sends.
+report and decides the outcome; this helper does the mechanical part: pick the
+right template, fill the *content* markers the model authored, write the draft
+Markdown into the bundle, and stamp the bundle's report.md front-matter. It
+never sends.
+
+draft.py fills ONLY the content markers (<summary>, <reason>, <note>, <model>,
+<duplicate>). Every identity / PMC / infra marker (<PMC name>, <Reporter name>,
+<Triager full name>, <link>, <model link>, <contributing link>,
+<dashboard link>, <PMC security address>) is left in place for inbox_manager to
+fill at send time; inbox_manager drops any line whose marker stays empty. See
+templates/README.md for the full marker contract.
 
 Subcommands (all take a bundle <id>: a ponymail id or unique prefix):
 
   track <id>
-      The PMC is a specialized team (own security contact). Record that we
-      only track it (status: tracked); write no drafts.
+      The report reached the PMC's own list (its security_contact or
+      private@<pmc> is in To/Cc), so the Security team only tracks it. Writes
+      no drafts. status: tracked.
 
-  forward <id> --summary-file F [--triager N] [--model M]
-      Plausible report: render templates/forward.md (PMC name + the model's
-      summary + AI-model disclaimer + triager) -> draft-forward.md, and
-      templates/receipt.md (reporter ack) -> draft-receipt.md.
-      status: drafted-forward.
+  forward <id> --summary-file F --model M [--duplicate-of URL]
+               [--reporter-note F] [--wf W]
+      Plausible report. Renders templates/forward.md (or forward-duplicate.md
+      when --duplicate-of is given) -> draft-forward.md, plus a reporter
+      receipt (receipt-specialized.md for a specialized PMC, else receipt.md)
+      -> draft-receipt.md. status: drafted-forward.
 
-  reply <id> --body-file F [--kind false-positive|hardening] [--triager N]
-      High-confidence false-positive / hardening: write the model's
-      non-assertive note to the reporter -> draft-reply.md.
-      status: drafted-reply.
+  reply <id> (--reason TEXT | --body-file F) [--kind false-positive|hardening]
+      High-confidence false-positive / hardening (or a known non-issue):
+      renders templates/reject.md -> draft-reply.md. status: drafted-reply.
 
-Drafts carry a leading HTML-comment header (To:/Subject:) for the human who
-sends them; the body below is what gets sent. We never use assertive language
-to the reporter: the PMC owns the final non-issue / hardening / CVE call.
+Drafts carry a leading HTML-comment header (To:/Subject:) as a hint for the
+sender; the body below is what gets sent. We never use assertive language to
+the reporter: the PMC owns the final non-issue / hardening / CVE call.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime
-import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -48,58 +54,42 @@ SKILL_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SKILL_DIR.parents[2]
 DEFAULT_CACHE = REPO_ROOT / "report-cache"
 TEMPLATES = REPO_ROOT / "templates"
-DEFAULT_MODEL = "Claude Opus 4.7"
+FALLBACK_CONTACT = "security@apache.org"
 
 sys.path.insert(0, str(SKILL_DIR.parent / "triage-populate-cache"))
 from report_md import BUNDLE_FILE, read as read_md, write as write_md  # noqa: E402
 
-# Per-PMC security coordinates (security_contact, threat-model link) come from the whimsy-lookup tool,
-# which reads apache/security-site's project-coordinates.json.
+# Per-PMC security coordinates (security_contact, threat-model link) come from
+# the whimsy-lookup tool, which reads apache/security-site's
+# project-coordinates.json. draft.py needs them only to tell a specialized PMC
+# from a centrally-handled one (which receipt template + where the forward
+# routes); inbox_manager fills the PMC markers in the drafts at send time.
 sys.path.insert(0, str(REPO_ROOT / "tools" / "whimsy_lookup" / "src"))
 from whimsy_lookup.fetch import FetchError, fetch_security_coordinates  # noqa: E402
 from whimsy_lookup.security_info import pmc_security_info  # noqa: E402
-
-# A report is the PMC's own (track-only) iff it was addressed To: a per-PMC
-# security@<pmc>.apache.org list. Reaching the central security@apache.org list
-# means it needs triage, even when the PMC runs its own security team.
-_PMC_IN_TO = re.compile(r"\bsecurity@([a-z0-9][a-z0-9-]*)\.apache\.org\b", re.I)
-
-
-def per_pmc_addressee(meta: dict) -> str | None:
-    """Return the per-PMC slug if the To header names a security@<pmc> list."""
-    for m in _PMC_IN_TO.findall(meta.get("to") or ""):
-        if m.lower() != "apache":
-            return m.lower()
-    return None
 
 
 def now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
-def git_user_name() -> str:
-    try:
-        return subprocess.check_output(
-            ["git", "config", "user.name"], text=True
-        ).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return ""
-
-
 def pmc_coords(pmc: str) -> dict:
-    """Security coordinates for a PMC via whimsy-lookup (security-site).
+    """The pmc_security_info record for a PMC, or {} on fetch failure / unknown.
 
-    Returns the ``pmc_security_info`` record (name / security_contact / threat_model / ...).
-    On a fetch failure, or for a PMC absent from coordinates.json, returns an empty-ish record,
-    so the caller falls back to central triage (forward to private@<pmc>, generic PMC name).
+    {} (or a foundation-wide fallback contact) means the PMC is treated as
+    centrally handled: the forward goes to private@<pmc> and the plain receipt
+    is used.
     """
     if not pmc:
         return {}
     try:
         coordinates = fetch_security_coordinates()
     except FetchError as e:
-        print(f"warning: could not fetch security coordinates ({e}); "
-              "assuming central triage.", file=sys.stderr)
+        print(
+            f"warning: could not fetch security coordinates ({e}); "
+            "assuming central triage.",
+            file=sys.stderr,
+        )
         return {}
     return pmc_security_info(coordinates, pmc)
 
@@ -134,16 +124,21 @@ def find_bundle(cache: Path, ident: str) -> Path:
 
 
 def render(template_name: str, mapping: dict[str, str]) -> str:
+    """Fill the given markers in a template, leaving the rest for inbox_manager.
+
+    Markers are written escaped (``\\<key>``) in the templates; we replace both
+    the escaped and bare forms for the keys we own, and leave every other
+    marker untouched so inbox_manager fills (or line-drops) it at send time.
+    """
     text = (TEMPLATES / template_name).read_text(encoding="utf-8")
     for key, val in mapping.items():
-        # Templates write placeholders as escaped markdown, e.g. `\<summary>`.
         text = text.replace(f"\\<{key}>", val).replace(f"<{key}>", val)
     return text
 
 
 def header(to: str, subject: str) -> str:
     return (
-        "<!-- DRAFT for human review — not sent automatically.\n"
+        "<!-- DRAFT for human review (not sent automatically).\n"
         f"To: {to}\n"
         f"Subject: {subject}\n"
         "-->\n\n"
@@ -168,6 +163,26 @@ def save_meta(bundle: Path, meta: dict, body: str) -> None:
     write_md(bundle / BUNDLE_FILE, meta, body)
 
 
+def do_track(bundle: Path, meta: dict, body: str, pmc: str, sc: str | None) -> int:
+    """Mark a report the PMC already has (addressed to its own list)."""
+    recipients = ((meta.get("to") or "") + " " + (meta.get("cc") or "")).lower()
+    own = {f"private@{pmc}.apache.org"}
+    if sc and sc != FALLBACK_CONTACT:
+        own.add(sc.lower())
+    hit = next((addr for addr in own if addr in recipients), None)
+    if not hit:
+        raise SystemExit(
+            f"Refusing to track {bundle.name}: neither the PMC's security_contact "
+            f"nor private@{pmc}.apache.org is in To/Cc "
+            f"(to={meta.get('to')!r} cc={meta.get('cc')!r}). A report that reached "
+            "only the central list needs triage even if the PMC runs its own team."
+        )
+    meta.update({"status": "tracked", "tracked_via": hit, "tracked_at": now()})
+    save_meta(bundle, meta, body)
+    print(f"{bundle.name}: tracked (addressed to {hit}); no drafts written.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -177,28 +192,33 @@ def main() -> int:
     ap.add_argument(
         "--summary-file", type=Path, help="forward: the model's PMC summary"
     )
-    ap.add_argument("--body-file", type=Path, help="reply: the model's reporter note")
+    ap.add_argument(
+        "--model", help="forward: the AI model that wrote the summary (disclaimer)"
+    )
+    ap.add_argument(
+        "--duplicate-of",
+        help="forward: link to the still-open report this duplicates "
+        "(renders forward-duplicate.md)",
+    )
     ap.add_argument(
         "--reporter-note",
         type=Path,
-        help="forward: extra paragraph for the receipt (e.g. a likely-non-issue hint)",
+        help="forward: optional extra paragraph for the receipt",
+    )
+    ap.add_argument("--body-file", type=Path, help="reply: file with the reject reason")
+    ap.add_argument(
+        "--reason", help="reply: the reject reason inline (alternative to --body-file)"
     )
     ap.add_argument(
         "--wf",
         choices=WF_MARKERS,
-        help="workflow marker appended to the tag (e.g. non-issue-feedback)",
+        help="forward: workflow marker appended to the tag (e.g. cve-allocation)",
     )
     ap.add_argument(
         "--kind",
         choices=["false-positive", "hardening"],
         default="false-positive",
         help="reply: disposition recorded in meta",
-    )
-    ap.add_argument(
-        "--triager", default=None, help="Triager full name (default: git user.name)"
-    )
-    ap.add_argument(
-        "--model", default=DEFAULT_MODEL, help="AI model for the forward disclaimer"
     )
     ap.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
     args = ap.parse_args()
@@ -207,107 +227,75 @@ def main() -> int:
     meta, body = read_md(bundle / BUNDLE_FILE)
     pmc = meta.get("pmc") or ""
     coords = pmc_coords(pmc)
-    pmc_name = coords.get("name") or (f"Apache {pmc.title()}" if pmc else "the project")
+    sc = coords.get("security_contact")
+    specialized = bool(sc and sc != FALLBACK_CONTACT)
     subject = meta.get("subject") or "(no subject)"
-    triager = args.triager or git_user_name() or "the Apache Security Team"
+    reporter = meta.get("reporter") or "(reporter)"
 
     if args.action == "track":
-        addressee = per_pmc_addressee(meta)
-        if not addressee:
-            raise SystemExit(
-                f"Refusing to track {bundle.name}: To is {meta.get('to')!r}, not a "
-                "per-PMC security@<pmc> list. A report on the central list needs "
-                "triage even if the PMC runs its own team — assess and draft instead."
-            )
-        meta["status"] = "tracked"
-        meta["tracked_via"] = f"security@{addressee}.apache.org"
-        meta["tracked_at"] = now()
-        save_meta(bundle, meta, body)
-        print(
-            f"{bundle.name}: tracked (sent to security@{addressee}.apache.org); "
-            "no drafts written."
-        )
-        return 0
+        return do_track(bundle, meta, body, pmc, sc)
 
     if args.action == "forward":
         if not args.summary_file:
             raise SystemExit("forward needs --summary-file")
+        if not args.model:
+            raise SystemExit(
+                "forward needs --model (the AI model that wrote the summary)"
+            )
         summary = args.summary_file.read_text(encoding="utf-8").strip()
-        # A PMC that runs its own security team (its security_contact is a
-        # project-scoped address, not the foundation-wide fallback) gets the
-        # report at its own address, and the reporter is pointed there for
-        # follow-up; a centrally-handled PMC gets it on its private@ list.
-        sc = coords.get("security_contact")
-        specialized = bool(sc and sc != "security@apache.org")
-        pmc_address = sc if specialized else f"security@{pmc}.apache.org"
-        fwd_to = pmc_address if specialized else f"private@{pmc}.apache.org"
-        fwd = header(f"{fwd_to}  (verify the PMC list)", f"Fwd: {subject}")
-        fwd += render(
-            "forward.md",
-            {
-                "PMC name": pmc_name,
-                "summary": summary,
-                "model": args.model,
-                "Triager full name": triager,
-            },
-        )
+        fwd_to = sc if specialized else f"private@{pmc}.apache.org"
+
+        if args.duplicate_of:
+            fwd_body = render(
+                "forward-duplicate.md",
+                {
+                    "summary": summary,
+                    "model": args.model,
+                    "duplicate": args.duplicate_of,
+                },
+            )
+        else:
+            fwd_body = render("forward.md", {"summary": summary, "model": args.model})
+        fwd = header(f"{fwd_to}  (verify the PMC list)", f"Fwd: {subject}") + fwd_body
         (bundle / "draft-forward.md").write_text(fwd, encoding="utf-8")
-        note = (
-            args.reporter_note.read_text(encoding="utf-8").strip()
-            if args.reporter_note
-            else ""
-        )
-        rcpt = header(meta.get("reporter") or "(reporter)", f"Re: {subject}")
-        rcpt += render(
-            "receipt-specialized.md" if specialized else "receipt.md",
-            {
-                "Reporter name": meta.get("reporter_name") or "there",
-                "PMC name": pmc_name,
-                "PMC security address": pmc_address,
-                "note": note,
-                "Triager full name": triager,
-            },
-        )
-        rcpt = re.sub(r"\n{3,}", "\n\n", rcpt)  # collapse the gap if note is empty
+
+        receipt_map: dict[str, str] = {}
+        if args.reporter_note:
+            receipt_map["note"] = args.reporter_note.read_text(encoding="utf-8").strip()
+        receipt_tmpl = "receipt-specialized.md" if specialized else "receipt.md"
+        rcpt = header(reporter, f"Re: {subject}") + render(receipt_tmpl, receipt_map)
         (bundle / "draft-receipt.md").write_text(rcpt, encoding="utf-8")
+
         meta.update(
             {
                 "status": "drafted-forward",
                 "decision": "forward",
                 "forwarded_to": fwd_to,
-                "triager": triager,
                 "model": args.model,
                 "drafted_at": now(),
             }
         )
         apply_wf(meta, args.wf)
         save_meta(bundle, meta, body)
+        kind = "forward-duplicate" if args.duplicate_of else "forward"
         print(
-            f"{bundle.name}: wrote draft-forward.md + draft-receipt.md "
-            f"(to {pmc_name}); status drafted-forward."
+            f"{bundle.name}: wrote draft-forward.md ({kind}) + draft-receipt.md; "
+            "status drafted-forward."
         )
         return 0
 
     # reply
-    if not args.body_file:
-        raise SystemExit("reply needs --body-file")
-    reply_body = args.body_file.read_text(encoding="utf-8").strip()
-    name = meta.get("reporter_name") or "there"
-    out = header(meta.get("reporter") or "(reporter)", f"Re: {subject}")
-    out += f"Hi {name},\n\n{reply_body}\n\nBest regards,\n\n{triager}\n"
+    reason = args.reason
+    if not reason and args.body_file:
+        reason = args.body_file.read_text(encoding="utf-8").strip()
+    if not reason:
+        raise SystemExit("reply needs --reason or --body-file")
+    out = header(reporter, f"Re: {subject}") + render("reject.md", {"reason": reason})
     (bundle / "draft-reply.md").write_text(out, encoding="utf-8")
-    meta.update(
-        {
-            "status": "drafted-reply",
-            "decision": args.kind,
-            "triager": triager,
-            "drafted_at": now(),
-        }
-    )
-    # A push-back closes the report as a non-issue without forwarding to the
-    # PMC. The zzz-non-issue/ tag prefix IS that classification (it sorts the
-    # report out of the active queue, zzz- sorts last), so it carries no wf
-    # marker. If we ever both reply and forward, the prefix would not apply.
+    meta.update({"status": "drafted-reply", "decision": args.kind, "drafted_at": now()})
+    # A push-back closes the report as a non-issue without forwarding to the PMC.
+    # The zzz-non-issue/ tag prefix IS that classification (it sorts the report
+    # out of the active queue), so it carries no wf marker.
     meta["wf"] = None
     tag = meta.get("tag") or ""
     if tag and not tag.startswith("zzz-non-issue/"):

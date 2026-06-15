@@ -4,7 +4,7 @@ description: >-
   Assess filed security reports against the project's threat model and source,
   then draft the right response.
   For each filed report in report-cache, look up the PMC from the `pmc` front matter key:
-  - If the PMC has a specialized `security_contact` (as determined by `whimsy-tool`) and the contact is in the `To` or `Cc` fields,
+  - If the PMC has a specialized `security_contact` (as determined by `whimsy-lookup`) and the contact is in the `To` or `Cc` fields,
     the Security team only TRACKS it (no drafts),
   - Otherwise assess whether the report is a real in-scope issue.
   If it is a high-confidence false positive or hardening suggestion,
@@ -44,7 +44,7 @@ For a batch, fan out **one sub-agent per PMC** (not per report).
 
 Each assessor:
 - loads its PMC's threat model (`pmc-security-info` + WebFetch),
-- locates the source checkout in `--workflow` once
+- locates the source checkout under `--workspace` once,
 - reuses that context across all of that PMC's filed reports,
 - runs `draft.py` to write the drafts,
 - and returns a compact per-bundle disposition;
@@ -55,8 +55,9 @@ Per-report fan-out re-fetches the same threat model N times, and a large batch i
 Spawn each assessor on **Opus** (the orchestrator's model), giving it this SKILL as context and the bundle leaf-ids for its PMC.
 The judgement here (in-scope vs reject, reading real code) needs Opus-level reasoning - do **not** downgrade the assessors to Sonnet/Haiku.
 
-Sub-agents will concur for the user's attention to approve tools, so **every tool this SKILL uses should be preapproved** (see Tools below);
-otherwise assessors ask for tool approval at the same time.
+Sub-agents do prompt the user for tool approval, but the per-PMC assessors run concurrently,
+so their prompts collide - while you are answering one, another can pop up and override it, and approvals get lost.
+So **every tool this SKILL uses must be preapproved** (see Tools below) to avoid that crossfire.
 
 Before spawning accessors:
 
@@ -94,7 +95,8 @@ Before spawning accessors:
   the SKILL reads `<workspace>/<pmc>` to check the report against real code.
   If that checkout is absent,
   stop and ask the user to check out the code.
-- **Templates** `templates/forward.md`, `templates/receipt.md`, and `templates/receipt-specialized.md` (repo root).
+- **Templates** (repo root): `templates/forward.md`, `forward-duplicate.md`, `receipt.md`, `receipt-specialized.md`, `reject.md`.
+  See `templates/README.md` for the marker contract: `draft.py` fills the content markers; `inbox_manager` fills the identity / PMC / infra markers at send time and drops any line whose marker stays empty.
 - **`email-classification/` archive** (a worktree of the `email-classification` branch, created automatically by `archive_lookup.py` if missing):
   per-PMC archive of every previously triaged report's tag, one `.json` per report under `<pmc>/`, `zzz-non-issue/<pmc>/`, `zzz-resolved/<pmc>/`, or `archive/.../<pmc>/`.
   The filename is the tag (space-separated keywords, often prefixed by a CVE id or date);
@@ -136,10 +138,11 @@ If you spot a duplicate, the behavior depends on the previous disposition:
   Draft a reply using `templates/reject.md` and use the previous reason given by the PMC as `--reason` parameter to `draft.py`.
   The status of the report is `drafted-reply`, its tag is prepended with `zzz-non-issue` and stop.
 
-- Reports in current collection are still being evaluated by the PMC.
-  The link of the duplicate report will be useful in the drafting phase.
+- Reports in the current (open) collection are still being evaluated by the PMC.
+  Forward with `draft.py forward <id> --summary-file <f> --model "<model>" --duplicate-of <url>`,
+  where `<url>` is the original report's Ponymail thread link; this uses `templates/forward-duplicate.md`.
 
-## Step 3: assess the report
+### Step 3: assess the report
 
 The assessment of the report needs to:
 
@@ -161,7 +164,7 @@ The assessment of the report needs to:
      Check the PMCs threat model to see if the project can be deployed as-is or additional steps are required.
      For example a project might require operators to keep it in a secure network or configure authentication otherwise.
 
-## Step 4: draft
+### Step 4: draft
 
 **High-confidence false positive or hardening** -> write your non-assertive note to a temp file and run `draft.py reply <id> --body-file <file> [--kind false-positive|hardening]`.
 Write only the message body:
@@ -197,7 +200,7 @@ The summary should contain:
 ## Tools (preapproved)
 
 The whole workflow runs on these tools, allowlisted in `.claude/settings.json` so it needs no approval requests
-(required for the sub-agent assessors, which cannot prompt):
+(the per-PMC assessors run concurrently, so an un-preapproved tool would fire overlapping prompts that clobber each other):
 
 - `Bash(.agents/skills/triage-assess/draft.py *)` - write the drafts / set the bundle status.
 - `Bash(.agents/skills/triage-assess/archive_lookup.py *)` - prior-report lookup (also creates the `email-classification` worktree on first use, via git, under the allowlisted script).
@@ -217,8 +220,8 @@ A=.github/skills/triage-assess
 uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <pmc> [--json]
 $A/archive_lookup.py --pmc <pmc> --keywords "<words>"   # prior reports for this PMC
 $A/draft.py track   <id>
-$A/draft.py forward <id> --summary-file SUM.md  [--reporter-note NOTE.md] [--wf MARKER] [--triager "Name"] [--model "..."]
-$A/draft.py reply   <id> --body-file REPLY.md   [--kind hardening] [--triager "Name"]
+$A/draft.py forward <id> --summary-file SUM.md --model "<model>" [--duplicate-of <url>] [--reporter-note NOTE.md] [--wf MARKER]
+$A/draft.py reply   <id> (--reason "..." | --body-file REPLY.md) [--kind false-positive|hardening]
 ```
 
 `archive_lookup.py` creates the `email-classification/` worktree on first run if missing,
@@ -226,13 +229,13 @@ then ranks archived `.json` files (one per past report) under `<pmc>/`, `zzz-non
 The output is for the triager and the PMC;
 the archive's `from`/`to`/`message_id` fields must not leak into reporter-facing drafts (see Inputs for the privacy rule).
 
-`reply` always classifies the report `zzz-non-issue/` (no `wf` marker).
-`forward`'s `--wf` is one of `reporter`, `cve-allocation`, `non-issue-docs` (`non-issue-feedback` is the `zzz-non-issue/` case, handled by `reply`);
-it appends `wf <marker>` to the tag and records `wf` in the front-matter.
+`forward` renders `templates/forward.md` (or `forward-duplicate.md` with `--duplicate-of <url>`) plus the reporter receipt;
+`--wf` is one of `reporter`, `cve-allocation`, `non-issue-docs` and is appended to the tag.
+`reply` renders `templates/reject.md`, classifies the report `zzz-non-issue/` (no `wf` marker), and takes the reason inline (`--reason`) or from a file (`--body-file`) - e.g. the PMC's own prior reason for a known non-issue.
 
+`draft.py` fills only the content markers; `--model` is required on `forward` (it names the assessor's model for the AI disclaimer).
+The sender identity (`<Triager full name>`) and every PMC / threat-model marker are filled by `inbox_manager` at send time, not here (see `templates/README.md`).
 `<id>` is the bundle's Ponymail id or any unique prefix.
-`--triager` defaults to `git config user.name`;
-`--model` defaults to the running model and fills the forward template's "generated by AI using ..." disclaimer.
 
 ## Status values this SKILL sets
 
