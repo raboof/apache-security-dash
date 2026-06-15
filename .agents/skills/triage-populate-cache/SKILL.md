@@ -49,9 +49,11 @@ a local `.env` in the repo root is loaded automatically:
 
 | Variable | Purpose |
 |---|---|
-| `GMAIL_IMAP_OAUTH_CLIENT_ID` | OAuth2 client id |
-| `GMAIL_IMAP_OAUTH_CLIENT_SECRET` | OAuth2 client secret |
-| `GMAIL_IMAP_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (must carry `gmail.readonly`) |
+| `GMAIL_READONLY_OAUTH_CLIENT_ID` | OAuth2 client id |
+| `GMAIL_READONLY_OAUTH_CLIENT_SECRET` | OAuth2 client secret |
+| `GMAIL_READONLY_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (must carry `gmail.readonly`) |
+
+These are the **read-only** Gmail API token, named to stay distinct from `inbox_manager`'s **read/write** IMAP token (`GMAIL_READWRITE_OAUTH_*`), so both can share one `.env`.
 
 The mailbox is whichever account the refresh token belongs to (the Gmail API `me` user);
 no separate mailbox address is needed.
@@ -189,7 +191,9 @@ Then file the digest, passing each tag with a repeated `--tag` (prefix it with t
        --tag "tomcat/CVE-2026-50229 examples xss"
    ```
 
-This files the digest under `<date>/<pmc>/digest/` (`keywords: [digest]`), stamps `handled: true` (terminal - never assessed; a digest has no `wf`, it is not a report waiting for anything), and records the covered tags as the bundle's `tags` (so the digest carries each covered report's label, the same set the sync tool will put on the Gmail message).
+This files the digest under `<date>/<pmc>/digest/` (`keywords: [digest]`), stamps `handled: true` (terminal - never assessed; a digest has no `wf`, it is not a report waiting for anything), and records the covered tags as the bundle's `tags`.
+The digest's Gmail message must carry each of those labels so it surfaces alongside every report it lists;
+the credentialed `inbox_manager` tool does that attach-and-archive step (see "Applying the cache labels to Gmail" below).
 If a listed report has no tag file yet (it is itself still in this download batch), label that report first.
 
 ### Pre-labelled heads (`tags`)
@@ -441,8 +445,10 @@ pmc_candidates: # all PMC slugs seen in security@<pmc> recipients, or null
 # Triage state (set by file.py)
 tags:           # the message's Gmail labels, as a list (or null): the full COMPOSED
                 #   labels. Seeded by populate-cache with the labels already on the
-                #   message, then extended by file.py with the assigned label. A later
-                #   tool reconciles `tags` against Gmail. The fields below are the
+                #   message, then extended by file.py with the assigned label(s) (for a
+                #   digest, every covered report's tag). These are the cache's intent;
+                #   `inbox_manager` later attaches the ones still missing from Gmail
+                #   (see "Applying the cache labels to Gmail"). The fields below are the
                 #   decomposed parts of the bundle's own label.
 collection:     # the label PREFIX: null = active, "zzz-non-issue", "zzz-resolved"
 cve:            # the allocated CVE (CVE-YYYY-NNNNN); when set it is the label's key
@@ -478,6 +484,16 @@ Running this SKILL is an authorized, local-processing activity by a Security-tea
 The download authenticates with the read-only `gmail.readonly` scope, which cannot modify, move or delete mail.
 Report content stays in the gitignored `report-cache/` and is never committed.
 Keep the working copy on a machine appropriate for the content.
+
+## Applying the cache labels to Gmail
+
+`file.py` writes the labels a bundle should carry into its `tags`, but it never touches Gmail (the download/label half of the pipeline is read-only).
+The credentialed **`inbox_manager`** tool is what reconciles `tags` onto the live message: when it processes a bundle (a `drafted-forward` / `drafted-reply` forward or reply, a `tracked` report, a `digest`, or a standing non-issue) it fetches the message's current Gmail labels, offers the operator the set present in `tags` but **missing from Gmail**, and on confirmation adds them and archives the message (drops `\Inbox`).
+
+This is what puts every covered report's label on a **digest** message (its `tags` is that whole set, often a dozen-plus labels, none of which Gmail has yet), and what applies a report's own `<pmc>/<date> <keywords>` label when it is forwarded, replied to, or tracked.
+Because the attach is driven off `tags`, getting the digest's `--tag` list right here is what makes the digest surface alongside each report it lists.
+
+After `inbox_manager` archives a message, the next `populate-cache` run's reconcile sweeps the bundle into `report-cache/handled/`.
 
 ## Handoff
 

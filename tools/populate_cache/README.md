@@ -116,9 +116,13 @@ OAuth2 credentials for the Gmail account are read from the environment (a local
 
 | Variable | Purpose |
 |---|---|
-| `GMAIL_IMAP_OAUTH_CLIENT_ID` | OAuth2 client id |
-| `GMAIL_IMAP_OAUTH_CLIENT_SECRET` | OAuth2 client secret |
-| `GMAIL_IMAP_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (gmail.readonly) |
+| `GMAIL_READONLY_OAUTH_CLIENT_ID` | OAuth2 client id |
+| `GMAIL_READONLY_OAUTH_CLIENT_SECRET` | OAuth2 client secret |
+| `GMAIL_READONLY_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (gmail.readonly) |
+
+This is the **read-only** Gmail API token. It is named to stay distinct from
+`inbox_manager`'s **read/write** IMAP token (`GMAIL_READWRITE_OAUTH_*`), so both
+tools can share one `.env` without colliding.
 
 The mailbox is whichever account the refresh token belongs to (the Gmail API
 `me` user); no separate mailbox address is needed.

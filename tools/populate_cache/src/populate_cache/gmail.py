@@ -39,9 +39,13 @@ from googleapiclient.discovery import build
 
 load_dotenv()
 
-CLIENT_ID = getenv("GMAIL_IMAP_OAUTH_CLIENT_ID")
-CLIENT_SECRET = getenv("GMAIL_IMAP_OAUTH_CLIENT_SECRET")
-REFRESH_TOKEN = getenv("GMAIL_IMAP_OAUTH_REFRESH_TOKEN")
+# This tool only reads the inbox (gmail.readonly scope), so its credentials are
+# named GMAIL_READONLY_* to make that explicit, and to keep them distinct from
+# inbox_manager's read/write IMAP token (GMAIL_READWRITE_OAUTH_*) so both can
+# live in one .env without colliding.
+CLIENT_ID = getenv("GMAIL_READONLY_OAUTH_CLIENT_ID")
+CLIENT_SECRET = getenv("GMAIL_READONLY_OAUTH_CLIENT_SECRET")
+REFRESH_TOKEN = getenv("GMAIL_READONLY_OAUTH_REFRESH_TOKEN")
 
 # Google's installed-app OAuth2 token endpoint + the single read-only scope.
 _TOKEN_URI = "https://oauth2.googleapis.com/token"
@@ -63,16 +67,16 @@ def connect():
     missing = [
         name
         for name, value in {
-            "GMAIL_IMAP_OAUTH_CLIENT_ID": CLIENT_ID,
-            "GMAIL_IMAP_OAUTH_CLIENT_SECRET": CLIENT_SECRET,
-            "GMAIL_IMAP_OAUTH_REFRESH_TOKEN": REFRESH_TOKEN,
+            "GMAIL_READONLY_OAUTH_CLIENT_ID": CLIENT_ID,
+            "GMAIL_READONLY_OAUTH_CLIENT_SECRET": CLIENT_SECRET,
+            "GMAIL_READONLY_OAUTH_REFRESH_TOKEN": REFRESH_TOKEN,
         }.items()
         if not value
     ]
     if missing:
         raise RuntimeError(
-            "Missing Gmail OAuth2 credentials in environment (.env supported): "
-            + ", ".join(missing)
+            "Missing read-only Gmail OAuth2 credentials in environment "
+            "(.env supported): " + ", ".join(missing)
         )
 
     creds = Credentials(

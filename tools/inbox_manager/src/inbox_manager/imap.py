@@ -22,10 +22,22 @@ from inbox_manager.vendor.oauth2 import RefreshToken
 
 load_dotenv()
 
-USER_ID = getenv("GMAIL_IMAP_OAUTH_USER_ID")
-CLIENT_ID = getenv("GMAIL_IMAP_OAUTH_CLIENT_ID")
-CLIENT_SECRET = getenv("GMAIL_IMAP_OAUTH_CLIENT_SECRET")
-REFRESH_TOKEN = getenv("GMAIL_IMAP_OAUTH_REFRESH_TOKEN")
+# This tool authenticates over IMAP with a read/write Gmail OAuth token: it
+# moves, files and junks messages. Its credentials are named GMAIL_READWRITE_*
+# to make that explicit, and to keep them distinct from populate_cache's
+# read-only token (GMAIL_READONLY_OAUTH_*) so both can live in one .env.
+USER_ID = getenv("GMAIL_READWRITE_OAUTH_USER_ID")
+CLIENT_ID = getenv("GMAIL_READWRITE_OAUTH_CLIENT_ID")
+CLIENT_SECRET = getenv("GMAIL_READWRITE_OAUTH_CLIENT_SECRET")
+REFRESH_TOKEN = getenv("GMAIL_READWRITE_OAUTH_REFRESH_TOKEN")
+
+# The env vars connect() needs, kept here so the CLI can check them up front.
+REQUIRED_ENV = (
+    "GMAIL_READWRITE_OAUTH_USER_ID",
+    "GMAIL_READWRITE_OAUTH_CLIENT_ID",
+    "GMAIL_READWRITE_OAUTH_CLIENT_SECRET",
+    "GMAIL_READWRITE_OAUTH_REFRESH_TOKEN",
+)
 
 
 def _create_accesstoken():
@@ -37,6 +49,12 @@ def _create_accesstoken():
 
 
 def connect():
+    missing = [name for name in REQUIRED_ENV if not getenv(name)]
+    if missing:
+        raise RuntimeError(
+            "Missing read/write Gmail IMAP OAuth2 credentials in environment "
+            "(.env supported): " + ", ".join(missing)
+        )
     server = IMAPClient("imap.gmail.com")
     server.oauth2_login(USER_ID, _create_accesstoken())
     server.select_folder("INBOX")

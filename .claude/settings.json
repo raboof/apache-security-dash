@@ -11,7 +11,13 @@
       "mcp__ponymail__get_email",
       "mcp__ponymail__get_thread",
       "mcp__ponymail__search_list",
-      "Bash(lychee *)"
+      "Bash(lychee *)",
+      "WebFetch(domain:*.apache.org)",
+      "Bash(uv run --project tools/populate_cache populate-cache *)",
+      "Bash(.agents/skills/triage-populate-cache/file.py *)"
+    ],
+    "deny": [
+      "Read(./.env)"
     ]
   },
   "hooks": {

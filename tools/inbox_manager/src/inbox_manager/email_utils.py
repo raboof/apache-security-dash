@@ -10,6 +10,8 @@ from email.utils import parseaddr, parsedate_to_datetime
 from os import getenv
 from pathlib import Path
 
+from inbox_manager.markdown_render import md_to_html, md_to_text
+
 # Where the forward/receipt boilerplate lives.
 TEMPLATE_DIR = Path(
     getenv("INBOX_TEMPLATE_DIR") or Path(__file__).resolve().parents[4] / "templates"
@@ -174,9 +176,15 @@ def reporter_from(original):
     return original["From"]
 
 
-def make_forward(original, intro_text, from_addr, to_addr):
+def make_forward(original, intro_md, from_addr, to_addr):
     """Forward `original` (parsed with policy=default), quoting it inline,
     hardened against hostile content in the forwarded message.
+
+    ``intro_md`` is the team's covering note as Markdown (the triage-assess
+    ``draft-forward.md`` body, or the filled forward template); it is rendered
+    to both a wrapped plain-text part and a sanitised HTML part. The forward is
+    always multipart/alternative so the covering note keeps its formatting even
+    when the original report was plain text.
     """
     fwd = EmailMessage()
     fwd["Message-ID"] = email.utils.make_msgid(domain="security.apache.org")
@@ -203,32 +211,32 @@ def make_forward(original, intro_text, from_addr, to_addr):
         f"To: {_header_value(original['To'])}",
     ]
 
-    # --- plain-text body (always built) ---
+    # --- plain-text body ---
     original_text = body_to_text(original)
     quoted = "\n".join("> " + ln for ln in original_text.splitlines())
-    plain_body = f"{intro_text}\n\n" + "\n".join(header_lines) + f"\n{quoted}"
+    plain_body = f"{md_to_text(intro_md)}\n\n" + "\n".join(header_lines) + f"\n{quoted}"
 
-    # --- plain-text-only original ---
-    if html_part is None:
-        fwd.set_content(plain_body)
+    # --- html body: rendered note + (sanitised original html | escaped text) ---
+    header_html = _text_to_html("\n".join(header_lines))
+    intro_html = _sanitize_html(md_to_html(intro_md))
+    if html_part is not None:
+        original_html = _sanitize_html(html_part.get_content())
     else:
-        # --- original had HTML: sanitise, then emit dual plain + html ---
-        clean_html = _sanitize_html(html_part.get_content())
-        header_html = _text_to_html("\n".join(header_lines))
-        intro_block = _text_to_html(intro_text)
-        html_body = (
-            f"<div>{intro_block}</div><br>"
-            f"<div>{header_html}</div>"
-            f'<blockquote style="margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex">'
-            f"{clean_html}"
-            f"</blockquote>"
-        )
+        original_html = _text_to_html(original_text)
+    html_body = (
+        f"<div>{intro_html}</div><br>"
+        f"<div>{header_html}</div>"
+        f'<blockquote style="margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex">'
+        f"{original_html}"
+        f"</blockquote>"
+    )
 
-        fwd.set_content(plain_body)
-        fwd.add_alternative(html_body, subtype="html")
+    fwd.set_content(plain_body)
+    fwd.add_alternative(html_body, subtype="html")
 
+    if html_part is not None:
         html_alt = fwd.get_payload()[1]
-        for cid, data, subtype in _safe_inline_images(original, clean_html):
+        for cid, data, subtype in _safe_inline_images(original, original_html):
             html_alt.add_related(
                 data, maintype="image", subtype=subtype, cid=f"<{cid}>"
             )
@@ -342,65 +350,84 @@ def quote_original(original):
     return "\n".join(header_lines) + f"\n{quoted}"
 
 
-def make_reject(original, pmc, triager_name):
-    """Build a rejection reply to the reporter(s) of `original`.
-
-    From security@apache.org, To the original reporter(s), threaded onto the
-    report and Bcc'ing the Security team, with the report quoted inline for
-    reference. The body is templates/reject.md - it carries placeholders and
-    "...." gaps the operator is expected to fill in by editing the reply.
-    """
-    reporter = reporter_from(original)
-    name, addr = parseaddr(reporter or "")
-    body = fill_reject_template(pmc, name or addr, triager_name)
-    body = f"{body}\n\n{quote_original(original)}"
-
-    reject = EmailMessage()
-    reject["Message-ID"] = email.utils.make_msgid(domain="security.apache.org")
-    reject["From"] = "ASF Security <security@apache.org>"
-    reject["To"] = reporter
-    reject["Cc"] = original["Cc"]
-    reject["Bcc"] = "ASF Security <security@apache.org>"
+def _reply_envelope(original):
+    """A reply to the reporter(s): From security@, threaded, Bcc the team."""
+    msg = EmailMessage()
+    msg["Message-ID"] = email.utils.make_msgid(domain="security.apache.org")
+    msg["From"] = "ASF Security <security@apache.org>"
+    msg["To"] = reporter_from(original)
+    msg["Cc"] = original["Cc"]
+    msg["Bcc"] = "ASF Security <security@apache.org>"
     subject = str(original["Subject"] or "")
-    reject["Subject"] = (
-        subject if subject.lower().startswith("re:") else f"Re: {subject}"
-    )
+    msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
     mid = original["Message-ID"]
     if mid:
-        reject["In-Reply-To"] = mid
-        reject["References"] = mid
-    reject.set_content(body)
+        msg["In-Reply-To"] = mid
+        msg["References"] = mid
+    return msg
+
+
+def _set_md_body(msg, body_md):
+    """Set a multipart/alternative body from a Markdown source."""
+    msg.set_content(md_to_text(body_md))
+    msg.add_alternative(_sanitize_html(md_to_html(body_md)), subtype="html")
+
+
+def make_reject(original, body_md, quote=True):
+    """Build a push-back reply to the reporter(s) from a Markdown body.
+
+    ``body_md`` is the team's note (the triage-assess ``draft-reply.md`` body,
+    or the filled reject template). When ``quote`` is set the original report
+    is appended verbatim for reference (not Markdown-rendered, since it is the
+    reporter's own untrusted text).
+    """
+    reject = _reply_envelope(original)
+    if quote:
+        quoted = quote_original(original)
+        reject.set_content(f"{md_to_text(body_md)}\n\n{quoted}")
+        reject.add_alternative(
+            f"{_sanitize_html(md_to_html(body_md))}"
+            f"<br><div>{_text_to_html(quoted)}</div>",
+            subtype="html",
+        )
+    else:
+        _set_md_body(reject, body_md)
     return reject
 
 
-def make_receipt(original, pmc, triager_name):
-    """Build the acknowledgement sent back to the reporter(s) of `original`.
-
-    From security@apache.org, To the original reporter(s), Bcc'ing the Security
-    team, threaded onto the report.
-    """
-    reporter = reporter_from(original)
-    name, addr = parseaddr(reporter or "")
-    # TODO: pick up the note from the triage-assess skill's output when
-    # available; for now it is left empty.
-    body = fill_receipt_template(pmc, name or addr, "", triager_name)
-
-    receipt = EmailMessage()
-    receipt["Message-ID"] = email.utils.make_msgid(domain="security.apache.org")
-    receipt["From"] = "ASF Security <security@apache.org>"
-    receipt["To"] = reporter
-    receipt["Cc"] = original["Cc"]
-    receipt["Bcc"] = "ASF Security <security@apache.org>"
-    subject = str(original["Subject"] or "")
-    receipt["Subject"] = (
-        subject if subject.lower().startswith("re:") else f"Re: {subject}"
-    )
-    mid = original["Message-ID"]
-    if mid:
-        receipt["In-Reply-To"] = mid
-        receipt["References"] = mid
-    receipt.set_content(body)
+def make_receipt(original, body_md):
+    """Build the acknowledgement to the reporter(s) from a Markdown body."""
+    receipt = _reply_envelope(original)
+    _set_md_body(receipt, body_md)
     return receipt
+
+
+def fill_draft_placeholders(body, pmc):
+    """Fill the placeholders triage-assess leaves for the sender to resolve.
+
+    ``draft.py`` renders the team templates but cannot fill ``<dashboard link>``
+    (the per-PMC dashboard URL) or the receipt's ``<link>`` (the PMC security
+    page); inbox_manager has the PMC from Whimsy, so it fills them here. The
+    placeholders survive in the draft markdown-escaped as ``\\<...>``. Any
+    placeholder still unfilled (no PMC, or no security page) has its whole line
+    dropped so no raw ``<...>`` leaks into the sent mail.
+    """
+    if pmc:
+        dash = f"https://dash.security.apache.org/project/{pmc.id}"
+        body = body.replace("\\<dashboard link>", dash).replace(
+            "<dashboard link>", dash
+        )
+        if pmc.security_link:
+            body = body.replace("\\<link>", pmc.security_link).replace(
+                "<link>", pmc.security_link
+            )
+    if "<dashboard link>" in body or "<link>" in body:
+        body = "".join(
+            ln
+            for ln in body.splitlines(keepends=True)
+            if "<dashboard link>" not in ln and "<link>" not in ln
+        )
+    return re.sub(r"\n{3,}", "\n\n", body)
 
 
 # MIME/content headers that describe the body we are about to replace, so they
@@ -411,6 +438,25 @@ _CONTENT_HEADERS = {
     "content-disposition",
     "mime-version",
 }
+
+
+def edit_markdown_in_editor(md_text):
+    """Open a Markdown draft body in $EDITOR and return the edited text.
+
+    Used by the cache-driven flow: the operator edits the Markdown source and
+    the message is re-rendered, so the HTML + plain-text parts stay in sync
+    (unlike edit_body_in_editor, which edits the rendered plain text and drops
+    the HTML alternative).
+    """
+    editor = getenv("EDITOR", "vi")
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as f:
+        f.write(md_text)
+        path = f.name
+    try:
+        subprocess.run([editor, path])
+        return Path(path).read_text(encoding="utf-8")
+    finally:
+        Path(path).unlink()
 
 
 def edit_body_in_editor(message):

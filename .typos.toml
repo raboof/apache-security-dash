@@ -32,6 +32,10 @@ Whimsy = "Whimsy"
 BA = "BA"
 # Commands without their 'highlighted' letter
 isplay = "isplay"
+# Gmail IMAP extension attribute names (X-GM-MSGID / X-GM-THRID); `THRID`
+# otherwise reads as a misspelling of `THIRD`.
+THRID = "THRID"
+MSGID = "MSGID"
 
 [default.extend-identifiers]
 # Commit SHA fragments referenced in SKILL doc provenance sections.

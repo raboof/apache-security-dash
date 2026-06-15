@@ -29,8 +29,14 @@ authors = [
 ]
 dependencies = [
     "dotenv",
+    # The inline-prefill prompts (input_with_prefill) need GNU readline; the
+    # uv-managed standalone interpreters link the stdlib readline against
+    # libedit, where the startup hook is a no-op. gnureadline ships GNU readline.
+    "gnureadline",
     "imapclient",
+    "markdown-it-py",
     "nh3",
+    "pyyaml",
     "whimsy-lookup",
 ]
 
