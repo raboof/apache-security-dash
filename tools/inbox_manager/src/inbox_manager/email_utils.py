@@ -180,8 +180,8 @@ def make_forward(original, intro_md, from_addr, to_addr):
     """Forward `original` (parsed with policy=default), quoting it inline,
     hardened against hostile content in the forwarded message.
 
-    ``intro_md`` is the team's covering note as Markdown (the triage-assess
-    ``draft-forward.md`` body, or the filled forward template); it is rendered
+    ``intro_md`` is the team's covering note as Markdown (the rendered
+    ``forward.md`` / ``forward-duplicate.md`` template); it is rendered
     to both a wrapped plain-text part and a sanitised HTML part. The forward is
     always multipart/alternative so the covering note keeps its formatting even
     when the original report was plain text.
@@ -256,8 +256,9 @@ def message_date(original):
     return date.today().strftime("%Y-%m-%d")
 
 
-# Every marker any template can carry. draft.py fills the content ones
-# (summary/reason/note/model/duplicate); fill_markers() fills the rest. After
+# Every marker any template can carry. The fill_*_template helpers fill the
+# content ones (summary/reason/note/model/duplicate) from the bundle fragments,
+# and fill_markers() fills the rest from the PMC / live message / operator. After
 # filling, a line still holding any of these is dropped so no raw <placeholder>
 # leaks into the sent mail.
 _ALL_MARKERS = (
@@ -285,14 +286,14 @@ def _apply(text, mapping):
 
 
 def fill_markers(text, pmc, original, triager_name):
-    """Fill the identity / PMC / infra markers a draft.py draft leaves open,
-    then drop any line whose marker stayed empty.
+    """Fill the identity / PMC / infra markers in a template, then drop any line
+    whose marker stayed empty.
 
-    ``draft.py`` fills the content markers (summary / reason / note / model /
-    duplicate); this fills the rest from the PMC coordinates, the live message,
-    and the operator identity, then removes any line still carrying an unfilled
-    marker (a PMC with no threat-model link, an empty receipt note, ...). The
-    same function serves the cached drafts and the fallback templates.
+    The fill_*_template helpers fill the content markers (summary / reason /
+    note / model / duplicate) from the bundle fragments first; this fills the
+    rest from the PMC coordinates, the live message, and the operator identity,
+    then removes any line still carrying an unfilled marker (a PMC with no
+    threat-model link, an empty receipt note, ...).
     """
     name, addr = parseaddr(reporter_from(original) or "")
     values = {
@@ -318,21 +319,30 @@ def fill_markers(text, pmc, original, triager_name):
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
-def fill_forward_template(pmc, original, summary, model, triager_name):
-    """Fallback forward.md (no cached draft): fill the content here, rest via
-    fill_markers. An empty summary/model just drops its line."""
+def fill_forward_template(pmc, original, summary, model, triager_name, duplicate_of=""):
+    """Render the PMC forward: forward-duplicate.md when ``duplicate_of`` is set,
+    else forward.md. The content markers (summary / model / duplicate) are filled
+    here from the bundle, the rest via fill_markers; an empty summary / model
+    just drops its line.
+
+    Serves both the cache-driven path (summary from the bundle's summary.md) and
+    the interactive fallback (empty summary when there is no assessed bundle).
+    """
+    name = "forward-duplicate.md" if duplicate_of else "forward.md"
     content = {}
     if summary:
         content["summary"] = summary
     if model:
         content["model"] = model
-    text = _apply((TEMPLATE_DIR / "forward.md").read_text(encoding="utf-8"), content)
+    if duplicate_of:
+        content["duplicate"] = duplicate_of
+    text = _apply((TEMPLATE_DIR / name).read_text(encoding="utf-8"), content)
     return fill_markers(text, pmc, original, triager_name)
 
 
 def fill_receipt_template(pmc, original, note, triager_name):
-    """Fallback receipt (no cached draft): receipt-specialized.md for a
-    specialized PMC, else receipt.md. Content (note) filled here, the rest via
+    """Render the reporter receipt: receipt-specialized.md for a specialized PMC,
+    else receipt.md. The content (note) is filled here, the rest via
     fill_markers; an empty note drops its line."""
     name = "receipt-specialized.md" if (pmc and pmc.specialized) else "receipt.md"
     content = {"note": note} if note else {}
@@ -341,8 +351,8 @@ def fill_receipt_template(pmc, original, note, triager_name):
 
 
 def fill_reject_template(pmc, original, reason, triager_name):
-    """Fallback reject.md (no cached draft): the reason is filled here, the rest
-    via fill_markers; an empty reason drops its line."""
+    """Render the reporter push-back from reject.md: the reason is filled here,
+    the rest via fill_markers; an empty reason drops its line."""
     content = {"reason": reason} if reason else {}
     text = _apply((TEMPLATE_DIR / "reject.md").read_text(encoding="utf-8"), content)
     return fill_markers(text, pmc, original, triager_name)
@@ -386,8 +396,8 @@ def _set_md_body(msg, body_md):
 def make_reject(original, body_md, quote=True):
     """Build a push-back reply to the reporter(s) from a Markdown body.
 
-    ``body_md`` is the team's note (the triage-assess ``draft-reply.md`` body,
-    or the filled reject template). When ``quote`` is set the original report
+    ``body_md`` is the team's note (the rendered ``reject.md`` template).
+    When ``quote`` is set the original report
     is appended verbatim for reference (not Markdown-rendered, since it is the
     reporter's own untrusted text).
     """

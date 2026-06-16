@@ -3,39 +3,40 @@
 
 # Triage reply / forward templates
 
-These Markdown files are the team's boilerplate for the `triage-assess` SKILL.
-Each is filled in **two stages**:
+These Markdown files are the team's boilerplate for the report-triage pipeline.
+**`inbox_manager` is the only renderer:** at send time (when the live message,
+the operator identity, and the PMC coordinates are all known) it picks the right
+template, fills every marker, and **drops any line whose marker is still empty**.
 
-1. **`draft.py`** (triage-assess) picks the right template, fills the
-   *content* markers the model authored, and saves the result as
-   `draft-forward.md` / `draft-receipt.md` / `draft-reply.md` inside the
-   report-cache bundle.
-2. **`inbox_manager`** fills the remaining *identity / PMC / infra* markers at
-   send time (when the live message, the operator identity, and the PMC
-   coordinates are all known), then **drops any line whose marker is still
-   empty**.
+The markers fall into two groups by where their *value* comes from:
 
-Because of step 2's drop rule, a marker is safe to leave unfilled **only** if
-its whole line may disappear. Required markers must always be fillable at the
-stage that owns them.
+1. **Content** - authored by the model during `triage-assess` and stored in the
+   report-cache bundle: the free-text fragments `summary.md` / `note.md` /
+   `reason.md`, plus the scalar `model` / `duplicate_of` in the `report.md`
+   front-matter. `triage-assess` renders nothing; it only supplies these values.
+2. **Identity / PMC / infra** - derived by `inbox_manager` from the PMC
+   coordinates, the live message, and the operator identity.
+
+Because of the drop rule, a marker is safe to leave unfilled **only** if its
+whole line may disappear. Required markers must always have a value.
 
 Markers are written in the templates markdown-escaped as `\<marker>` so they
-render literally if something goes wrong; both fillers match `\<marker>` and
+render literally if something goes wrong; the renderer matches `\<marker>` and
 `<marker>`.
 
 ## Markers
 
-### Filled by `draft.py` (content)
+### Content (value from the `triage-assess` bundle)
 
-| Marker | Templates | Meaning | If unfilled |
-| --- | --- | --- | --- |
-| `<summary>` | forward, forward-duplicate | the model's concise PMC summary (finding / code verification / scope assessment) | required |
-| `<reason>` | reject | why the report is out of scope (the model's wording, or the PMC's prior reason for a known non-issue) | required |
-| `<model>` | forward, forward-duplicate | the AI model that wrote the summary (for the disclaimer line) | required |
-| `<duplicate>` | forward-duplicate | link to the still-open original report this one duplicates | required for this template |
-| `<note>` | receipt, receipt-specialized | optional extra paragraph to the reporter | line dropped by `inbox_manager` |
+| Marker | Templates | Source | Meaning | If unfilled |
+| --- | --- | --- | --- | --- |
+| `<summary>` | forward, forward-duplicate | `summary.md` | the model's concise PMC summary (finding / code verification / scope assessment) | required |
+| `<reason>` | reject | `reason.md` | why the report is out of scope (the model's wording, or the PMC's prior reason for a known non-issue) | required |
+| `<model>` | forward, forward-duplicate | `model` front-matter | the AI model that wrote the summary (for the disclaimer line) | required |
+| `<duplicate>` | forward-duplicate | `duplicate_of` front-matter | link to the still-open original report this one duplicates | required for this template |
+| `<note>` | receipt, receipt-specialized | `note.md` | optional extra paragraph to the reporter | line dropped |
 
-### Filled by `inbox_manager` (identity / PMC / infra, at send)
+### Identity / PMC / infra (derived by `inbox_manager` at send)
 
 | Marker | Templates | Meaning | If unfilled |
 | --- | --- | --- | --- |
@@ -71,6 +72,9 @@ to put there.
   ("based on the project's security model, this behaviour does not appear to
   be a vulnerability:") and the `<reason>` block still read correctly. Keep
   any future `<model link>` reference on a droppable line of its own.
-- **Adding a marker.** Decide who owns it: model-authored text -> `draft.py`;
-  anything derived from the PMC, the live message, or the operator ->
-  `inbox_manager`. Put it on its own line if it should disappear when empty.
+- **Adding a marker.** Decide where its *value* comes from: model-authored text
+  -> a bundle fragment or front-matter scalar that `triage-assess` writes (and
+  that `inbox_manager` reads in `fill_*_template`); anything derived from the
+  PMC, the live message, or the operator -> add it to `fill_markers`. Either
+  way `inbox_manager` does the substitution. Put it on its own line if it should
+  disappear when empty.

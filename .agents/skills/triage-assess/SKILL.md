@@ -16,8 +16,8 @@ description: >-
   so duplicates and repeat reporters are surfaced and Ponymail context can be passed to the PMC.
   The final non-issue / hardening / CVE call always belongs to the PMC,
   so drafts never use assertive language and the skill never sends.
-  A deterministic helper (draft.py) fills the templates and stamps the bundle's report.md front-matter;
-  the model supplies the judgement, summary, and reply text.
+  A deterministic helper (draft.py) writes the model's summary / reason / note fragments and stamps the bundle's report.md front-matter;
+  the model supplies the judgement, summary, and reply text, and inbox_manager applies the templates at send time.
   Use whenever the team says "assess the cached reports", "triage report X against its threat model", "draft the forwards/replies",
   or after filing to work through report-cache.
   Project source is read from a --workspace dir (default workspace/<pmc>).
@@ -33,8 +33,8 @@ this SKILL works through them:
 - and draft the response for a human to review and send.
 
 See `triage-populate-cache/SKILL.md` for the cache layout + the `report.md` front-matter schema.
-This SKILL writes drafts into the bundle and advances the front-matter `status`;
-it leaves the provenance block alone and **never sends**.
+This SKILL writes the model's response fragments into the bundle and advances the front-matter `status`;
+it renders no email (inbox_manager applies the templates at send time), leaves the provenance block alone, and **never sends**.
 
 ## Running this SKILL
 
@@ -46,7 +46,7 @@ Each assessor:
 - loads its PMC's threat model (`pmc-security-info` + WebFetch),
 - locates the source checkout under `--workspace` once,
 - reuses that context across all of that PMC's filed reports,
-- runs `draft.py` to write the drafts,
+- runs `draft.py` to write the response fragments and stamp the status,
 - and returns a compact per-bundle disposition;
 
 The main agent collects those and presents them.
@@ -96,7 +96,8 @@ Before spawning accessors:
   If that checkout is absent,
   stop and ask the user to check out the code.
 - **Templates** (repo root): `templates/forward.md`, `forward-duplicate.md`, `receipt.md`, `receipt-specialized.md`, `reject.md`.
-  See `templates/README.md` for the marker contract: `draft.py` fills the content markers; `inbox_manager` fills the identity / PMC / infra markers at send time and drops any line whose marker stays empty.
+  This SKILL never touches them: `inbox_manager` is the sole renderer and applies them at send time.
+  See `templates/README.md` for the marker contract: `draft.py` supplies the content values (the `summary.md` / `reason.md` / `note.md` fragments plus the `model` / `duplicate_of` front-matter); `inbox_manager` fills those plus the identity / PMC / infra markers and drops any line whose marker stays empty.
 - **`email-classification/` archive** (a worktree of the `email-classification` branch, created automatically by `archive_lookup.py` if missing):
   per-PMC archive of every previously triaged report's tag, one `.json` per report under `<pmc>/`, `zzz-non-issue/<pmc>/`, `zzz-resolved/<pmc>/`, or `archive/.../<pmc>/`.
   The filename is the tag (space-separated keywords, often prefixed by a CVE id or date);
@@ -235,19 +236,19 @@ then ranks archived `.json` files (one per past report) under `<pmc>/`, `zzz-non
 The output is for the triager and the PMC;
 the archive's `from`/`to`/`message_id` fields must not leak into reporter-facing drafts (see Inputs for the privacy rule).
 
-`forward` renders `templates/forward.md` (or `forward-duplicate.md` with `--duplicate-of <url>`) plus the reporter receipt;
+`forward` writes `summary.md` (and `note.md` with `--reporter-note <file>`) and records `model` + `duplicate_of` in the front-matter; `inbox_manager` renders `templates/forward.md` (or `forward-duplicate.md` when `duplicate_of` is set) plus the reporter receipt at send time.
 `--wf` is one of `reporter`, `cve-allocation`, `non-issue-docs` and is appended to the tag.
-`reply` renders `templates/reject.md`, classifies the report `zzz-non-issue/` (no `wf` marker), and takes the reason inline (`--reason`) or from a file (`--body-file`) - e.g. the PMC's own prior reason for a known non-issue.
+`reply` writes `reason.md` (rendered through `templates/reject.md` at send time), classifies the report `zzz-non-issue/` (no `wf` marker), and takes the reason inline (`--reason`) or from a file (`--body-file`) - e.g. the PMC's own prior reason for a known non-issue.
 
-`draft.py` fills only the content markers; `--model` is required on `forward` (it names the assessor's model for the AI disclaimer).
-The sender identity (`<Triager full name>`) and every PMC / threat-model marker are filled by `inbox_manager` at send time, not here (see `templates/README.md`).
+`draft.py` only writes the model's content (the fragments + the `model` / `duplicate_of` scalars); `--model` is required on `forward` (it names the assessor's model for the AI disclaimer).
+The sender identity (`<Triager full name>`), the forward recipient, and every PMC / threat-model marker are resolved by `inbox_manager` at send time, not here (see `templates/README.md`).
 `<id>` is the bundle's Ponymail id or any unique prefix.
 
 ## Status values this SKILL sets
 
 - `tracked` - specialized PMC; the Security team only tracks it.
-- `drafted-forward` - `draft-forward.md` + `draft-receipt.md` written.
-- `drafted-reply` - `draft-reply.md` written (false-positive / hardening).
+- `drafted-forward` - `summary.md` written (plus `note.md` when there is a reporter note); `model` / `duplicate_of` recorded in the front-matter.
+- `drafted-reply` - `reason.md` written (false-positive / hardening).
 
 `handled` stays `false` until a human actually sends the drafted mail.
 

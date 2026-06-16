@@ -15,12 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Render the triage drafts (CommonMark) to the two forms an email needs.
+"""Render the triage replies (CommonMark) to the two forms an email needs.
 
-The triage-assess SKILL writes its forwards / receipts / replies as Markdown
-(`draft-forward.md`, `draft-receipt.md`, `draft-reply.md`), and the team
-templates are Markdown too. An outgoing message wants both an HTML part and a
-plain-text part, so this module renders one parse two ways:
+The team templates (`forward.md`, `receipt.md`, `reject.md`, ...) and the
+model-authored fragments the triage-assess SKILL writes (`summary.md`,
+`note.md`, `reason.md`) are Markdown. An outgoing message wants both an HTML
+part and a plain-text part, so this module renders one parse two ways:
 
 - ``md_to_html`` - CommonMark -> HTML (links stay inline ``<a href>``). The
   caller is expected to run the result through the same nh3 allowlist used for

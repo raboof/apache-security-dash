@@ -358,8 +358,8 @@ report-cache/
   <date>/<pmc>/<keywords>/          # WRITTEN BY THIS SKILL (file.py): a filed report
       report.md                     #   leaf renamed from the message-id slug; tag/keywords/status set
       attachments/
-      draft-forward.md              # WRITTEN BY THE DRAFTING SKILL: forward to the PMC
-      draft-reply.md                #   ack / push-back to the reporter
+      summary.md                    # WRITTEN BY THE DRAFTING SKILL: PMC forward summary (+ note.md)
+      reason.md                     #   reject reason for the reporter push-back
 
   <date>/<pmc>/digest/             # WRITTEN BY THIS SKILL (file.py --digest): an open-reports
       report.md                    #   summary; keywords [digest], its tags are the covered reports' tags
@@ -499,6 +499,6 @@ After `inbox_manager` archives a message, the next `populate-cache` run's reconc
 
 After a download + label pass, no bundle is left at `status: downloaded`:
 real reports sit at `<date>/<pmc>/<keywords>/` (`status: filed`), specialized-PMC reports are filed the same way (no `wf`), open-reports digests under `<pmc>/digest/` (`keywords: [digest]`), non-issues under `zzz-non-issue/<pmc>/<label>/`, and non-reports are spam tombstones.
-The **drafting SKILL** then assesses each filed report against the PMC's threat model and adds `draft-forward.md` / `draft-reply.md`, skipping digests (`keywords: [digest]`) and reports for a specialized PMC (which it recognises from `project-coordinates.json`).
+The **drafting SKILL** then assesses each filed report against the PMC's threat model and adds the model's fragments (`summary.md` / `reason.md`), skipping digests (`keywords: [digest]`) and reports for a specialized PMC (which it recognises from `project-coordinates.json`).
 A **status SKILL** reports handled/unhandled counts across the cache.
 Both rely on the layout and front-matter schema documented above, and both ignore the `handled/` subtree (reports the team has since archived out of the inbox).

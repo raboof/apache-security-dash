@@ -368,25 +368,22 @@ def handle_cached(inbox, original, uid, bundle, committees, coordinates):
     print(summary)
 
     if status == "drafted-forward":
-        fwd_draft = bundle.draft("draft-forward.md")
-        if not fwd_draft:
-            print(
-                "drafted-forward but draft-forward.md missing - triaging interactively\n"
-            )
+        summary = bundle.fragment("summary.md")
+        if not summary:
+            print("drafted-forward but summary.md missing - triaging interactively\n")
             return False
-        intro_md = email_utils.fill_markers(fwd_draft[2], pmc, original, TRIAGER_NAME)
-        rcpt_draft = bundle.draft("draft-receipt.md")
-        if rcpt_draft:
-            receipt_md = email_utils.fill_markers(
-                rcpt_draft[2], pmc, original, TRIAGER_NAME
-            )
-        else:
-            receipt_md = email_utils.fill_receipt_template(
-                pmc, original, "", TRIAGER_NAME
-            )
-        default_to = bundle.forwarded_to or (
-            pmc.internal_security_contact if pmc else ""
+        intro_md = email_utils.fill_forward_template(
+            pmc,
+            original,
+            summary,
+            bundle.model,
+            TRIAGER_NAME,
+            duplicate_of=bundle.duplicate_of,
         )
+        receipt_md = email_utils.fill_receipt_template(
+            pmc, original, bundle.fragment("note.md"), TRIAGER_NAME
+        )
+        default_to = pmc.internal_security_contact if pmc else ""
         to_addr = input_with_prefill("Forward to: ", default_to).strip()
         if not to_addr:
             print("not forwarded - no recipient\n")
@@ -397,11 +394,11 @@ def handle_cached(inbox, original, uid, bundle, committees, coordinates):
         return True
 
     if status == "drafted-reply":
-        reply_draft = bundle.draft("draft-reply.md")
-        if not reply_draft:
-            print("drafted-reply but draft-reply.md missing - triaging interactively\n")
+        reason = bundle.fragment("reason.md")
+        if not reason:
+            print("drafted-reply but reason.md missing - triaging interactively\n")
             return False
-        reply_md = email_utils.fill_markers(reply_draft[2], pmc, original, TRIAGER_NAME)
+        reply_md = email_utils.fill_reject_template(pmc, original, reason, TRIAGER_NAME)
         send_reply(inbox, original, uid, pmc, reply_md, tags=tags, quote=False)
         return True
 

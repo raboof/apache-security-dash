@@ -4,16 +4,18 @@ The credentialed **send + archive** stage of the report-triage pipeline.
 
 `triage-populate-cache` downloads each inbound report from `security@apache.org`
 into `report-cache/<date>/<pmc>/<keywords>/` (read-only Gmail API), and
-`triage-assess` then assesses it and writes the response drafts
-(`draft-forward.md`, `draft-receipt.md`, `draft-reply.md`) plus a disposition in
-the bundle's `report.md` front-matter. Neither of those skills holds
-write credentials.
+`triage-assess` then assesses it and writes the model's free-text fragments
+(`summary.md`, `note.md`, `reason.md`) plus a disposition in the bundle's
+`report.md` front-matter. Neither of those skills holds write credentials, and
+neither renders the email: this utility applies the templates at send time.
 
 This utility presents the live security inbox and, for each message, looks up
 its bundle in `report-cache/` by RFC `Message-ID`. When the triage skills have
-already dispositioned it, the operator just reviews the ready drafts and the
-tool sends them (forward to the PMC + receipt to the reporter, or a push-back
-reply) and files the message under the cache's own label. It runs **directly**
+already dispositioned it, this tool renders the response from the team templates
+(filling the bundle's fragments and the live PMC / reporter / operator details),
+the operator reviews it, and the tool sends it (forward to the PMC + receipt to
+the reporter, or a push-back reply) and files the message under the cache's own
+label. It runs **directly**
 (not via an agent): this is the last human review before taking external actions
 with credentials that are only exposed to deterministic code, so every send and
 every mailbox move is operator-confirmed (`[y]/[n]/[e]dit`).
@@ -22,11 +24,11 @@ every mailbox move is operator-confirmed (`[y]/[n]/[e]dit`).
 
 Per inbox message, it dispatches on the bundle's `status`:
 
-- `drafted-forward` - forward the `draft-forward.md` covering note to the PMC
-  (`forwarded_to`) and send the `draft-receipt.md` acknowledgement to the
+- `drafted-forward` - render the PMC forward from `summary.md` (and the optional
+  `note.md` for the receipt), forward it to the PMC and send the acknowledgement
+  to the reporter, then attach the cache labels and archive.
+- `drafted-reply` - render the push-back from `reason.md`, send it to the
   reporter, then attach the cache labels and archive.
-- `drafted-reply` - send the `draft-reply.md` push-back to the reporter, then
-  attach the cache labels and archive.
 - `tracked` / open-reports `digest` / known non-issue - nothing to send; attach
   the cache labels and archive.
 - `spam` - offer to junk it (move to Spam).
