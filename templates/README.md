@@ -29,7 +29,7 @@ render literally if something goes wrong; both fillers match `\<marker>` and
 
 | Marker | Templates | Meaning | If unfilled |
 | --- | --- | --- | --- |
-| `<summary>` | forward, forward-duplicate | the model's concise PMC summary (problem / source verification / in-scope verification) | required |
+| `<summary>` | forward, forward-duplicate | the model's concise PMC summary (finding / code verification / scope assessment) | required |
 | `<reason>` | reject | why the report is out of scope (the model's wording, or the PMC's prior reason for a known non-issue) | required |
 | `<model>` | forward, forward-duplicate | the AI model that wrote the summary (for the disclaimer line) | required |
 | `<duplicate>` | forward-duplicate | link to the still-open original report this one duplicates | required for this template |
@@ -64,12 +64,13 @@ to put there.
 
 ## Notes
 
-- **`reject.md` and the drop rule.** `<model link>` sits inside the sentence
-  "per the project's [security model](\<model link>), we don't consider this
-  behaviour a vulnerability:". With drop-if-unfilled, a PMC that has no
-  threat-model link on record loses that whole lead-in line (the `<reason>`
-  block survives). Reword the sentence so it reads sensibly without the link,
-  or accept the drop.
+- **`reject.md` and the drop rule.** `<model link>` sits on its own line
+  ("See the [security model](\<model link>) for more information."), kept
+  separate from the lead-in sentence on purpose. A PMC that has no
+  threat-model link on record simply loses that one line; the lead-in
+  ("based on the project's security model, this behaviour does not appear to
+  be a vulnerability:") and the `<reason>` block still read correctly. Keep
+  any future `<model link>` reference on a droppable line of its own.
 - **Adding a marker.** Decide who owns it: model-authored text -> `draft.py`;
   anything derived from the PMC, the live message, or the operator ->
   `inbox_manager`. Put it on its own line if it should disappear when empty.

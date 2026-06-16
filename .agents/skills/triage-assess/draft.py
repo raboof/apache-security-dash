@@ -293,7 +293,7 @@ def main() -> int:
     out = header(reporter, f"Re: {subject}") + render("reject.md", {"reason": reason})
     (bundle / "draft-reply.md").write_text(out, encoding="utf-8")
     meta.update({"status": "drafted-reply", "decision": args.kind, "drafted_at": now()})
-    # A push-back closes the report as a non-issue without forwarding to the PMC.
+    # A decline closes the report as a non-issue without forwarding to the PMC.
     # The zzz-non-issue/ tag prefix IS that classification (it sorts the report
     # out of the active queue), so it carries no wf marker.
     meta["wf"] = None

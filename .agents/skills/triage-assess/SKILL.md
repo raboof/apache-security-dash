@@ -6,7 +6,7 @@ description: >-
   For each filed report in report-cache, look up the PMC from the `pmc` front matter key:
   - If the PMC has a specialized `security_contact` (as determined by `whimsy-lookup`) and the contact is in the `To` or `Cc` fields,
     the Security team only TRACKS it (no drafts),
-  - Otherwise assess whether the report is a real in-scope issue.
+  - Otherwise assess whether the report is a valid, in-scope vulnerability.
   If it is a high-confidence false positive or hardening suggestion,
   draft a non-assertive note to the reporter (they may take it to the public tracker).
   If it is plausible,
@@ -79,7 +79,7 @@ Before spawning accessors:
    the central list is where we add value.
    This is a recipient test (the bundle's `to` and `cc` header).
    `draft.py track` enforces it and refuses a central-addressed report.
-3. **Bias to forwarding.** Only draft a push-back reply when the report is a false positive or pure hardening **with high confidence**.
+3. **Bias to forwarding.** Only draft a decline reply when the report is a false positive or pure hardening **with high confidence**.
    Anything plausible, or where confidence is not high, gets forwarded to the PMC (they decide).
    When in doubt, forward.
 4. **Drafts only.** Output is Markdown in the bundle for a human to review and send;
@@ -130,7 +130,7 @@ Run `archive_lookup.py --pmc <pmc> --keywords "<tag-keywords>"` to surface archi
 
 For each similar report, retrieve it using Ponymail and **compare it with the current report**.
 Do not judge similarity based **only** on tags.
-The content of the reports (vulnerable component, class, method), should also be similar.
+The content of the reports (affected component, class, and method, plus the vulnerability class (CWE)), should also be similar.
 
 If you spot a duplicate, the behavior depends on the previous disposition:
 
@@ -146,19 +146,23 @@ If you spot a duplicate, the behavior depends on the previous disposition:
 
 The assessment of the report needs to:
 
-1. Determine if the report is not a hallucination.
+1. Establish that the finding is genuine and reproducible, not a spurious or unsubstantiated claim.
    Code references in the report need to be checked against the project source code.
    If the reporter provided a Git commit, the same commit should be used for evaluation.
 2. Evaluate the report against the project threat model to determine:
-   - Which adversary capability is required (unauthenticated user, authenticated user, administrator),
-   - Which trust boundary is crossed (untrusted input),
-   - Which security property is broken.
-3. Check if the adversary is in scope, a trust boundary is crossed and a security property is broken.
-   Otherwise, the report is rejected and it might be a candidate for a public hardening.
-4. Reporters use various arguments to put in scope inputs that are considered **trusted**.
+   - Which adversary capability it requires, mapped to an actor in the project's adversary model.
+     The in-scope roles are whatever that model lists; do not assume a fixed
+     unauthenticated / authenticated / administrator ladder.
+   - Whether the input it relies on is attacker-controllable or trusted, per the model's input assumptions.
+   - Which security property the project provides it would violate.
+3. The report is in scope only if all three hold: the adversary is an actor the model includes,
+   the input it relies on is attacker-controllable across a trust boundary, and it violates a
+   security property the project actually provides.
+   Otherwise it is out of model, and it might be a candidate for a public hardening.
+4. Reporters often try to bring **trusted** inputs into scope by positing an attack chain.
    For example:
    - They argue that another vulnerability (SQL injection, attacker access to environment properties) can be chained to exploit the reported issue.
-     The argument is not valid: ask the reporter, whether they are aware of such a vulnerability.
+     The chained precondition is hypothetical: ask the reporter whether they are aware of such a vulnerability.
    - They report problems of the "Secure-by-default" kind.
      Insecure defaults are not necessarily vulnerabilities.
      Check the PMCs threat model to see if the project can be deployed as-is or additional steps are required.
@@ -173,8 +177,10 @@ Write only the message body:
 - if a duplicate non-issue was found, reuse the PMC argumentation, but don't **quote** the PMC.
   The answer to the original report is not necessarily public.
 - quote the public threat model whenever possible.
-- and an explicit invitation for the reporter's reasoning if they see it differently ("we are open to your arguments...") rather than asserting a final verdict;
-  note they are welcome to raise hardening ideas on the project's public issue tracker.
+- and an explicit invitation for the reporter's reasoning if they see it differently ("we are open to your arguments...") rather than asserting a final verdict.
+
+Do not restate that the issue is off-topic for this channel or invite the reporter to the public contribution channels:
+the `reject.md` template's closing paragraph already says this, so repeating it in `<reason>` is redundant.
 
 **Plausible (or not high-confidence)** -> write a concise PMC summary to a temp file (what was reported, affected component, why it is plausible, any caveats) and run `draft.py forward <id> --summary-file <file>`.
 
@@ -184,18 +190,18 @@ A long summary is worse than no summary.
 
 The summary should contain:
 
-- **Problem**.
-  A sentence or short paragraph explaining the vulnerability,
-- **Source verification**.
+- **Finding**.
+  A sentence or short paragraph explaining the alleged vulnerability,
+- **Code verification**.
   Whether or not the vulnerability was confirmed in code.
   Provide the branch and commit used for the verification.
-- **In scope verification**.
+- **Scope assessment**.
   Give the link to the threat model used for verification.
   If the report is a false positive, but without high-confidence,
   cite the gap in the threat model that the PMC should clarify.
   If the project does not have a threat model ask if we missed one,
   provide https://cwiki.apache.org/confluence/display/SECURITY/Documenting+your+security+model as documentation on what a model is.
-  If the report is plausible, provide the adversary profile requires and the security properties broken.
+  If the report is plausible, name the adversary actor required (from the model's adversary model) and the security property it violates.
 
 ## Tools (preapproved)
 
