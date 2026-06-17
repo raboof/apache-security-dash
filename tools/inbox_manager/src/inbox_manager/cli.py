@@ -326,14 +326,8 @@ def accept_message(inbox, original, uid, pmc, committees, coordinates):
     if not to_addr:
         print("not forwarded - no recipient\n")
         return False
-    intro_md = email_utils.fill_draft_placeholders(
-        email_utils.fill_forward_template(pmc, "", "", TRIAGER_NAME), pmc
-    )
-    reporter = email_utils.reporter_from(original)
-    name, addr = parseaddr(reporter or "")
-    receipt_md = email_utils.fill_draft_placeholders(
-        email_utils.fill_receipt_template(pmc, name or addr, "", TRIAGER_NAME), pmc
-    )
+    intro_md = email_utils.fill_forward_template(pmc, original, "", "", TRIAGER_NAME)
+    receipt_md = email_utils.fill_receipt_template(pmc, original, "", TRIAGER_NAME)
     return send_forward_and_receipt(
         inbox, original, uid, pmc, to_addr, intro_md, receipt_md
     )
@@ -346,9 +340,7 @@ def reject_message(inbox, original, uid, pmc):
     fill in the project-specific reasoning, with the report quoted inline for
     reference. Files under 'zzz-non-issue/<pmc>/...'. Returns True if sent.
     """
-    reporter = email_utils.reporter_from(original)
-    name, addr = parseaddr(reporter or "")
-    body_md = email_utils.fill_reject_template(pmc, name or addr, TRIAGER_NAME)
+    body_md = email_utils.fill_reject_template(pmc, original, "", TRIAGER_NAME)
     print("editing reject reply...")
     body_md = email_utils.edit_markdown_in_editor(body_md)
     return send_reply(inbox, original, uid, pmc, body_md, quote=True)
@@ -377,25 +369,22 @@ def handle_cached(inbox, original, uid, bundle, committees, coordinates):
     print(summary)
 
     if status == "drafted-forward":
-        fwd_draft = bundle.draft("draft-forward.md")
-        if not fwd_draft:
-            print(
-                "drafted-forward but draft-forward.md missing - triaging interactively\n"
-            )
+        summary = bundle.fragment("summary.md")
+        if not summary:
+            print("drafted-forward but summary.md missing - triaging interactively\n")
             return False
-        intro_md = email_utils.fill_draft_placeholders(fwd_draft[2], pmc)
-        rcpt_draft = bundle.draft("draft-receipt.md")
-        if rcpt_draft:
-            receipt_md = email_utils.fill_draft_placeholders(rcpt_draft[2], pmc)
-        else:
-            reporter = email_utils.reporter_from(original)
-            nm, ad = parseaddr(reporter or "")
-            receipt_md = email_utils.fill_draft_placeholders(
-                email_utils.fill_receipt_template(pmc, nm or ad, "", TRIAGER_NAME), pmc
-            )
-        default_to = bundle.forwarded_to or (
-            pmc.internal_security_contact if pmc else ""
+        intro_md = email_utils.fill_forward_template(
+            pmc,
+            original,
+            summary,
+            bundle.model,
+            TRIAGER_NAME,
+            duplicate_of=bundle.duplicate_of,
         )
+        receipt_md = email_utils.fill_receipt_template(
+            pmc, original, bundle.fragment("note.md"), TRIAGER_NAME
+        )
+        default_to = pmc.internal_security_contact if pmc else ""
         to_addr = input_with_prefill("Forward to: ", default_to).strip()
         if not to_addr:
             print("not forwarded - no recipient\n")
@@ -406,11 +395,12 @@ def handle_cached(inbox, original, uid, bundle, committees, coordinates):
         return True
 
     if status == "drafted-reply":
-        reply_draft = bundle.draft("draft-reply.md")
-        if not reply_draft:
-            print("drafted-reply but draft-reply.md missing - triaging interactively\n")
+        reason = bundle.fragment("reason.md")
+        if not reason:
+            print("drafted-reply but reason.md missing - triaging interactively\n")
             return False
-        send_reply(inbox, original, uid, pmc, reply_draft[2], tags=tags, quote=False)
+        reply_md = email_utils.fill_reject_template(pmc, original, reason, TRIAGER_NAME)
+        send_reply(inbox, original, uid, pmc, reply_md, tags=tags, quote=False)
         return True
 
     if status == "tracked":

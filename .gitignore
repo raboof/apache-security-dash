@@ -5,6 +5,7 @@
 # Caches
 /report-cache/
 /email-classification/
+/workspace/
 __pycache__/
 *.pyc
 

@@ -20,10 +20,12 @@
 `triage-populate-cache` downloads each inbound report into
 `report-cache/<date>/<pmc>/<keywords>/report.md` and records a
 Message-ID -> bundle map in `report-cache/index.json`; `triage-assess` then
-writes `draft-forward.md` / `draft-receipt.md` / `draft-reply.md` next to it
-and advances the front-matter `status`. This module lets `inbox_manager` join
-a live inbox message (by RFC Message-ID) to its bundle so it can act on the
-disposition the SKILLs already decided, instead of re-deriving everything.
+writes the model's free-text fragments (`summary.md` / `note.md` / `reason.md`)
+next to it and advances the front-matter `status`. This module lets
+`inbox_manager` join a live inbox message (by RFC Message-ID) to its bundle so
+it can render and send the response the SKILLs already decided, instead of
+re-deriving everything. Rendering the templates is `inbox_manager`'s job: the
+bundle supplies only the values (the fragments plus the front-matter scalars).
 
 Read-only: nothing here mutates the cache. If the cache is missing (a machine
 that has not run the SKILLs) every lookup returns ``None`` and the caller falls
@@ -33,7 +35,6 @@ back to its own interactive triage.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from os import getenv
 from pathlib import Path
@@ -46,11 +47,6 @@ DEFAULT_CACHE_DIR = REPO_ROOT / "report-cache"
 
 BUNDLE_FILE = "report.md"
 INDEX_FILE = "index.json"
-
-# A draft's leading "<!-- DRAFT for human review ... -->" header (To:/Subject:
-# hints for the sender); stripped off before the body is rendered.
-_DRAFT_HEADER = re.compile(r"\A\s*<!--.*?-->\s*", re.DOTALL)
-_HEADER_FIELD = re.compile(r"^(To|Subject):\s*(.*)$", re.MULTILINE)
 
 
 def cache_dir() -> Path:
@@ -98,8 +94,17 @@ class Bundle:
         return self.meta.get("pmc") or ""
 
     @property
-    def forwarded_to(self) -> str:
-        return self.meta.get("forwarded_to") or ""
+    def model(self) -> str:
+        """The AI model that wrote the summary (for the forward disclaimer)."""
+        return self.meta.get("model") or ""
+
+    @property
+    def duplicate_of(self) -> str:
+        """Link to the still-open report this one duplicates, or '' if none.
+
+        When set, the forward is rendered from ``forward-duplicate.md``.
+        """
+        return self.meta.get("duplicate_of") or ""
 
     @property
     def is_digest(self) -> bool:
@@ -109,27 +114,18 @@ class Bundle:
     def is_non_issue(self) -> bool:
         return (self.meta.get("collection") or "") == "zzz-non-issue"
 
-    def draft(self, name: str) -> tuple[str, str, str] | None:
-        """``(to_hint, subject_hint, body)`` for a draft file, or None.
+    def fragment(self, name: str) -> str:
+        """The text of a model-authored fragment file (e.g. ``summary.md``).
 
-        The leading ``<!-- DRAFT ... -->`` comment is parsed for the To/Subject
-        hints and then stripped, so ``body`` is just the Markdown to send.
+        Returns the file's stripped contents, or ``""`` when it is absent. The
+        triage-assess SKILL writes ``summary.md`` / ``note.md`` (forward) and
+        ``reason.md`` (reply); ``inbox_manager`` feeds them through the
+        templates at send time.
         """
-        path = self.path / name
         try:
-            raw = path.read_text(encoding="utf-8")
+            return (self.path / name).read_text(encoding="utf-8").strip()
         except OSError:
-            return None
-        header = _DRAFT_HEADER.match(raw)
-        to_hint = subject_hint = ""
-        if header:
-            for field, value in _HEADER_FIELD.findall(header.group(0)):
-                if field == "To":
-                    to_hint = value.strip()
-                elif field == "Subject":
-                    subject_hint = value.strip()
-        body = _DRAFT_HEADER.sub("", raw).strip()
-        return to_hint, subject_hint, body
+            return ""
 
 
 def lookup(message_id: str, index: dict, root: Path | None = None) -> Bundle | None:

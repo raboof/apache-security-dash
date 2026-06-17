@@ -13,9 +13,16 @@
       "mcp__ponymail__search_list",
       "Bash(lychee *)",
       "WebFetch(domain:*.apache.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(uv run --project tools/populate_cache populate-cache *)",
       "Bash(uv run --project tools/whimsy_lookup whimsy-lookup *)",
-      "Bash(.agents/skills/triage-populate-cache/file.py *)"
+      "Bash(.agents/skills/triage-populate-cache/file.py *)",
+      "Bash(.agents/skills/triage-assess/archive_lookup.py *)",
+      "Bash(.agents/skills/triage-assess/draft.py *)",
+      "Read(workspace/*)",
+      "Grep(workspace/*)",
+      "Glob(workspace/*)"
     ],
     "deny": [
       "Read(./.env)"
