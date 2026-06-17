@@ -522,11 +522,13 @@ Pre-flight is complete for Apache <PMC name>:
 
 Ready to queue whenever you give the green light — we
 don't auto-submit. One scheduling note worth flagging:
-this round of the program runs against a fixed window that
-closes 30 June 2026, so the earlier you can green-light (and
-land anything still in flight above), the more comfortably we
-can fit your run in before it closes. Typical end-to-end cycle
-is days to a couple of weeks depending on queue position.
+there is no hard deadline; scans run in OSS Criticality
+Score order from a queue of repos that have cleared
+pre-flight, so green-lighting now (and landing anything
+still in flight above) is what puts you into that queue at
+your criticality rank — the sooner it lands, the sooner you
+are in line. Typical end-to-end cycle is days to a couple
+of weeks depending on queue position.
 
 A program-shape note for context.
 

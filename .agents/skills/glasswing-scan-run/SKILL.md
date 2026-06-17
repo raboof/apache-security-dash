@@ -81,33 +81,32 @@ Each stage has its own SKILL responsible for the work that moves an engagement t
 This SKILL doesn't replicate that logic —
 it just figures out which stage each engagement is *in* and surfaces what to do next.
 
-## Program timeline — the window is now time-boxed (read this)
+## Program timeline — deadline lifted; criticality-ordered queue (read this)
 
 Until late May 2026 the program ran on a *"no rush"* footing:
 scans went through the third-party **vendor-relay path** (Alpha-Omega runs the scan off a Google-Form submission and emails the report back),
 the queue was open-ended,
 and PMCs were told there was no deadline.
 
-That changed with Anthropic/Glasswing's **27 May 2026 donation of $1M in Mythos credits to the ASF**, which opens a **direct-internal path**:
-the ASF Security / Infra / Tooling teams run scans themselves on directly-granted Mythos access,
-with no vendor relay.
-Both paths feed the same internal queue and look identical from a PMC's seat (pre-flight → scan → sanity-check → forward);
-the operator works whichever lands fastest for a given PMC.
-But the donation carries hard conditions (per Sally Khudairi's 27 May ai-discuss update and her 30 May all-PMC mail, both already seen by PMCs):
+Anthropic/Glasswing's **27 May 2026 donation of $1M in Mythos credits to the ASF** briefly added a **direct-internal path** (the ASF Security / Infra / Tooling teams run scans themselves on directly-granted access, no vendor relay) under an original **30 June 2026** credit-expiry.
 
-- **Hard expiry: 30 June 2026.** Access for this round ends then;
-  credits unused by that date are gone.
-- **Internal cybersecurity use only** — vulnerability discovery, code review, defensive tooling; no general engineering use.
-- **~1 dozen seats**, individually authenticated (no shared credentials), reviewer ideally US-based + security-check cleared.
+**That hard 30 June expiry is gone.**
+Per Sally Khudairi's 2026-06-09 program update and the 2026-06-10 all-PMC broadcast, the cut-off is being **extended**:
+the program is moving from Mythos Preview onto the upgraded **Mythos 5** model and the ASF retains its spot/status in Anthropic's provisioning queue.
+As of **2026-06-13**, Anthropic has a broad **pause on new provisioning** (tied to the US export-control situation in the `fable-mythos-access` announcement) — the ASF is explicitly **"not out,"** but direct provisioning is on hold **with no ETA**.
+None of that stops scanning:
+the pipeline is **model-agnostic** (the vendor-relay path plus any-model internal runs — Opus / Sonnet / Haiku or any family), so scans continue regardless of where direct-Mythos provisioning lands.
 
-What this changes for *this* SKILL is the **patience posture**.
-Engagements parked in `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, or `pmc-pitch-replied-awaiting-operator-decision` are no longer "fine to leave indefinitely" —
-every PMC that wants in *this* round has to clear its outstanding items with enough runway to be queued and scanned before 30 June.
-The overdue/nudge logic in Step 4 is tightened accordingly while the window is open,
-and a gentle-but-firm nudge canned response (topic `deadline`) exists for exactly these stalled PMCs.
-The signed-up PMCs already in the pipeline keep their spot —
-the nudge is about getting their (and new entrants') prerequisites in on time,
-not about re-qualifying them.
+What this changes for *this* SKILL is the **patience posture**: there is **no hard cliff** anymore.
+Ordering is by **readiness + OSS Criticality Score**, drawn from the pre-flight-cleared **Scan Queue** (see `build-status-tab`).
+Engagements parked in `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, or `pmc-pitch-replied-awaiting-operator-decision` are still worth nudging —
+not to beat a deadline, but because clearing those items is what puts a PMC *into* the queue at its criticality rank, and the sooner they land the sooner it is in line.
+A gentle-but-firm nudge canned response (topic `deadline`) exists for these stalled PMCs and is already reframed around the queue, not a cliff.
+The signed-up PMCs already in the pipeline keep their spot;
+the nudge is about getting prerequisites in, not re-qualifying them.
+
+Internal only — keep OUT of PMC-facing text (Hard Rule 5 / the response SKILL): the seat/credit conditions, the provisioning pause, and the vendor identity.
+PMC-facing framing is simply "no hard deadline; scans run in OSS Criticality Score order from a pre-flight-cleared queue."
 
 ## When to invoke
 
@@ -444,13 +443,13 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `mirko-correspondence` | Reply from Mirko on a queued / submitted scan. | Read the message; possibly forward to the PMC; update sheet. |
 
 The "time-overdue" rule: any engagement in `awaiting-pmc-reply` or `submitted-awaiting-vendor` for more than 14 days gets flagged for a nudge.
-**While the 30 June 2026 Mythos window is open (see "Program timeline — the window is now time-boxed" above), tighten this:**
+**There is no longer a hard deadline (see "Program timeline" above), so the nudge is about queue entry, not beating a cliff:**
 any PMC that still owes *us* something before it can be queued —
 `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, or `pmc-pitch-replied-awaiting-operator-decision` —
-and has been quiet for more than ~7 days is a nudge candidate,
-because the runway to clear those items *and still queue before the deadline* is short.
+and has been quiet for more than ~7–14 days is a nudge candidate,
+because clearing those items is what puts the PMC *into* the criticality-ordered queue at its rank.
 Don't draft the nudge automatically;
-surface it for the user and point at the `deadline`-topic canned response (gentle-but-firm) for these stalled PMCs.
+surface it for the user and point at the `deadline`-topic canned response (gentle-but-firm, already reframed around the queue) for these stalled PMCs.
 
 ### Step 5 — Produce the action list
 
