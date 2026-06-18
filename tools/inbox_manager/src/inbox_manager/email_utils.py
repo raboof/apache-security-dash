@@ -319,6 +319,16 @@ def fill_markers(text, pmc, original, triager_name):
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
+def fill_llm_suggestions_template(summary, model):
+    """Render the "summary" section of a forward"""
+    content = {}
+    content["summary"] = summary
+    content["model"] = model
+    return _apply(
+        (TEMPLATE_DIR / "forward-llm-summary.md").read_text(encoding="utf-8"), content
+    )
+
+
 def fill_forward_template(pmc, original, summary, model, triager_name, duplicate_of=""):
     """Render the PMC forward: forward-duplicate.md when ``duplicate_of`` is set,
     else forward.md. The content markers (summary / model / duplicate) are filled
@@ -331,9 +341,7 @@ def fill_forward_template(pmc, original, summary, model, triager_name, duplicate
     name = "forward-duplicate.md" if duplicate_of else "forward.md"
     content = {}
     if summary:
-        content["summary"] = summary
-    if model:
-        content["model"] = model
+        content["summary"] = fill_llm_suggestions_template(summary, model)
     if duplicate_of:
         content["duplicate"] = duplicate_of
     text = _apply((TEMPLATE_DIR / name).read_text(encoding="utf-8"), content)
@@ -376,7 +384,8 @@ def _reply_envelope(original):
     msg["Message-ID"] = email.utils.make_msgid(domain="security.apache.org")
     msg["From"] = "ASF Security <security@apache.org>"
     msg["To"] = reporter_from(original)
-    msg["Cc"] = original["Cc"]
+    if original["Cc"]:
+        msg["Cc"] = original["Cc"]
     msg["Bcc"] = "ASF Security <security@apache.org>"
     subject = str(original["Subject"] or "")
     msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
@@ -393,25 +402,22 @@ def _set_md_body(msg, body_md):
     msg.add_alternative(_sanitize_html(md_to_html(body_md)), subtype="html")
 
 
-def make_reject(original, body_md, quote=True):
+def make_reject(original, body_md):
     """Build a push-back reply to the reporter(s) from a Markdown body.
 
     ``body_md`` is the team's note (the rendered ``reject.md`` template).
-    When ``quote`` is set the original report
+    The original report
     is appended verbatim for reference (not Markdown-rendered, since it is the
     reporter's own untrusted text).
     """
     reject = _reply_envelope(original)
-    if quote:
-        quoted = quote_original(original)
-        reject.set_content(f"{md_to_text(body_md)}\n\n{quoted}")
-        reject.add_alternative(
-            f"{_sanitize_html(md_to_html(body_md))}"
-            f"<br><div>{_text_to_html(quoted)}</div>",
-            subtype="html",
-        )
-    else:
-        _set_md_body(reject, body_md)
+
+    quoted = quote_original(original)
+    reject.set_content(f"{md_to_text(body_md)}\n\n{quoted}")
+    reject.add_alternative(
+        f"{_sanitize_html(md_to_html(body_md))}<br><div>{_text_to_html(quoted)}</div>",
+        subtype="html",
+    )
     return reject
 
 
