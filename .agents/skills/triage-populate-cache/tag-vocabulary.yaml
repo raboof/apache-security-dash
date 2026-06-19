@@ -115,6 +115,8 @@ global:
       description: authentication / authorization code
     aws:
       description: AWS SDK / IMDS metadata
+    broker:
+      description: message-broker server / admin command surface (RocketMQ / Pulsar / Kafka)
     buffer:
       description: byte-buffer handling (native code)
     cache:
@@ -164,6 +166,8 @@ global:
       description: JWT parsing / signature verification
     k8s:
       description: Kubernetes API / manifest handling
+    kernel:
+      description: OS kernel / RTOS core subsystem (e.g. NuttX)
     log:
       description: log output / log injection / log4j
     mcp:
@@ -174,6 +178,8 @@ global:
       description: cloud metadata endpoint (169.254.169.254)
     mysql:
       description: MySQL driver / dialect
+    namespace:
+      description: tenant / namespace isolation boundary
     oauth:
       description: OAuth 2.0 / OIDC flow
     path:
@@ -182,6 +188,8 @@ global:
       description: Python pickle deserialization
     plugin:
       description: plugin / extension loading
+    poll:
+      description: poll / epoll / select event-wait subsystem
     proxy:
       description: forward / reverse proxy code path
     regex:
@@ -215,6 +223,8 @@ global:
       description: bearer / refresh / CSRF / JWT token
     upload:
       description: file upload endpoint
+    webhook:
+      description: outbound webhook / callback URL (frequent SSRF vector)
     xml:
       description: XML parser / SAX / DOM
     xslt:
