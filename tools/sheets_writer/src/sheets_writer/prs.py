@@ -78,3 +78,57 @@ def query_pr_states(urls: list[str]) -> dict:
         except Exception as e:  # noqa: BLE001 — single boundary for diagnostics
             result["errors"].append(f"{url}: {e}")
     return result
+
+
+_PR_PARTS_RE = re.compile(r"github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)")
+
+# How strongly a path in a merged PR looks like "the threat/security model
+# document itself" (highest score wins). A pointer file (SECURITY.md) scores
+# low — it's usually just a link to the model, not the model — but still beats
+# nothing when a PR added only that.
+_MODEL_FILE_PATTERNS = [
+    (re.compile(r"(^|/)THREAT[_-]?MODEL\.(md|adoc|rst|txt)$", re.I), 100),
+    (re.compile(r"(^|/)SECURITY[_-]THREAT[_-]MODEL\.(md|adoc|rst|txt)$", re.I), 95),
+    (re.compile(r"threat[_-]?model", re.I), 80),
+    (re.compile(r"security[_-]?model", re.I), 70),
+    (re.compile(r"(^|/)SECURITY\.(md|adoc|rst|txt)$", re.I), 40),
+]
+
+
+def resolve_model_file_url(pr_url: str) -> str | None:
+    """Given a *merged* PR URL, return the blob URL of the threat/security
+    model document the PR added — i.e. the model itself, not the PR page.
+
+    Shells out to ``gh pr view --json state,files,baseRefName``. Returns
+    ``None`` (so the caller can fall back) when the PR isn't merged, has no
+    model-looking file, or any gh/network error occurs. Best-effort: never
+    raises.
+    """
+    m = _PR_PARTS_RE.search(pr_url or "")
+    if not m:
+        return None
+    owner, repo, _num = m.groups()
+    try:
+        p = subprocess.run(
+            ["gh", "pr", "view", pr_url, "--json", "state,files,baseRefName"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if p.returncode != 0:
+            return None
+        data = json.loads(p.stdout)
+        if data.get("state", "").upper() != "MERGED":
+            return None
+        base = data.get("baseRefName") or "HEAD"
+        best_path, best_score = None, 0
+        for f in data.get("files", []):
+            path = f.get("path", "")
+            for pat, score in _MODEL_FILE_PATTERNS:
+                if pat.search(path) and score > best_score:
+                    best_path, best_score = path, score
+        if not best_path:
+            return None
+        return f"https://github.com/{owner}/{repo}/blob/{base}/{best_path}"
+    except Exception:  # noqa: BLE001 — best-effort; fall back on any failure
+        return None
