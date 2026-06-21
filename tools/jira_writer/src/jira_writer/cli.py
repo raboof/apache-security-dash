@@ -69,6 +69,8 @@ def cmd_create_issue(args: argparse.Namespace) -> int:
     print("Will create JIRA issue:")
     print(f"  Project: {args.project}")
     print(f"  Type:    {args.issuetype}")
+    if args.components:
+        print(f"  Components: {', '.join(args.components)}")
     print(f"  Summary: {args.summary}")
     _preview("Description", description)
     if args.dry_run:
@@ -79,6 +81,7 @@ def cmd_create_issue(args: argparse.Namespace) -> int:
         summary=args.summary,
         description=description,
         issuetype=args.issuetype,
+        components=args.components,
     )
     key = result.get("key")
     if not key:
@@ -116,6 +119,12 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--description")
     g.add_argument("--description-file")
     p_create.add_argument("--issuetype", default="Task")
+    p_create.add_argument(
+        "--component",
+        action="append",
+        dest="components",
+        help="Component name (repeatable); required by some projects, e.g. RANGER.",
+    )
     p_create.add_argument("--dry-run", action="store_true")
 
     p_comment = sub.add_parser("add-comment", help="Add a comment to an issue.")
