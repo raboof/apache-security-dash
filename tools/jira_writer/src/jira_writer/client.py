@@ -95,22 +95,27 @@ def create_issue(
     summary: str,
     description: str,
     issuetype: str = "Task",
+    components: list[str] | None = None,
     token_path: Path | None = None,
 ) -> dict:
     """POST /issue — file a new issue in ``project``.
 
+    ``components`` is an optional list of component names; some projects
+    (e.g. RANGER) reject issue creation with HTTP 400 "Component/s is
+    required" when it is omitted.
+
     Returns the JIRA-server response dict, which includes ``key``
     (e.g. ``"HBASE-30181"``) and ``self`` (the canonical URL).
     """
-    payload = {
-        "fields": {
-            "project": {"key": project},
-            "summary": summary,
-            "description": description,
-            "issuetype": {"name": issuetype},
-        }
+    fields = {
+        "project": {"key": project},
+        "summary": summary,
+        "description": description,
+        "issuetype": {"name": issuetype},
     }
-    return api_call("POST", "/issue", body=payload, token_path=token_path)
+    if components:
+        fields["components"] = [{"name": c} for c in components]
+    return api_call("POST", "/issue", body={"fields": fields}, token_path=token_path)
 
 
 def add_comment(
