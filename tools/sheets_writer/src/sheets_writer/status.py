@@ -27,6 +27,7 @@ from sheets_writer import (
     COMPLETED_SHEET,
     IN_PROGRESS_SHEET,
     MODEL_COLOR,
+    MODEL_STATUS_SHEET,
     NOMINATED_COLOR,
     OSS_SUBSCRIPTIONS_SHEET,
     PIPELINE_STATES,
@@ -57,6 +58,7 @@ TAB_DESCRIPTIONS = {
     "Repositories": "every public github.com/apache repo, mapped to its PMC.",
     "OSS Subscriptions": "expedited Claude-for-OSS subscriptions for PMC members.",
     "Scan Queue": "every submitted repo, criticality-ranked, with manual scan/commit tracking.",
+    "Model Status": "per-PMC threat/security model URL.",
     "Timeline": "wide-format milestone dates per PMC, chart-ready.",
     "Canned Responses": "reusable answers to common PMC questions.",
 }
@@ -1676,15 +1678,39 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         sq.cell_color(ri, sq_ws_j, MANUAL_FILL)
         sq.cell_color(ri, sq_ch_j, MANUAL_FILL)
 
+    # 6b. Build the "Model Status" tab: one row per Scan-Requested PMC mapping it
+    #     to its threat/security model URL (the verbatim "Security Model" cell).
+    #     Alphabetical by PMC — a plain lookup table, no status classification.
+    #     Auto-derived from the PMCs sheet.
+    model_rows = sorted(entries, key=lambda e: e["pmc"].lower())
+    with_model = sum(1 for e in entries if e["model"].strip())
+    ms = _Tab()
+    ms.row([f"Glasswing scan pipeline — Model Status · as of {today}"], header=True)
+    ms.row(
+        [
+            "Per-PMC threat/security model URL (the 'Security Model' cell from "
+            "the PMCs sheet, verbatim). Auto-derived from the PMCs sheet."
+        ]
+    )
+    ms.row([f"{with_model} of {len(entries)} PMCs have a model URL recorded."], bold=True)
+    ms.row([""])
+    ms.row(["PMC", "Security Model"], header=True)
+    if not model_rows:
+        ms.row(["(no PMCs yet)"])
+    for e in model_rows:
+        ms.row([e["pmc"], e["model"] or "—"], span=2)
+
     if args.dry_run:
         print(
-            f"Would write 7 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
+            f"Would write 8 tabs — '{IN_PROGRESS_SHEET}' ({len(ip.values)} rows, "
             f"{len(in_flight)} in flight), '{PROGRAM_TOTALS_SHEET}' ({len(pt.values)} rows), "
             f"'{COMPLETED_SHEET}' ({len(completed)} completed), "
             f"'{TIMELINE_SHEET}' ({len(entries)} events), "
             f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, "
             f"{len(additions)} new), '{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, "
-            f"{manual_filled} with manual data), '{README_SHEET}' (auto overview "
+            f"{manual_filled} with manual data), '{MODEL_STATUS_SHEET}' "
+            f"({len(model_rows)} PMCs, {with_model} with a model URL), "
+            f"'{README_SHEET}' (auto overview "
             f"+ legend). Model origins: "
             + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
             + "."
@@ -1712,6 +1738,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     tl_id = _ensure_sheet(service, args.spreadsheet_id, TIMELINE_SHEET, by_title)
     os_id = _ensure_sheet(service, args.spreadsheet_id, OSS_SUBSCRIPTIONS_SHEET, by_title)
     sq_id = _ensure_sheet(service, args.spreadsheet_id, SCAN_QUEUE_SHEET, by_title)
+    ms_id = _ensure_sheet(service, args.spreadsheet_id, MODEL_STATUS_SHEET, by_title)
     rd_id = _ensure_sheet(service, args.spreadsheet_id, README_SHEET, by_title)
 
     # Re-read the (now-complete) tab list, in sheet order, for the README overview,
@@ -1766,6 +1793,9 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         frozen=_fz(os_id),
     )
     _write_tab(service, args.spreadsheet_id, SCAN_QUEUE_SHEET, sq_id, sq, frozen=_fz(sq_id))
+    _write_tab(
+        service, args.spreadsheet_id, MODEL_STATUS_SHEET, ms_id, ms, wrap_col=1, frozen=_fz(ms_id)
+    )
     _write_tab(service, args.spreadsheet_id, README_SHEET, rd_id, rd, frozen=_fz(rd_id))
 
     print(
@@ -1776,6 +1806,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, {len(additions)} new, "
         f"{names_filled} name(s) resolved), "
         f"'{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, {manual_filled} with manual data), "
+        f"'{MODEL_STATUS_SHEET}' ({len(model_rows)} PMCs, {with_model} with a model URL), "
         f"'{README_SHEET}' ({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."

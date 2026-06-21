@@ -84,6 +84,10 @@ OSS_SUBSCRIPTIONS_SHEET = "OSS Subscriptions"
 # yellow) and preserved across refreshes keyed by repo; the rest auto-derive
 # from the PMCs + Repositories sheets on every build-status-tab refresh.
 SCAN_QUEUE_SHEET = "Scan Queue"
+# Per-PMC lookup of the threat/security model URL (the "Security Model" cell
+# from the PMCs sheet, verbatim). One row per Scan-Requested PMC, alphabetical.
+# Fully derived from the PMCs sheet on every build-status-tab refresh.
+MODEL_STATUS_SHEET = "Model Status"
 # Hand-written overview tab; build-status-tab only appends/refreshes a legend
 # block at the bottom (sentinel-managed), never clearing the rest.
 README_SHEET = "README"
