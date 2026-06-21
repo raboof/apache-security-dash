@@ -40,7 +40,7 @@ from sheets_writer import (
 )
 from sheets_writer.columns import col_letter
 from sheets_writer.dashboard import render_dashboard, update_dashboard_gist
-from sheets_writer.prs import parse_pr_urls, query_pr_states
+from sheets_writer.prs import parse_pr_urls, query_pr_states, resolve_model_file_url
 from sheets_writer.sheets_api import fetch_sheet_grid, get_service
 
 # Light fill behind a section's heading row on the Program totals tab, so the
@@ -58,7 +58,7 @@ TAB_DESCRIPTIONS = {
     "Repositories": "every public github.com/apache repo, mapped to its PMC.",
     "OSS Subscriptions": "expedited Claude-for-OSS subscriptions for PMC members.",
     "Scan Queue": "every submitted repo, criticality-ranked, with manual scan/commit tracking.",
-    "Model Status": "per-PMC threat/security model URL.",
+    "Model Status": "per-PMC threat/security model: extracted URL(s) + verification status.",
     "Timeline": "wide-format milestone dates per PMC, chart-ready.",
     "Canned Responses": "reusable answers to common PMC questions.",
 }
@@ -1678,27 +1678,70 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         sq.cell_color(ri, sq_ws_j, MANUAL_FILL)
         sq.cell_color(ri, sq_ch_j, MANUAL_FILL)
 
-    # 6b. Build the "Model Status" tab: one row per Scan-Requested PMC mapping it
-    #     to its threat/security model URL (the verbatim "Security Model" cell).
-    #     Alphabetical by PMC — a plain lookup table, no status classification.
-    #     Auto-derived from the PMCs sheet.
+    # 6b. Build the "Model Status" tab: one row per Scan-Requested PMC with the
+    #     model URL(s) extracted from its "Security Model" cell (a cell may hold
+    #     prose around one or more URLs; we pull just the URLs, newline-joined)
+    #     plus the verification status as its own column. Alphabetical by PMC;
+    #     rows coloured by status per the README legend. Auto-derived from PMCs.
+    model_url_re = re.compile(r"https?://\S+")
+    # Scheme-less GitHub PR/issue references inside a prose model cell, so we can
+    # reconstruct the canonical URL: "owner/repo/pull/123" and "owner/repo#123".
+    gh_path_re = re.compile(r"\b([A-Za-z0-9][\w.-]*/[\w.-]+)/(pull|issues)/(\d+)")
+    gh_hash_re = re.compile(r"\b([A-Za-z0-9][\w.-]*/[\w.-]+)#(\d+)")
+
+    def _dedup(items: list) -> list:
+        seen: set = set()
+        return [x for x in items if not (x in seen or seen.add(x))]
+
+    def _model_urls(e: dict) -> str:
+        """Only URLs, pointing at the model document itself.
+
+        1. If the 'Security Model' cell already carries http(s) URL(s), use
+           them verbatim (they point at the model page/file directly).
+        2. Otherwise the cell is prose referencing the PR(s) that introduced
+           the model. Collect those PRs (from the cell's own refs first, then
+           the 'PR/Issues' column) and, for each *merged* PR, resolve the
+           actual model document the PR added (THREAT_MODEL.md etc.) and link
+           to it — falling back to the PR URL only when no model file is found.
+        """
+        cell = e["model"] or ""
+        urls = [u.rstrip(".,;)]") for u in model_url_re.findall(cell)]
+        if urls:
+            return "\n".join(_dedup(urls))
+        prs = [
+            f"https://github.com/{owner}/{kind}/{num}"
+            for owner, kind, num in gh_path_re.findall(cell)
+        ]
+        prs += [f"https://github.com/{owner}/pull/{num}" for owner, num in gh_hash_re.findall(cell)]
+        prs += list(e.get("pr_urls") or [])
+        resolved = [resolve_model_file_url(pr) or pr for pr in _dedup(prs)]
+        return "\n".join(_dedup(resolved)) if resolved else "—"
+
     model_rows = sorted(entries, key=lambda e: e["pmc"].lower())
-    with_model = sum(1 for e in entries if e["model"].strip())
+    # Resolve once per PMC (the lookup shells out to gh for prose cells).
+    model_url_by_pmc = {e["pmc"]: _model_urls(e) for e in entries}
+    with_url = sum(1 for v in model_url_by_pmc.values() if v != "—")
     ms = _Tab()
     ms.row([f"Glasswing scan pipeline — Model Status · as of {today}"], header=True)
     ms.row(
         [
-            "Per-PMC threat/security model URL (the 'Security Model' cell from "
-            "the PMCs sheet, verbatim). Auto-derived from the PMCs sheet."
+            "Per-PMC threat/security model: a dedicated URL column (the model "
+            "page/file from the 'Security Model' cell, or — when the model lives "
+            "in a merged PR — the model document the PR added) and the "
+            "verification status. Rows coloured by status per the README legend."
         ]
     )
-    ms.row([f"{with_model} of {len(entries)} PMCs have a model URL recorded."], bold=True)
+    ms.row([f"{with_url} of {len(entries)} PMCs have a model URL recorded."], bold=True)
     ms.row([""])
-    ms.row(["PMC", "Security Model"], header=True)
+    ms.row(["PMC", "Model URL", "Status"], header=True)
     if not model_rows:
         ms.row(["(no PMCs yet)"])
     for e in model_rows:
-        ms.row([e["pmc"], e["model"] or "—"], span=2)
+        ms.row(
+            [e["pmc"], model_url_by_pmc[e["pmc"]], e["model_status"]],
+            color=MODEL_COLOR.get(e["model_status"]),
+            span=3,
+        )
 
     if args.dry_run:
         print(
@@ -1709,7 +1752,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, "
             f"{len(additions)} new), '{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, "
             f"{manual_filled} with manual data), '{MODEL_STATUS_SHEET}' "
-            f"({len(model_rows)} PMCs, {with_model} with a model URL), "
+            f"({len(model_rows)} PMCs, {with_url} with a model URL), "
             f"'{README_SHEET}' (auto overview "
             f"+ legend). Model origins: "
             + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
@@ -1806,7 +1849,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, {len(additions)} new, "
         f"{names_filled} name(s) resolved), "
         f"'{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, {manual_filled} with manual data), "
-        f"'{MODEL_STATUS_SHEET}' ({len(model_rows)} PMCs, {with_model} with a model URL), "
+        f"'{MODEL_STATUS_SHEET}' ({len(model_rows)} PMCs, {with_url} with a model URL), "
         f"'{README_SHEET}' ({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
         + "."
