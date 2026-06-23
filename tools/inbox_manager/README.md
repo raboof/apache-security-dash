@@ -70,7 +70,36 @@ numbered `text[n]` references and a `[n] <url>` footnote block at the end.
   read-only Gmail API token (`GMAIL_READONLY_OAUTH_*`).
 - `REPORT_CACHE_DIR` - cache root (default: the repo's `report-cache/`). If the
   cache is absent every message falls back to interactive triage.
+- `TERMINFO_DIRS` - only needed on some systems, see "Terminal editing" below.
 
 ```bash
 uv run --project tools/inbox_manager inbox-manager
 ```
+
+## Terminal editing
+
+The interactive prompts pre-fill an editable value (the proposed label, the forward recipient)
+so you tweak it rather than retype it.
+This needs a readline that supports inline prefill, i.e. **GNU readline**.
+When the stdlib `readline` is GNU-backed (`readline.backend == "readline"`, true on most distro Pythons)
+the tool uses it directly.
+On interpreters whose stdlib readline is **libedit**
+(notably uv's python-build-standalone, which embeds libedit as the built-in `readline`)
+prefill is a silent no-op, so the tool falls back to the `gnureadline` wheel.
+
+`gnureadline` bundles its own `libtinfo` whose compiled-in terminfo search path is `/etc/terminfo:/usr/share/terminfo`.
+If your terminal's description lives elsewhere,
+that readline cannot load the terminal's capabilities and line editing misbehaves.
+Most visibly, **Backspace updates the value but does not erase on screen**
+(you see `abc ` while the value is really `a`).
+Debian and Ubuntu keep `xterm-256color` under `/lib/terminfo`, which is not on that default path.
+
+The fix is to add the directory holding your terminfo to `TERMINFO_DIRS` in `.env`:
+
+```dotenv
+TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo
+```
+
+Find where your entry lives with `find /etc/terminfo /lib/terminfo /usr/share/terminfo -name "$TERM" 2>/dev/null`.
+This only affects the gnureadline fallback path;
+on a GNU-readline interpreter it is unnecessary.

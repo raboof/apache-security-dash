@@ -16,11 +16,11 @@
 # under the License.
 
 from imapclient import IMAPClient
-from dotenv import load_dotenv
 from os import getenv
 from inbox_manager.vendor.oauth2 import RefreshToken
 
-load_dotenv()
+# .env is loaded by the entry point (cli.py) before this module is imported,
+# so the credentials read at import time below are already populated.
 
 # This tool authenticates over IMAP with a read/write Gmail OAuth token: it
 # moves, files and junks messages. Its credentials are named GMAIL_READWRITE_*

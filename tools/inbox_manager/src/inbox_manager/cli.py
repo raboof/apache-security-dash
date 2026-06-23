@@ -16,36 +16,42 @@
 # under the License.
 
 import email
-from datetime import datetime
-from email.policy import default
-from email.utils import formataddr, parseaddr
-from inbox_manager import imap, email_utils, cache
-from os import getenv
 import re
-
-# Prefer GNU readline so input_with_prefill's inline prefill works. The stdlib
-# readline in the uv-managed standalone interpreters is linked against libedit,
-# where set_startup_hook/insert_text is a no-op (the prefilled value never
-# appears). gnureadline provides GNU readline; fall back to the stdlib module
-# when it is unavailable (e.g. a system Python already linked against GNU
-# readline).
-try:
-    import gnureadline as readline
-except ImportError:
-    import readline
-
 import smtplib
 import subprocess
 import sys
 import termios
 import tty
+from datetime import datetime
+from email.policy import default
+from email.utils import formataddr, parseaddr
+from os import getenv
 
+from dotenv import load_dotenv
 from whimsy_lookup.fetch import (
     FetchError,
     fetch_committee_info,
     fetch_security_coordinates,
 )
 from whimsy_lookup.pmc_guess import guess_pmcs, pmc_for
+
+# Load .env in the entry point, not as an import side effect, and before the
+# imports below that read config at import time (imap's OAuth vars, gnureadline's
+# TERMINFO_DIRS).
+load_dotenv()
+
+from inbox_manager import imap, email_utils, cache  # noqa: E402
+
+# Prefer the stdlib readline when it is GNU-backed.
+# Fall back to gnureadline on libedit interpreters (uv's standalone Python),
+# where input_with_prefill's prefill is a no-op.
+# See the README "Terminal editing" section (TERMINFO_DIRS).
+import readline as _stdlib_readline  # noqa: E402
+
+if _stdlib_readline.backend == "readline":
+    readline = _stdlib_readline
+else:
+    import gnureadline as readline
 
 # Operator identity used to sign forwards and as the forward's From address.
 TRIAGER_NAME = getenv("TRIAGER_NAME")
