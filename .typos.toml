@@ -36,6 +36,10 @@ isplay = "isplay"
 # otherwise reads as a misspelling of `THIRD`.
 THRID = "THRID"
 MSGID = "MSGID"
+# LDAP Access Control Information / Item (Apache Directory term), not a
+# misspelling of `ACPI`. Recurs in directory-* threat-model + scan docs.
+ACI = "ACI"
+ACIs = "ACIs"
 
 [default.extend-identifiers]
 # Commit SHA fragments referenced in SKILL doc provenance sections.
