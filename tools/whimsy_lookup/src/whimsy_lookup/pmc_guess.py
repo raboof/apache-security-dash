@@ -90,6 +90,11 @@ class Pmc:
 # HttpComponents products (HttpClient/HttpCore/...) share the 'httpcomponents'
 # PMC even though none of them tokenises to it.
 _NAME_ALIASES = {
+    "axiom": "ws",
+    "neethi": "ws",
+    "woden": "ws",
+    "wss4j": "ws",
+    "xmlschema": "ws",
     "http server": "httpd",
     "httpclient": "httpcomponents",
     "httpcore": "httpcomponents",
