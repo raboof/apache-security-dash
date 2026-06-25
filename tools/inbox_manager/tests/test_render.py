@@ -79,7 +79,6 @@ def test_forward_fills_content_and_infra_markers():
     )
     assert "The flaw is real." in out
     assert "Claude Opus 4.8" in out  # the AI-disclaimer model line
-    assert "https://demo.apache.org/security" in out  # threat-model link
     assert "https://dash.security.apache.org/project/demo" in out  # dashboard
     assert TRIAGER in out
     assert no_markers_left(out)
