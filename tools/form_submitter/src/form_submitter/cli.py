@@ -70,7 +70,7 @@ def cmd_submit_pmc(args: argparse.Namespace) -> int:
             print(f"  - apache/{r.name}")
         print(
             "These won't be submitted. Land discoverability "
-            "(via glasswing-model-verify) before re-running for them."
+            "(via frontier-model-preparation-model-verify) before re-running for them."
         )
 
     if args.dry_run:
@@ -85,7 +85,7 @@ def cmd_submit_pmc(args: argparse.Namespace) -> int:
 
     submission_date = result["submitted_at"][:10]
     submitted_urls = [s["repo_url"] for s in result["submitted"]]
-    print("\nValues for glasswing-scan-update apply:")
+    print("\nValues for frontier-model-preparation-update apply:")
     print(f"  Date scan requested: {submission_date}")
     print("  Repositories submitted:")
     for url in submitted_urls:

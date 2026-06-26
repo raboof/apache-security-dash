@@ -6,10 +6,10 @@
 Open a threat-model / discoverability PR on an Apache PMC repo in one
 invocation. Collapses the repeated **fork → clone → write the
 `AGENTS.md → SECURITY.md → model` scaffold (create or append) → commit →
-push → `gh pr create`** dance that `glasswing-model-verify` and the path-3
+push → `gh pr create`** dance that `frontier-model-preparation-model-verify` and the path-3
 threat-model rollout do by hand for every repo.
 
-Used by the `glasswing-model-verify` SKILL and during path-3 model drafting.
+Used by the `frontier-model-preparation-model-verify` SKILL and during path-3 model drafting.
 
 ## Why this exists
 

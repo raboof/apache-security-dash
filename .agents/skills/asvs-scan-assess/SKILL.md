@@ -6,17 +6,17 @@ description: >-
   read the project's own threat model (the `metadata.yml` `threat_model` URL plus any delegated/umbrella model it points to),
   run the pre-forward sanity check, and triage every finding in `issues.md` against that model's disposition framework (e.g. the threat-model-producer §13 table: VALID / VALID-HARDENING / OUT-OF-MODEL / BY-DESIGN / KNOWN-NON-FINDING / MODEL-GAP).
   The assessment is written back into the private repo under `pre-forward-results/`, mirroring the exact `scans/` path structure — one assessment directory per scan, keyed by the same scan-id.
-  This is an INTERNAL working artifact for the team — it is NOT the PMC forward, it does NOT replace the verbatim-forward policy (glasswing-scan-forward still forwards the vendor's findings unedited), and it is NEVER published to a gist or any public surface (pre-disclosure candidates stay in the private repo).
-  Assess ONLY scans whose project has completed threat-model preparation — i.e. the Mythos tracker's `Security model verified` is set for that PMC (per glasswing-model-verify); skip projects whose model is merely nominated or pending verification.
+  This is an INTERNAL working artifact for the team — it is NOT the PMC forward, it does NOT replace the verbatim-forward policy (frontier-model-preparation-forward still forwards the vendor's findings unedited), and it is NEVER published to a gist or any public surface (pre-disclosure candidates stay in the private repo).
+  Assess ONLY scans whose project has completed threat-model preparation — i.e. the Mythos tracker's `Security model verified` is set for that PMC (per frontier-model-preparation-model-verify); skip projects whose model is merely nominated or pending verification.
   Output is a set of files committed to `apache/tooling-agents-private` after explicit human approval — never auto-committed, never sent anywhere.
   Use whenever Jarek says "assess the <project> scan", "do the pre-forward assessment for <project>", "triage the <project> scan against its threat model", "assess the pending scans", or "store the assessment in pre-forward-results".
 ---
 
 # asvs-scan-assess SKILL
 
-The **pre-forward assessment** step of the Glasswing pipeline — a deeper, written-down companion to the sanity check that `glasswing-scan-forward` does inline.
+The **pre-forward assessment** step of the Glasswing pipeline — a deeper, written-down companion to the sanity check that `frontier-model-preparation-forward` does inline.
 
-Where `glasswing-scan-forward` forwards the vendor's findings to the PMC **verbatim** (no per-finding triage on the PMC's behalf — that policy is unchanged), this SKILL produces the team's **own internal read** of a scan against the project's threat model and files it in the private archive. The assessment helps the team:
+Where `frontier-model-preparation-forward` forwards the vendor's findings to the PMC **verbatim** (no per-finding triage on the PMC's behalf — that policy is unchanged), this SKILL produces the team's **own internal read** of a scan against the project's threat model and files it in the private archive. The assessment helps the team:
 
 - catch catastrophic generation errors before a forward (the sanity check, written down rather than ad-hoc);
 - understand where each finding likely lands against the project's model (so the team can answer a PMC's later question, or feed the vendor's next-run suppression list);
@@ -29,10 +29,10 @@ Where `glasswing-scan-forward` forwards the vendor's findings to the PMC **verba
 
 - Jarek says "assess the `<project>` scan", "do the pre-forward assessment for `<project>`", "triage the `<project>` scan against its threat model", "assess the pending scans", "re-assess `<project>`".
 - A new scan lands in `apache/tooling-agents-private/scans/` with `sanity_check: PENDING` and no corresponding `pre-forward-results/` entry, and the team wants the internal read before forwarding.
-- `glasswing-scan-run`'s sweep flags a scan as "results back, not yet assessed."
+- `frontier-model-preparation-run`'s sweep flags a scan as "results back, not yet assessed."
 
 Skip / refuse when:
-- **The project has not completed threat-model preparation** — the Mythos tracker's `Security model verified` cell for the PMC is blank (model merely nominated, or pending verification). See hard rule 2. Without a *verified* model there is no stable contract to disposition against; surface the gap and route to `glasswing-model-verify` instead.
+- **The project has not completed threat-model preparation** — the Mythos tracker's `Security model verified` cell for the PMC is blank (model merely nominated, or pending verification). See hard rule 2. Without a *verified* model there is no stable contract to disposition against; surface the gap and route to `frontier-model-preparation-model-verify` instead.
 - The scan bundle is missing `issues.md` or `metadata.yml` — surface the gap; there is nothing to triage.
 - The `metadata.yml` `threat_model` URL is absent or unreachable — refuse and surface; an assessment without the model is just opinion, not a disposition against the contract.
 
@@ -40,9 +40,9 @@ For "assess the pending scans", the eligible set is the **intersection** of (sca
 
 ## Hard rules (do not skip)
 
-1. **This is internal, not the forward.** The assessment never replaces or modifies the verbatim-forward policy. `glasswing-scan-forward` still sends the vendor's findings unedited; this SKILL's dispositions are the team's private working note, not labels applied to the PMC's copy. Do not let an assessment leak into a PMC-facing email as a per-finding triage appendix.
+1. **This is internal, not the forward.** The assessment never replaces or modifies the verbatim-forward policy. `frontier-model-preparation-forward` still sends the vendor's findings unedited; this SKILL's dispositions are the team's private working note, not labels applied to the PMC's copy. Do not let an assessment leak into a PMC-facing email as a per-finding triage appendix.
 
-2. **Eligible projects only — completed threat-model preparation.** Assess a scan **only if** the project's threat-model preparation is complete: the Mythos tracker's `Security model verified` cell for that PMC is set (the Model Status tab shows the model verified), per `glasswing-model-verify`. A scan whose `metadata.yml` carries a `threat_model` URL is **not** sufficient — the URL existing only means the scanner found *a* doc; the gate is that the team has *verified* the model (discoverability + completeness against the threat-model-producer rubric). If the model is merely nominated or pending verification, **do not assess** — surface the gap and route to `glasswing-model-verify`. Disposition without a verified contract is opinion, not triage.
+2. **Eligible projects only — completed threat-model preparation.** Assess a scan **only if** the project's threat-model preparation is complete: the Mythos tracker's `Security model verified` cell for that PMC is set (the Model Status tab shows the model verified), per `frontier-model-preparation-model-verify`. A scan whose `metadata.yml` carries a `threat_model` URL is **not** sufficient — the URL existing only means the scanner found *a* doc; the gate is that the team has *verified* the model (discoverability + completeness against the threat-model-producer rubric). If the model is merely nominated or pending verification, **do not assess** — surface the gap and route to `frontier-model-preparation-model-verify`. Disposition without a verified contract is opinion, not triage.
 
 3. **Never a gist, never public.** Results go **only** to `apache/tooling-agents-private/pre-forward-results/`. These are pre-disclosure vulnerability candidates (see the archive README's Confidentiality section). No public gist, no paste into a public tracker, no third-party surface. (This SKILL exists precisely because the one-off version wrote to a gist — the canonical home is the private repo.)
 
@@ -85,7 +85,7 @@ The headline the team cares about: **how many `VALID`** (real, default-config, i
 | Input | Source |
 | --- | --- |
 | Which scan(s) to assess | The user names a project (and repo, if multi-repo), or "the pending scans". Resolve to scan-id directory/directories under `scans/`. |
-| Threat-model-prep status (eligibility gate) | The Mythos tracker's `Security model verified` cell for the PMC (PMCs sheet / Model Status tab). Required: assess only projects where this is set (hard rule 2). Read via the `glasswing-scan-status` flow or the `mythos-tracker` reference (fileId `1pxaWKXYtZ-89cKk3OYE99-ewPMh2kXKvSDaqjR-I1o8`). |
+| Threat-model-prep status (eligibility gate) | The Mythos tracker's `Security model verified` cell for the PMC (PMCs sheet / Model Status tab). Required: assess only projects where this is set (hard rule 2). Read via the `frontier-model-preparation-status` flow or the `mythos-tracker` reference (fileId `1pxaWKXYtZ-89cKk3OYE99-ewPMh2kXKvSDaqjR-I1o8`). |
 | Scan bundle | `apache/tooling-agents-private/scans/<rel>/` — at minimum `metadata.yml`, `issues.md`; also `consolidated.md`, `_security_profile.md`, `_filter_drop_log.md`, `_review_queue.md`, `issues_cross_reference.md` when present. |
 | Project threat model | The `threat_model` URL in the scan's `metadata.yml`, **plus** any model it delegates to (follow the chain). |
 | Operator identity | The operator's `@apache.org` for `assessed_by`. |
@@ -165,7 +165,7 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
 
 ## Procedure
 
-1. **Resolve the scan(s) and apply the eligibility gate.** From the user's project/repo (or "pending"), locate the scan-id directory under `scans/`. For "pending", select scans whose `metadata.yml` has `sanity_check: PENDING` **and** no existing `pre-forward-results/<rel>/<scan-id>/` directory. Then **filter to eligible projects only** (hard rule 2): check each candidate PMC's `Security model verified` cell in the Mythos tracker, and drop any whose model is not verified. List what you'll assess **and** what you're skipping (`skipped — model not verified`), and confirm scope if more than one. If the user named a single project whose model is not verified, refuse and route to `glasswing-model-verify`.
+1. **Resolve the scan(s) and apply the eligibility gate.** From the user's project/repo (or "pending"), locate the scan-id directory under `scans/`. For "pending", select scans whose `metadata.yml` has `sanity_check: PENDING` **and** no existing `pre-forward-results/<rel>/<scan-id>/` directory. Then **filter to eligible projects only** (hard rule 2): check each candidate PMC's `Security model verified` cell in the Mythos tracker, and drop any whose model is not verified. List what you'll assess **and** what you're skipping (`skipped — model not verified`), and confirm scope if more than one. If the user named a single project whose model is not verified, refuse and route to `frontier-model-preparation-model-verify`.
 
 2. **Get the archive locally.** Work against a clone of `apache/tooling-agents-private` (clone if absent, else `git pull` on a clean tree). Reading individual files via `gh api .../contents/...` is fine for a single scan, but writing the assessment + committing wants a local checkout. (Reaching the private repo over `gh`/git needs the keychain — bypass the sandbox for those calls, with the loud banner per the user's rule.)
 
@@ -174,7 +174,7 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
 4. **Read the project's threat model.** Fetch the `threat_model` URL at the scanned commit; **follow delegation** to any umbrella/addendum model and read that too. Identify the disposition framework (its §13 table, or the generic fallback). Extract: what the model claims for this component, its disclaimers, its operator-trusted inputs, its known-non-findings, its out-of-scope list.
 
 5. **Run the sanity check + triage.**
-   - Sanity check (same checklist as `glasswing-scan-forward`): project identity, model identity, repo coverage, truncation, cross-PMC leakage, formatting, plausibility. Record per-check PASS / PASS-with-note / FAIL and a recommended verdict. On a FAIL, surface it — a broken scan should go back to the vendor, not be assessed as if sound.
+   - Sanity check (same checklist as `frontier-model-preparation-forward`): project identity, model identity, repo coverage, truncation, cross-PMC leakage, formatting, plausibility. Record per-check PASS / PASS-with-note / FAIL and a recommended verdict. On a FAIL, surface it — a broken scan should go back to the vendor, not be assessed as if sound.
    - Triage each finding in `issues.md` against the model, assigning exactly one disposition (hard rules 4, 6, 7). Note duplicates, coverage gaps (e.g. "no findings against the model's primary claimed property"), and MODEL-GAPs.
 
 6. **Write the assessment files** into `pre-forward-results/<rel>/<scan-id>/` — `metadata.yml`, `assessment.md`, `dispositions.yml` (shapes above). If `pre-forward-results/README.md` doesn't exist yet, create it: a short doc stating that this tree mirrors `scans/` one-for-one, that each leaf is the team's internal pre-forward assessment of the same-named scan, the file roles, and a pointer to the Confidentiality section of the archive README (these are pre-disclosure candidates; private repo only).
@@ -186,14 +186,14 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
 9. **Hand off.** Surface the headline to the operator and, where relevant:
    - feed `MODEL-GAP`s to **threat-model-producer** (the model needs a ruling/addendum);
    - feed `KNOWN-NON-FINDING` / clearly-out-of-model patterns to the next vendor run's suppression list;
-   - note the recommended sanity verdict so the operator (or `glasswing-scan-forward`) can stamp `sanity_check` on the scan's own `metadata.yml` — **this SKILL does not mutate the scan bundle**, only `pre-forward-results/`.
+   - note the recommended sanity verdict so the operator (or `frontier-model-preparation-forward`) can stamp `sanity_check` on the scan's own `metadata.yml` — **this SKILL does not mutate the scan bundle**, only `pre-forward-results/`.
 
 ## Relationship to the other Glasswing skills
 
-- **`glasswing-scan-forward`** — forwards the vendor's findings to the PMC **verbatim**. This SKILL does *not* change that; the assessment is internal and stays in the private repo. The two are complementary: assess (internal read) → forward (verbatim to PMC).
-- **`glasswing-model-verify`** — the upstream eligibility gate. A project is only assessable here once its model is verified there (`Security model verified` set in the tracker — hard rule 2). Projects with an archived scan but an unverified model are skipped and routed back to model-verify.
+- **`frontier-model-preparation-forward`** — forwards the vendor's findings to the PMC **verbatim**. This SKILL does *not* change that; the assessment is internal and stays in the private repo. The two are complementary: assess (internal read) → forward (verbatim to PMC).
+- **`frontier-model-preparation-model-verify`** — the upstream eligibility gate. A project is only assessable here once its model is verified there (`Security model verified` set in the tracker — hard rule 2). Projects with an archived scan but an unverified model are skipped and routed back to model-verify.
 - **`threat-model-producer`** — consumes this SKILL's `MODEL-GAP` findings; produces the model additions that close them.
-- **`glasswing-scan-run`** — the sweep can flag scans that are archived but not yet assessed, routing here.
+- **`frontier-model-preparation-run`** — the sweep can flag scans that are archived but not yet assessed, routing here.
 - **`triage-assess`** — that SKILL triages *inbound security@ reports* against a model and drafts replies; this one triages *archived vendor scans* into the private `pre-forward-results/` tree. Same disposition discipline, different input and output surface.
 
 ## Style notes

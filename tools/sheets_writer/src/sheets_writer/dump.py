@@ -21,7 +21,7 @@ The Workspace Drive MCP silently truncates a spreadsheet export at
 alphabetically), so sweeps that rely on it miss in-flight PMCs that
 sort late. This subcommand reads the full sheet straight off the
 Sheets API v4 and emits it as JSON, with no truncation, for the
-``glasswing-scan-run`` sweep (and any other read) to consume via
+``frontier-model-preparation-run`` sweep (and any other read) to consume via
 ``jq`` without pulling the bytes into a model's context.
 """
 

@@ -18,7 +18,7 @@
 
 Collapses the repeated fork -> clone -> write the AGENTS.md -> SECURITY.md ->
 model discoverability scaffold (create or append) -> commit -> push ->
-``gh pr create`` flow used by ``glasswing-model-verify`` and the path-3
+``gh pr create`` flow used by ``frontier-model-preparation-model-verify`` and the path-3
 threat-model rollout into a single ``model-pr open`` invocation.
 """
 

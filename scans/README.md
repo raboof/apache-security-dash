@@ -170,7 +170,7 @@ what got fixed, what stayed."
 ## Workflow (end-to-end)
 
 1. **PMC opts in.** The PMC sends a request per the announcement
-   procedure (see [`glasswing-scan-response`](../.github/skills/glasswing-scan-response/SKILL.md)
+   procedure (see [`frontier-model-preparation-response`](../.github/skills/frontier-model-preparation-response/SKILL.md)
    skill for the response template).
 2. **Threat model lands** — *only if the PMC asks for one*.
    Most ASF projects already have a security/threat model in
@@ -294,7 +294,7 @@ and double-check the commit message does not leak excerpts.
 
 ## Relationship to the SKILLs directory
 
-- [`.github/skills/glasswing-scan-response/`](../.github/skills/glasswing-scan-response/SKILL.md)
+- [`.github/skills/frontier-model-preparation-response/`](../.github/skills/frontier-model-preparation-response/SKILL.md)
   — drafts replies to PMC inquiries that get the workflow
   rolling.
 - [`.github/skills/threat-model-producer/`](../.github/skills/threat-model-producer/SKILL.md)

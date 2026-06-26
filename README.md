@@ -21,16 +21,16 @@ team's tooling, not the public reporting entry point.
 .github/skills/                     — canonical home of all SKILLs
 ├── README.md                       — per-SKILL index + contribution notes
 │   # Glasswing scan-outreach program
-├── glasswing-scan-run/             — periodic-sweep umbrella
-├── glasswing-scan-response/        — handles inbound [GLASSWING] requests
-├── glasswing-model-verify/         — pre-flight model assessment
-├── glasswing-scan-update/          — all writes to the Mythos tracker
+├── frontier-model-preparation-run/             — periodic-sweep umbrella
+├── frontier-model-preparation-response/        — handles inbound [GLASSWING] requests
+├── frontier-model-preparation-model-verify/         — pre-flight model assessment
+├── frontier-model-preparation-update/          — all writes to the Mythos tracker
 │                                      (writes go through tools/sheets_writer/)
-├── glasswing-scan-status/          — status / rollup view
-├── glasswing-scan-submit/          — operator-gated form-then-email submission
+├── frontier-model-preparation-status/          — status / rollup view
+├── frontier-model-preparation-submit/          — operator-gated form-then-email submission
 │                                      (one vendor form per repo, then PMC email)
-├── glasswing-scan-forward/         — sanity-check + forward results to PMC verbatim
-├── glasswing-dashboard/            — refresh tracker tabs + a private gist dashboard
+├── frontier-model-preparation-forward/         — sanity-check + forward results to PMC verbatim
+├── frontier-model-preparation-dashboard/            — refresh tracker tabs + a private gist dashboard
 │   # Inbound security-report triage (foundation-wide security@apache.org)
 ├── triage-populate-cache/          — pull new reports into the local report-cache/
 ├── triage-assess/                  — assess cached reports + draft PMC/reporter replies
@@ -181,7 +181,7 @@ keep the per-PMC state visible to the whole team.
 ### Per-PMC state machine
 
 A scan-requested PMC sits in exactly one pipeline state at any
-moment. `glasswing-scan-run`'s classifier (and `build-status-tab`'s
+moment. `frontier-model-preparation-run`'s classifier (and `build-status-tab`'s
 color coding) follow this state machine:
 
 ```mermaid
@@ -348,12 +348,12 @@ coordinates live. Every output is a draft for a human to review and send.
 2. **Add a memory entry** that points at the Mythos tracker
    spreadsheet (the coordination URL stays out of the repo —
    it lives in user-scope memory). The
-   [`glasswing-scan-status`](.github/skills/glasswing-scan-status/SKILL.md)
+   [`frontier-model-preparation-status`](.github/skills/frontier-model-preparation-status/SKILL.md)
    SKILL describes the entry shape; the file ID + view URL
    come from the team.
 
 3. **Authorize OAuth for the Sheets helper.** The
-   [`glasswing-scan-update`](.github/skills/glasswing-scan-update/SKILL.md)
+   [`frontier-model-preparation-update`](.github/skills/frontier-model-preparation-update/SKILL.md)
    SKILL walks through it:
    - Create a Google Cloud OAuth client (Desktop app type),
      enable the Sheets API.
@@ -374,7 +374,7 @@ Whenever you sit down to do Glasswing work, start with the
 umbrella sweep:
 
 ```
-glasswing-scan-run
+frontier-model-preparation-run
 ```
 
 It does a read-only sweep across Gmail, the tracker
@@ -390,7 +390,7 @@ the `PR/Issues` cell via `gh pr view`).
 
 ### When a GLASSWING request arrives
 
-→ Use [`glasswing-scan-response`](.github/skills/glasswing-scan-response/SKILL.md).
+→ Use [`frontier-model-preparation-response`](.github/skills/frontier-model-preparation-response/SKILL.md).
 It runs gates 1–4 on the request (required fields, sender
 identity rooted in `@apache.org`, PMC roster, scope confirmation
 against the PMC's active repos), pulls embedded questions out
@@ -401,11 +401,11 @@ Output is a Gmail draft — review and click Send yourself.
 
 → Same SKILL. The procedure also writes the confirmed
 repo list to the tracker's `Repositories requested` cell via
-[`glasswing-scan-update`](.github/skills/glasswing-scan-update/SKILL.md).
+[`frontier-model-preparation-update`](.github/skills/frontier-model-preparation-update/SKILL.md).
 
 ### When a model needs pre-flight verification
 
-→ Use [`glasswing-model-verify`](.github/skills/glasswing-model-verify/SKILL.md).
+→ Use [`frontier-model-preparation-model-verify`](.github/skills/frontier-model-preparation-model-verify/SKILL.md).
 Reads the PMC's confirmed repo list, walks each repo's
 discoverability chain (`AGENTS.md` → `SECURITY.md` → model
 URL), assesses the model itself against the
@@ -418,7 +418,7 @@ on a new line in the `PR/Issues` cell — never overwriting.
 
 ### When pre-flight passes for a PMC
 
-→ Use [`glasswing-scan-response`](.github/skills/glasswing-scan-response/SKILL.md)'s
+→ Use [`frontier-model-preparation-response`](.github/skills/frontier-model-preparation-response/SKILL.md)'s
 **pre-flight-pass template**. Sends one email back to the
 PMC thread: confirms pre-flight is complete, raises the
 Anthropic-Claude-for-OSS subscription offer for PMC
@@ -437,7 +437,7 @@ operator decides per-PMC whether to actually queue.
 
 ### When the operator says "submit X for scan"
 
-→ Use [`glasswing-scan-submit`](.github/skills/glasswing-scan-submit/SKILL.md).
+→ Use [`frontier-model-preparation-submit`](.github/skills/frontier-model-preparation-submit/SKILL.md).
 Drafts the **form-then-email submission flow** for a PMC the
 operator has explicitly green-lit:
 
@@ -464,12 +464,12 @@ operator has explicitly green-lit:
 
 Output is the live form submissions (after dry-run approval)
 plus a Gmail draft for the PMC email; you click Send. After
-send, hand off to `glasswing-scan-update` to set
+send, hand off to `frontier-model-preparation-update` to set
 `Date scan requested` + `Repositories submitted`.
 
 ### When a scan report comes back from the vendor
 
-→ Use [`glasswing-scan-forward`](.github/skills/glasswing-scan-forward/SKILL.md).
+→ Use [`frontier-model-preparation-forward`](.github/skills/frontier-model-preparation-forward/SKILL.md).
 Runs a **pre-forward sanity check** on the vendor's report —
 catching catastrophic generation errors only (wrong project,
 wrong/stale model, truncated output, missing repos,
@@ -484,7 +484,7 @@ own model.
 
 ### When the spreadsheet needs an update
 
-→ Use [`glasswing-scan-update`](.github/skills/glasswing-scan-update/SKILL.md)
+→ Use [`frontier-model-preparation-update`](.github/skills/frontier-model-preparation-update/SKILL.md)
 directly (the other SKILLs hand off to it). The bundled
 helper ([`tools/sheets_writer/`](tools/sheets_writer/)) has subcommands for every write
 shape: `apply` for row updates, `init-canned-tab` /
