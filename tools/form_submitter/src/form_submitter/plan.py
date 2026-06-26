@@ -103,7 +103,7 @@ def build_headline_additional_info(
     Deliberately does NOT include the scan-result delivery destination.
     Vendor scan results come back to the ASF Security team's submitter
     address; the team then forwards manually to the PMC's named contacts
-    via ``glasswing-scan-forward``. The form's submission shouldn't pin
+    via ``frontier-model-preparation-forward``. The form's submission shouldn't pin
     the downstream forwarding destination — that's an internal ASF
     process detail.
     """
@@ -198,7 +198,7 @@ def build_plan(state: dict, submitter: dict) -> tuple[list[FormFill], list[RepoE
         raise NothingSubmittable(
             "No repos are submittable — every repo in Repositories requested "
             "lacks AGENTS.md, SECURITY.md, and security.txt at HEAD. Land "
-            "discoverability via glasswing-model-verify before re-running."
+            "discoverability via frontier-model-preparation-model-verify before re-running."
         )
 
     repos = submittable

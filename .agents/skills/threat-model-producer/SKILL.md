@@ -516,9 +516,9 @@ upstream gist is updated, re-import to keep this file in sync.
 ## 10. Public mirror
 
 `apache/security` is a **private** repo. The Security team's
-outbound emails to PMCs (drafted by `glasswing-scan-response`,
-`glasswing-model-verify`, `glasswing-scan-forward`,
-`glasswing-scan-submit`) routinely link to this SKILL as the
+outbound emails to PMCs (drafted by `frontier-model-preparation-response`,
+`frontier-model-preparation-model-verify`, `frontier-model-preparation-forward`,
+`frontier-model-preparation-submit`) routinely link to this SKILL as the
 rubric a PMC's threat model should hit. A private-repo URL
 would 404 for the recipient.
 

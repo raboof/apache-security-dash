@@ -4,7 +4,7 @@
 # whimsy-lookup
 
 Deterministic Apache Whimsy / LDAP lookups for the
-`glasswing-scan-response` SKILL's identity (Gate 2) and PMC-roster
+`frontier-model-preparation-response` SKILL's identity (Gate 2) and PMC-roster
 (Gate 3) checks. Stdlib-only — no third-party deps.
 
 ## Why this exists
@@ -115,7 +115,7 @@ tools/whimsy_lookup/
 ## Provenance
 
 Promoted from `whimsy_lookup.py` (inline single-file helper) in
-`.github/skills/glasswing-scan-response/` 2026-05-27, after the
+`.github/skills/frontier-model-preparation-response/` 2026-05-27, after the
 `jira_writer` promotion validated the `tools/<name>/` pattern.
 
 The original was added 2026-05-21 in response to the Doris-incident

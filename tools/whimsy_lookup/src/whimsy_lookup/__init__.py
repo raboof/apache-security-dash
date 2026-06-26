@@ -17,7 +17,7 @@
 """Deterministic Apache Whimsy / LDAP lookups for the Glasswing scan
 pipeline's identity + PMC-roster gates.
 
-Gates 2 and 3 of ``glasswing-scan-response`` cross-check sender identity
+Gates 2 and 3 of ``frontier-model-preparation-response`` cross-check sender identity
 and PMC-roster membership against two public Whimsy JSON files:
 
   * https://whimsy.apache.org/public/public_ldap_people.json

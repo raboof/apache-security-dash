@@ -10,7 +10,7 @@ headline submission carries the maintainer roster +
 OSS-expedite addresses + the Claude Max 20x checkbox;
 subsequent submissions point back to the headline.
 
-Used by the `glasswing-scan-submit` SKILL.
+Used by the `frontier-model-preparation-submit` SKILL.
 
 ## Why this exists
 
@@ -85,7 +85,7 @@ checkbox state so the operator can sanity-check before the
 browser drives anything. Repos without AGENTS.md /
 SECURITY.md / security.txt at HEAD are dropped from the
 plan and listed as "skipped" — discoverability has to
-land first (via `glasswing-model-verify`).
+land first (via `frontier-model-preparation-model-verify`).
 
 ## Test coverage
 
@@ -157,7 +157,7 @@ tools/form_submitter/
 ## Provenance
 
 Promoted from `form_submitter.py` (inline single-file
-helper) in `.github/skills/glasswing-scan-submit/`
+helper) in `.github/skills/frontier-model-preparation-submit/`
 2026-05-28, mirroring the `jira_writer` (#72) and
 `whimsy_lookup` (#73) promotions. Same module-split shape,
 same `uv run --project tools/<name>` invocation contract.

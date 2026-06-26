@@ -150,7 +150,7 @@ Changes to files under `.github/skills/<skill>/SKILL.md` become canonical immedi
 Be precise about what changes and why.
 The PR description should quote the new template / rule text so reviewers can compare against the prose without context-switching to the file.
 
-Cross-references between SKILLs (e.g. "per `glasswing-scan-response` hard rule 5") need to stay accurate;
+Cross-references between SKILLs (e.g. "per `frontier-model-preparation-response` hard rule 5") need to stay accurate;
 when you renumber a rule, grep for the rule reference across all SKILLs and update them in the same commit.
 
 ## Semantic line breaks

@@ -5,12 +5,12 @@
 
 OAuth-authenticated writer for the Glasswing / Mythos
 scan-outreach Google Sheet (the tracker that
-`glasswing-scan-update` and friends mutate). Largest of the
+`frontier-model-preparation-update` and friends mutate). Largest of the
 `tools/` projects; covers row-level applies, canned-response
 management, PMC-row appends, the Status-tab rebuild, and
 column-schema mutations.
 
-Used by the `glasswing-scan-update` SKILL.
+Used by the `frontier-model-preparation-update` SKILL.
 
 ## Why this exists
 
@@ -191,7 +191,7 @@ tools/sheets_writer/
 ## Provenance
 
 Promoted from `sheets_writer.py` (1165-line single-file
-helper) in `.github/skills/glasswing-scan-update/`
+helper) in `.github/skills/frontier-model-preparation-update/`
 2026-05-28, fourth in the `tools/` promotion series after
 `jira_writer` (#72), `whimsy_lookup` (#73), and
 `form_submitter` (#75).

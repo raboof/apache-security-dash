@@ -14,8 +14,8 @@ Stdlib-only — no third-party dependencies.
 ## Why this exists
 
 The Glasswing scan pipeline lives in [apache/security](../..). Its
-SKILLs (`glasswing-scan-response`, `glasswing-model-verify`,
-`glasswing-scan-update`) sometimes need to file a JIRA ticket as a
+SKILLs (`frontier-model-preparation-response`, `frontier-model-preparation-model-verify`,
+`frontier-model-preparation-update`) sometimes need to file a JIRA ticket as a
 companion to a PR they open against a PMC repo. Doing this through
 the Atlassian web UI breaks the agent loop; doing it via raw `curl`
 loses the dry-run-and-confirm discipline the rest of the SKILL tree
@@ -156,9 +156,9 @@ tools/jira_writer/
 ## Provenance
 
 Promoted from `jira_writer.py` (inline single-file helper) in
-`.github/skills/glasswing-scan-update/` after the first operational
+`.github/skills/frontier-model-preparation-update/` after the first operational
 use (HBASE-30181 filed 2026-05-27 paired with `apache/hbase#8275`
 retitle). The promotion was requested 2026-05-27 to give the helper
 test coverage, versioning, and a documentable surface that other
-SKILLs (`glasswing-model-verify`, `glasswing-scan-response`) can
+SKILLs (`frontier-model-preparation-model-verify`, `frontier-model-preparation-response`) can
 depend on without copy-paste.
