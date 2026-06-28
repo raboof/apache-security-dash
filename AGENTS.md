@@ -153,6 +153,34 @@ The PR description should quote the new template / rule text so reviewers can co
 Cross-references between SKILLs (e.g. "per `frontier-model-preparation-response` hard rule 5") need to stay accurate;
 when you renumber a rule, grep for the rule reference across all SKILLs and update them in the same commit.
 
+## License headers on agentic / generated files
+
+### Prefer the short SPDX form
+
+For agent-facing Markdown files (`AGENTS.md`, `CLAUDE.md`) and the pointer files this tooling generates (`SECURITY.md`, `THREAT_MODEL.md`),
+prefer the short SPDX identifier over the full multi-line ASF header text:
+
+```text
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+```
+
+These files are typically excluded from source releases (RAT / `.rat-excludes`),
+so a full header is not required;
+the short form satisfies the ASF source-header policy and keeps the per-file token cost down for the agents that read them.
+Use the full ASF header **only** when the target project expects full headers on these files
+— e.g. it ships them in a source release without an exclude.
+See the [ASF short-form source-header guidance](https://www.apache.org/legal/src-headers.html#is-a-short-form-of-the-source-header-available)
+and the [Creadur dev-list discussion](https://lists.apache.org/thread/j1tn63r2lf13v3d1tnnqff8fkcl4nx53).
+
+### Preserve the file body
+
+When adding or fixing a license header on an *existing* file,
+the edit must only *prepend* the header and preserve the file's existing body.
+A header-only edit that replaces the whole file is silent data loss:
+on [apache/creadur-rat#677](https://github.com/apache/creadur-rat/pull/677) a license-header edit reduced `AGENTS.md` to nothing but the header,
+which a maintainer caught as "AGENTS.md looks broken".
+Re-read the file after the edit and confirm the original content survived before committing.
+
 ## Semantic line breaks
 
 `SKILL.md` files and this `AGENTS.md` are written with [semantic line breaks](https://sembr.org/).
