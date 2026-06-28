@@ -20,3 +20,15 @@ github:
           - prek
           - tests-ok
           - allowlist
+
+# Route every GitHub notification stream for this private repo to the team's
+# private commits list.
+# The umbrella keys (issues, pullrequests) cover their _status and _comment
+# sub-streams, so these five keys capture all notification traffic.
+# This block only takes effect on the default branch (main).
+notifications:
+  commits: commits-private@security.apache.org
+  issues: commits-private@security.apache.org
+  pullrequests: commits-private@security.apache.org
+  jobs: commits-private@security.apache.org
+  discussions: commits-private@security.apache.org
