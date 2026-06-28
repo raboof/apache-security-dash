@@ -213,8 +213,9 @@ def make_forward(original, intro_md, from_addr, to_addr):
 
     # --- plain-text body ---
     original_text = body_to_text(original)
-    quoted = "\n".join("> " + ln for ln in original_text.splitlines())
-    plain_body = f"{md_to_text(intro_md)}\n\n" + "\n".join(header_lines) + f"\n{quoted}"
+    plain_body = (
+        f"{md_to_text(intro_md)}\n\n" + "\n".join(header_lines) + f"\n{original_text}"
+    )
 
     # --- html body: rendered note + (sanitised original html | escaped text) ---
     header_html = _text_to_html("\n".join(header_lines))
