@@ -60,7 +60,7 @@ jobs:
       # `actions: read` permissions, and findings will surface in
       # the Security tab. Until then, annotations show inline on
       # PR file diffs which is enough for review-time feedback.
-      - uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938d  # v0.5.6
+      - uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa  # v0.5.7
         with:
           advanced-security: "false"
           annotations: "true"
