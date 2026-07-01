@@ -305,13 +305,14 @@ def send_reply(inbox, original, uid, pmc, body_md, keywords):
 
 
 def accept_message(
-    inbox, original, uid, pmc, keywords, summary, model, committees, coordinates
+    inbox, original, uid, pmc, keywords, bundle, committees, coordinates
 ):
     """Forward to the PMC + reporter receipt.
 
-    Built from the team templates with an empty summary/note (the cache-driven
-    path in handle_cached uses the triage-assess drafts instead). Prompts for
-    the PMC when it could not be guessed. Returns True if sent.
+    The forward summary/model are read lazily in this method.
+    An edit the operator makes to summary.md while deciding is picked up.
+    Prompts for the PMC when it could not be guessed.
+    Returns True if sent.
     """
     if pmc is None:
         pmc = prompt_for_pmc(committees, coordinates)
@@ -322,6 +323,8 @@ def accept_message(
     if not to_addr:
         print("not forwarded - no recipient\n")
         return False
+    summary = bundle.fragment("summary.md") if bundle else ""
+    model = bundle.model if bundle else ""
     forward_md = email_utils.fill_forward_template(
         pmc, original, summary, model, TRIAGER_NAME
     )
@@ -332,13 +335,16 @@ def accept_message(
     )
 
 
-def reject_message(inbox, original, uid, pmc, keywords, reason):
+def reject_message(inbox, original, uid, pmc, keywords, bundle):
     """reply that the report is out of scope.
 
-    Built from templates/reject.md and opened in $EDITOR so the operator can
-    fill in the project-specific reasoning, with the report quoted inline for
-    reference. Files under 'zzz-non-issue/<pmc>/...'. Returns True if sent.
+    Built from templates/reject.md and opened in $EDITOR so the operator can fill in the project-specific reasoning,
+    with the report quoted inline for reference.
+    The reason draft (`bundle`) is read here, at send time, not when the action menu was shown,
+    so a mid-decision edit to reason.md is picked up.
+    Files under 'zzz-non-issue/<pmc>/...'. Returns True if sent.
     """
+    reason = bundle.fragment("reason.md") if bundle else ""
     body_md = email_utils.fill_reject_template(pmc, original, reason, TRIAGER_NAME)
     print("editing reject reply...")
     body_md = email_utils.edit_markdown_in_editor(body_md)
@@ -521,18 +527,12 @@ def handle_message(inbox, uid, committees, coordinates, index):
         # Some have bespoke handling defined
         if handle_cached(inbox, original, uid, bundle, committees, coordinates):
             return
-        # Others provide pre-filled values in the regular flow:
+        # Others provide pre-filled values in the regular flow.
         tags = bundle.meta.get("tags")
         keywords = tags[0].split(" ", 1)[1] if tags and " " in tags[0] else None
-        summary = bundle.fragment("summary.md")
-        reject_reason = bundle.fragment("reason.md")
-        model = bundle.model
         pmc = pmc_for(bundle.pmc, committees, coordinates) if bundle.pmc else None
     else:
         keywords = ""
-        summary = ""
-        reject_reason = ""
-        model = ""
         pmc = None
 
     if not pmc:
@@ -573,8 +573,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
                 uid,
                 pmc,
                 keywords,
-                summary,
-                model,
+                bundle,
                 committees,
                 coordinates,
             ):
@@ -582,7 +581,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
             print(prompt, end="", flush=True)
         if action == "r":
             print()
-            if reject_message(inbox, original, uid, pmc, keywords, reject_reason):
+            if reject_message(inbox, original, uid, pmc, keywords, bundle):
                 return
             print(prompt, end="", flush=True)
         if action == "s":
