@@ -81,32 +81,24 @@ Each stage has its own SKILL responsible for the work that moves an engagement t
 This SKILL doesn't replicate that logic —
 it just figures out which stage each engagement is *in* and surfaces what to do next.
 
-## Program timeline — deadline lifted; criticality-ordered queue (read this)
+## Program timeline — Mythos 5 provisioned; hard 1–31 July 2026 window (read this)
 
-Until late May 2026 the program ran on a *"no rush"* footing:
-scans went through the third-party **vendor-relay path** (Alpha-Omega runs the scan off a Google-Form submission and emails the report back),
-the queue was open-ended,
-and PMCs were told there was no deadline.
+The timeline has flipped **back to time-boxed**. Earlier history: the program ran on a *"no rush"* footing through late May 2026 (open-ended third-party **vendor-relay path** — Alpha-Omega runs the scan off a Google-Form submission and emails the report back); a **27 May 2026 donation of $1M in Mythos credits** briefly added a **direct-internal path** under a 30 June cliff; that cliff was then **lifted** while the ASF sat in Anthropic's provisioning queue (Mythos Preview → Mythos 5 transition), with ordering by readiness + OSS Criticality Score.
 
-Anthropic/Frontier Model Preparation's **27 May 2026 donation of $1M in Mythos credits to the ASF** briefly added a **direct-internal path** (the ASF Security / Infra / Tooling teams run scans themselves on directly-granted access, no vendor relay) under an original **30 June 2026** credit-expiry.
+**That provisioning pause is over.**
+Per Sally Khudairi's program updates: the ASF executed the **Claude Mythos 5** work order (2026-06-30) — same **$1M** value, a **30-day credit window of 1–31 July 2026** — and is **officially provisioned as of 2026-07-01**.
+Internal scanning is run by **VP Tooling + Infra + Security**: **Andrew Musselman (akm@apache.org)** is the **technical contact for the scans**, while the **Security team (Jarek Potiuk) continues to manage the scan queue** — PMC outreach, pre-flight / model verification, and criticality-ordering — from the Security side.
+Route technical scan-execution questions to Andrew; queue / pre-flight / model-verification / outreach stays with the Security team.
 
-**That hard 30 June expiry is gone.**
-Per Sally Khudairi's 2026-06-09 program update and the 2026-06-10 all-PMC broadcast, the cut-off is being **extended**:
-the program is moving from Mythos Preview onto the upgraded **Mythos 5** model and the ASF retains its spot/status in Anthropic's provisioning queue.
-As of **2026-06-13**, Anthropic has a broad **pause on new provisioning** (tied to the US export-control situation in the `fable-mythos-access` announcement) — the ASF is explicitly **"not out,"** but direct provisioning is on hold **with no ETA**.
-None of that stops scanning:
-the pipeline is **model-agnostic** (the vendor-relay path plus any-model internal runs — Opus / Sonnet / Haiku or any family), so scans continue regardless of where direct-Mythos provisioning lands.
+What this changes for *this* SKILL is a **hard cliff again — 31 July 2026** — but it is a *credit-window* cliff, not a re-qualification of anyone.
+The priority is to get every signed-up PMC **pre-flight-complete (model verified + discoverable on the default branch)** so its scan runs on the live Mythos 5 credits **within July**.
+Engagements that still owe us prerequisites — `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, `pmc-pitch-replied-awaiting-operator-decision`, or an open model PR awaiting PMC merge — get nudged **now, with urgency**: clearing them is what lets the scan run before the window closes.
+Ordering within that push is still **readiness + OSS Criticality Score**, drawn from the pre-flight-cleared **Scan Queue** (see `build-status-tab`).
+The signed-up PMCs keep their spot; the nudge is about landing prerequisites in time, not re-qualifying them.
 
-What this changes for *this* SKILL is the **patience posture**: there is **no hard cliff** anymore.
-Ordering is by **readiness + OSS Criticality Score**, drawn from the pre-flight-cleared **Scan Queue** (see `build-status-tab`).
-Engagements parked in `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, or `pmc-pitch-replied-awaiting-operator-decision` are still worth nudging —
-not to beat a deadline, but because clearing those items is what puts a PMC *into* the queue at its criticality rank, and the sooner they land the sooner it is in line.
-A gentle-but-firm nudge canned response (topic `deadline`) exists for these stalled PMCs and is already reframed around the queue, not a cliff.
-The signed-up PMCs already in the pipeline keep their spot;
-the nudge is about getting prerequisites in, not re-qualifying them.
-
-Internal only — keep OUT of PMC-facing text (Hard Rule 5 / the response SKILL): the seat/credit conditions, the provisioning pause, and the vendor identity.
-PMC-facing framing is simply "no hard deadline; scans run in OSS Criticality Score order from a pre-flight-cleared queue."
+Internal only — keep OUT of PMC-facing text (Hard Rule 5 / the response SKILL): the $1M figure, the per-MTok credit pricing, the seat/provisioning mechanics, and the vendor identity.
+PMC-facing framing is "we're now provisioned on the scanning model and expect to run scans through July — finalizing / merging your threat model in the next week or two puts your scan in this cycle."
+A gentle-but-firm nudge canned response (topic `deadline`) exists for stalled PMCs, reframed around the live July window.
 
 ## When to invoke
 
@@ -443,7 +435,7 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `mirko-correspondence` | Reply from Mirko on a queued / submitted scan. | Read the message; possibly forward to the PMC; update sheet. |
 
 The "time-overdue" rule: any engagement in `awaiting-pmc-reply` or `submitted-awaiting-vendor` for more than 14 days gets flagged for a nudge.
-**There is no longer a hard deadline (see "Program timeline" above), so the nudge is about queue entry, not beating a cliff:**
+**There is again a hard cliff — the 31 July 2026 Mythos 5 credit window (see "Program timeline" above) — so the nudge now carries real urgency: land the prerequisite in time for the scan to run before the window closes, not merely "eventually":**
 any PMC that still owes *us* something before it can be queued —
 `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, or `pmc-pitch-replied-awaiting-operator-decision` —
 and has been quiet for more than ~7–14 days is a nudge candidate,
