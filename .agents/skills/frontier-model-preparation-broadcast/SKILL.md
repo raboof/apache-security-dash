@@ -90,8 +90,10 @@ while a per-thread, state-aware note reads as the status update each PMC actuall
    To = primary contact;
    CC = backup contact,
    `private@<pmc>`,
-   and the PMC's verified `security_contact` from `whimsy-lookup pmc-security-info <pmc>`
-   (its own `security@<pmc>` when registered, else `security@apache.org`).
+   the PMC's verified `security_contact` from `whimsy-lookup pmc-security-info <pmc>`
+   (its own `security@<pmc>` when registered, else `security@apache.org`),
+   and **Andrew Musselman (`akm@apache.org`)** — always Cc'd (the ASF's technical contact for the Mythos/ASVS scans).
+   When akm@ was not already on the thread, introduce him in one line: the ASF's July scanning effort + Andrew runs the Mythos/ASVS scans.
 
 ## Procedure
 
