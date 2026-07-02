@@ -2,7 +2,7 @@
 name: frontier-model-preparation-broadcast
 description: >-
   Draft a program-status update to the opted-in (Scan Requested = Yes) PMCs about where the Frontier Model Preparation scanning program stands —
-  the Mythos Preview → Mythos 5 transition and the extended timeline,
+  the Mythos 5 provisioning and the live 1–31 July 2026 credit window,
   the criticality-sorted Scan Queue tab in the tracker,
   what each PMC can expect next,
   and a tailored nudge for PMCs that have not yet cleared pre-flight.
@@ -99,14 +99,13 @@ while a per-thread, state-aware note reads as the status update each PMC actuall
 
 Before drafting,
 write down the 2–4 PMC-relevant facts being communicated, sourced from the triggering announcement.
-For the 2026-06-10 Mythos 5 broadcast these were:
+For the 2026-07 Mythos 5 provisioning update these were:
 
-- The program is moving from Mythos Preview onto the upgraded **Mythos 5** model (via Frontier Model Preparation / Trusted Access);
-  the ASF is still in the provisioning queue with its **spot and status retained**.
-- The **30 June 2026 cut-off is being extended** once Mythos 5 onboarding completes —
-  no longer a hard cliff.
+- The ASF is **now provisioned on the upgraded Mythos 5** model (via Frontier Model Preparation / Trusted Access) as of 2026-07-01;
+  scanning is kicking off.
+- There is a **live credit window: 1–31 July 2026** — landing pre-flight prerequisites soon means a PMC's scan runs this cycle.
 - Scans run in **OSS Criticality Score order** from the **Scan Queue** tab;
-  readiness + criticality rank (not a deadline) drive ordering.
+  readiness + criticality rank drive ordering within the window.
 - (Context, optional) Claude Fable 5 — the public "safe" model released the same week — ships safety classifiers that block security-research prompts,
   so it is deliberately not the model used for the scans.
 
@@ -166,13 +165,13 @@ Keep the program-status wording aligned with the `program-status` canned respons
 > program; the timeline has shifted (in your favour) and we want
 > everyone who's signed up kept in the loop.
 >
-> Anthropic has moved the program from the earlier "Mythos Preview"
-> access onto the upgraded **Mythos 5** model. The ASF is still in the
-> provisioning queue and has kept its spot and status — we shift from
-> Mythos Preview to Mythos 5 once onboarding completes, with the same
-> pool of usage credits. The upshot for you: **the original 30 June 2026
-> cut-off is being extended**, so there's no longer a hard deadline to
-> race. We'll confirm the new window once the paperwork lands.
+> Good news: the ASF is now **provisioned on the upgraded Mythos 5
+> model**, and the scanning is kicking off. It runs on a credit window
+> that's live through **31 July 2026**, so there's a real cycle to land
+> in: if your project's pre-flight items (threat model / merging the
+> discoverability PR we opened) come together in the next week or two,
+> your scan runs in this window. We'll keep you posted as your slot comes
+> up in OSS Criticality Score order.
 >
 > How scans are ordered: we work in **OSS Criticality Score order** —
 > highest-criticality repositories first — from a single queue of
@@ -211,10 +210,11 @@ Keep the program-status wording aligned with the `program-status` canned respons
 >
 > None of these are heavy — most PMCs clear them in a single reply.
 > Finishing them is what puts your project *into* the criticality-sorted
-> queue; with the deadline now being extended, it's readiness + rank
-> (not a clock) that determines when you're scanned. The sooner they
-> land, the sooner you're in line. If the PMC has decided to sit this one
-> out, just say so and we'll take you off the active queue.
+> queue; scanning is live now on a window that runs through 31 July, so
+> landing these in the next week or two is what gets your scan into this
+> cycle. The sooner they land, the sooner you're in line. If the PMC has
+> decided to sit this one out, just say so and we'll take you off the
+> active queue.
 >
 > Best, <signature>
 
