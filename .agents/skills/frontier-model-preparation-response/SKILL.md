@@ -75,6 +75,10 @@ The SKILL never sends mail directly.
    CC is enough;
    do not move the substantive discussion to `security_contact` unless the requester does.
 
+   **Always Cc Andrew Musselman (`akm@apache.org`)** — the ASF's technical contact for the Mythos/ASVS scans — on every PMC-facing reply, if he is not already on the thread.
+   **When you add him and he was not already a thread participant, introduce him in one line:** the ASF is running its July security-scanning effort and Andrew runs the Mythos/ASVS scans, so he'll be the PMC's technical contact once the scan runs.
+   If `akm@` is already on the thread, just keep him Cc'd — no re-introduction needed.
+
 3. **Confirm before sending.**
    Per the user's "draft and show first" rule,
    always render the full draft (subject, To, CC, body, any attachments)
