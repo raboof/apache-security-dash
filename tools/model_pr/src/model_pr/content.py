@@ -28,14 +28,32 @@ No I/O here; the CLI does the git/gh side effects.
 
 from __future__ import annotations
 
-# Short SPDX-style header (the house style across this repo). It is the
-# license signal for humans + SPDX tooling; the *RAT* exemption is handled
-# separately by listing the files in the repo's .ratignore (see
-# ``merge_ratignore`` + the CLI), because some RAT setups don't scan a header
-# embedded inside Markdown and would flag the file regardless.
+# Full Apache License v2.0 source header, wrapped in an HTML comment so it is
+# invisible in rendered Markdown. We use the *full* header (not a short SPDX
+# one-liner) because Apache RAT is the gate that matters here, and older RAT
+# versions (e.g. 0.13, still used by some PMCs) do not recognise the SPDX
+# identifier — they match only the canonical AL-2.0 boilerplate below. The full
+# header is recognised by every RAT version, so the generated files pass the
+# license check directly and no ``.ratignore`` exemption is needed.
 ASF_HTML_HEADER = (
-    "<!-- SPDX-License-Identifier: Apache-2.0\n"
-    "     https://www.apache.org/legal/release-policy.html -->"
+    "<!--\n"
+    "Licensed to the Apache Software Foundation (ASF) under one\n"
+    "or more contributor license agreements.  See the NOTICE file\n"
+    "distributed with this work for additional information\n"
+    "regarding copyright ownership.  The ASF licenses this file\n"
+    "to you under the Apache License, Version 2.0 (the\n"
+    '"License"); you may not use this file except in compliance\n'
+    "with the License.  You may obtain a copy of the License at\n"
+    "\n"
+    "  http://www.apache.org/licenses/LICENSE-2.0\n"
+    "\n"
+    "Unless required by applicable law or agreed to in writing,\n"
+    "software distributed under the License is distributed on an\n"
+    '"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n'
+    "KIND, either express or implied.  See the License for the\n"
+    "specific language governing permissions and limitations\n"
+    "under the License.\n"
+    "-->"
 )
 
 
@@ -44,10 +62,9 @@ def ensure_asf_header(content: str) -> str:
     ``content`` already carries an Apache-2.0 header. Idempotent.
 
     The threat-model document supplied via ``--model`` is authored without a
-    header, so the CLI runs it through this before writing. The header is the
-    human/SPDX-readable license marker; RAT exemption (for setups that don't
-    accept an in-Markdown header) is handled by the CLI adding the file to the
-    repo's .ratignore.
+    header, so the CLI runs it through this before writing. The full AL-2.0
+    header is what Apache RAT matches, so the file passes the license check on
+    every RAT version without any ``.ratignore`` exemption.
     """
     stripped = content.lstrip()
     head = "\n".join(stripped.splitlines()[:30]).lower()
@@ -62,30 +79,6 @@ def ensure_asf_header(content: str) -> str:
     if has_header:
         return content
     return f"{ASF_HTML_HEADER}\n\n{stripped}"
-
-
-def merge_ratignore(existing: str | None, files: list[str]) -> str:
-    """Return ``.ratignore`` content with every path in ``files`` present
-    exactly once, preserving any existing entries and comments.
-
-    Idempotent: re-running with files already listed returns the existing
-    content unchanged. When ``existing`` is ``None`` a fresh file is created.
-    Used so the scaffold's Markdown files (which carry an SPDX header that some
-    Apache RAT setups won't scan inside Markdown) are exempted from the license
-    check rather than failing the build.
-    """
-    lines = existing.splitlines() if existing else []
-    present = {ln.strip() for ln in lines}
-    additions = [f for f in files if f and f not in present]
-    if not additions:
-        return existing if existing is not None else ""
-    out = list(lines)
-    if out and out[-1].strip() != "":
-        out.append("")
-    out.append("# Security-model scaffold (carries an SPDX header; exempted")
-    out.append("# from RAT for setups that don't scan Markdown headers).")
-    out.extend(additions)
-    return "\n".join(out) + "\n"
 
 
 def branch_name(kind: str, date: str) -> str:
