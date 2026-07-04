@@ -283,6 +283,7 @@ Exploit that:
    **This search paginates too** —
    if the response carries a `nextPageToken`, loop on it until empty (a busy week can exceed 50 changed threads).
    Do not stop at the first page.
+   **Never narrow the `after:` date to dodge a large result set.** `resultCountEstimate` is unreliable and often returns the whole-corpus figure (~200+) even for a tight window — that is not a signal to move the date forward. Moving it forward by even one day silently drops that day's replies. This is exactly how the 2026-07-04 sweep missed five same-day PMC replies (Knox, CloudStack, Creadur, Guacamole) to a broadcast sent the prior day: the window was narrowed from `after:07/02` to `after:07/03` because `07/02` "looked like it returned the whole corpus," and the 07-02 afternoon replies vanished. The fix is always to keep the `last_sweep − 1d` window and **paginate**, never to shrink it. Broadcast days are the highest-risk case: one outbound blast to N PMCs produces a burst of same-day inbound replies that all sort onto the broadcast's date.
 4. **Refresh only the changed set + any thread absent from the cache:**
    call `get_thread` (MINIMAL) on each, rebuild its record, and overwrite the cache entry.
    Threads in the cache but *not* in the changed set are unchanged —
@@ -593,6 +594,28 @@ Invoke `frontier-model-preparation-update`'s `build-status-tab` subcommand at th
 This produces a durable view of the same classification for anyone else on the team to read.
 The classification logic in this SKILL and the state machine in `build-status-tab` should be kept in sync —
 if you find them diverging, that's a bug to fix.
+
+### Step 6.5 — Final pass: unresolved PMC asks (always the last analytical step)
+
+**Always run this as the last step of every sweep**, after the Status-sheet refresh and immediately before hand-off.
+The direction ledger (Step 5) answers *who acted last*;
+this pass answers the sharper question the operator actually cares about: **does any PMC have a concrete ask sitting unanswered on our side?**
+"Awaiting us" and "has an unanswered ask" are not the same —
+a PMC's last message is often a bare acknowledgement ("thanks", "looking forward to the results"), a "we'll follow up" deferral (the ball is in *their* court), or a courtesy note, none of which owe them a reply.
+An unanswered *ask* is a question or request they're waiting on us to act on.
+
+Procedure:
+
+1. Take every in-flight thread whose true-latest message is the PMC's (`awaiting = us`, resolved per Step 1 / hard rule 7 — **never** off the search snippet).
+2. Cross-check with a live `mcp__claude_ai_Gmail__search_threads` on `subject:GLASSWING is:unread` as a *hint* only (per hard rule 7's corollary, `is:unread` misses read-but-unanswered messages, so it narrows but never bounds the set).
+3. Read each candidate's latest message and classify the ask:
+   - **Unanswered ask** — a question or request awaiting our reply/action → surface it.
+   - **No ask** — bare ack / thanks / courtesy → not surfaced (note in passing).
+   - **Ball in their court** — an explicit "we'll follow up / post back / merge next week" deferral → not an ask on us; note who we're waiting on.
+   - **Already handled this session** — a draft was created or an action taken → note it as pending-send, not unresolved.
+4. Surface a dedicated **`## Unresolved PMC asks`** section at the end of the action list — one line per genuine unanswered ask: `<PMC> — <thread id>, <who> asked <date>: <one-line ask>. Next: <SKILL>.` If the set is empty, say so explicitly ("No unresolved PMC asks — every genuine question/request is answered or waiting on the PMC.").
+
+This section is the operator's final at-a-glance "is anyone waiting on me for an answer?" — keep it tight and cite thread ids.
 
 ### Step 7 — Hand off
 
