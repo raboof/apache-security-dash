@@ -30,6 +30,8 @@ from sheets_writer.status import (
     repo_funnel_timeseries,
     repo_state_counts_asof,
     scan_queue_auto_rows,
+    scan_queue_carried,
+    scan_queue_has_data,
     subscription_email_rows,
 )
 
@@ -455,98 +457,144 @@ def _pmcs_grid() -> tuple[list[list[str]], dict]:
         "Repositories submitted",
         "Date scan requested",
         "Forwarded scan to PMC",
+        "Report recipients",
+        "PMC thread (ponymail)",
     ]
     grid = [
         header,
-        ["Apache PDFBox", "pdfbox", "https://github.com/apache/pdfbox", "2026-06-08", ""],
+        [
+            "Apache PDFBox",
+            "pdfbox",
+            "https://github.com/apache/pdfbox",
+            "2026-06-08",
+            "",
+            "andrea@apache.org\ntilman@apache.org",
+            "https://lists.apache.org/thread/pdfboxtid",
+        ],
         [
             "Apache StormCrawler",
             "stormcrawler",
             "https://github.com/apache/stormcrawler",
             "2026-06-08",
             "",
+            "jnioche@apache.org",
+            "",
         ],
-        # Delivered PMC: two repos, report already forwarded.
+        # Delivered PMC: two repos, report already forwarded. Both repos mirror
+        # the one PMC-level Report recipients + ponymail thread.
         [
             "Apache Dubbo",
             "dubbo",
             "https://github.com/apache/dubbo\nhttps://github.com/apache/dubbo-go",
             "2026-06-01",
             "2026-06-05",
+            "rainyu@apache.org",
+            "https://lists.apache.org/thread/dubbotid",
         ],
         # Not submitted — must be excluded.
-        ["Apache Mahout", "mahout", "", "", ""],
+        ["Apache Mahout", "mahout", "", "", "", "", ""],
     ]
     return grid, {h: i for i, h in enumerate(header)}
 
 
 def _repos_grid() -> list[list[str]]:
     return [
-        ["Repository URL", "Repository Name", "PMC Slug", "Criticality Score (%)"],
-        ["https://github.com/apache/pdfbox", "pdfbox", "pdfbox", "48.3%"],
-        ["https://github.com/apache/stormcrawler", "stormcrawler", "stormcrawler", "41.9%"],
-        ["https://github.com/apache/dubbo", "dubbo", "dubbo", "63.0%"],
-        ["https://github.com/apache/dubbo-go", "dubbo-go", "dubbo", ""],  # blank score
+        [
+            "Repository URL",
+            "Repository Name",
+            "PMC Slug",
+            "Criticality Score (%)",
+            "Branches/tags to scan",
+        ],
+        ["https://github.com/apache/pdfbox", "pdfbox", "pdfbox", "48.3%", ""],
+        ["https://github.com/apache/stormcrawler", "stormcrawler", "stormcrawler", "41.9%", ""],
+        # Dubbo pinned specific refs -> mirrors into the Scan Queue per repo.
+        ["https://github.com/apache/dubbo", "dubbo", "dubbo", "63.0%", "3.2, main"],
+        ["https://github.com/apache/dubbo-go", "dubbo-go", "dubbo", "", ""],  # blank score
     ]
 
 
-def test_scan_queue_auto_rows_expands_sorts_and_carries_dates() -> None:
+def _sq_row(cells: list[str]) -> list[str]:
+    """Pad a Scan Queue data row out to the full header width."""
+    return cells + [""] * (len(SCAN_QUEUE_HEADER) - len(cells))
+
+
+def test_scan_queue_auto_rows_split_per_branch_sorted() -> None:
     grid, col_idx = _pmcs_grid()
     rows = scan_queue_auto_rows(grid, col_idx, _repos_grid())
-    # One row per submitted repo (4 total); Mahout excluded.
-    assert [r["repo"] for r in rows] == [
-        "https://github.com/apache/dubbo",  # 63.0 — highest
-        "https://github.com/apache/pdfbox",  # 48.3
-        "https://github.com/apache/stormcrawler",  # 41.9
-        "https://github.com/apache/dubbo-go",  # blank score sorts last
+    # dubbo pinned "3.2, main" -> two adjacent rows (first_in_group flags); the
+    # other repos are one default-branch row each. Mahout excluded.
+    assert [(r["repo"].split("/")[-1], r["branch"], r["first_in_group"]) for r in rows] == [
+        ("dubbo", "3.2", True),
+        ("dubbo", "main", False),
+        ("pdfbox", "", True),
+        ("stormcrawler", "", True),
+        ("dubbo-go", "", True),
     ]
-    by_repo = {r["repo"]: r for r in rows}
-    assert by_repo["https://github.com/apache/pdfbox"]["pmc"] == "Apache PDFBox"
-    assert by_repo["https://github.com/apache/pdfbox"]["when_ready"] == "2026-06-08"
-    assert by_repo["https://github.com/apache/pdfbox"]["when_report_sent"] == ""
-    # Delivered repo carries the forwarded date through automatically.
-    assert by_repo["https://github.com/apache/dubbo"]["when_report_sent"] == "2026-06-05"
-    assert by_repo["https://github.com/apache/dubbo-go"]["crit"] == ""
+    by = {(r["repo"], r["branch"]): r for r in rows}
+    pdf = by[("https://github.com/apache/pdfbox", "")]
+    assert pdf["pmc"] == "Apache PDFBox"
+    assert pdf["when_ready"] == "2026-06-08"
+    assert pdf["report_recipients"] == "andrea@apache.org\ntilman@apache.org"
+    assert pdf["model_discussion"] == "https://lists.apache.org/thread/pdfboxtid"
+    # Both Dubbo repos share the one PMC-level recipients + ponymail thread.
+    dubbo_go = by[("https://github.com/apache/dubbo-go", "")]
+    assert dubbo_go["report_recipients"] == "rainyu@apache.org"
+    assert by[("https://github.com/apache/dubbo", "main")]["crit"] == "63.0%"
+    assert by[("https://github.com/apache/dubbo-go", "")]["crit"] == ""
 
 
 def test_scan_queue_auto_rows_blank_repositories_sheet_leaves_crit_blank() -> None:
     grid, col_idx = _pmcs_grid()
     rows = scan_queue_auto_rows(grid, col_idx, [])
-    # No criticality data -> all blank, all sort last together (by URL).
-    assert all(r["crit"] == "" and r["crit_val"] is None for r in rows)
+    # No Repositories sheet -> no branch data -> one default-branch row per repo.
+    assert all(r["crit"] == "" and r["crit_val"] is None and r["branch"] == "" for r in rows)
     assert len(rows) == 4
 
 
-def test_parse_scan_queue_keys_manual_columns_by_repo() -> None:
-    sq_grid = [
-        ["Glasswing scan pipeline — Scan Queue · as of 2026-06-08"],
-        ["Every repo submitted ..."],
-        ["4 repo(s) submitted to the vendor."],
-        [""],
-        SCAN_QUEUE_HEADER,
+def test_parse_scan_queue_keys_by_repo_and_branch() -> None:
+    dubbo = _sq_row(
         [
             "https://github.com/apache/dubbo",
             "Apache Dubbo",
             "63.0%",
-            "2026-06-01",
-            "2026-06-03",  # when scanned (manual)
-            "abc1234",  # commit hash (manual)
+            "rainyu@apache.org",
+            "main",  # Branch/tag (col 4)
+            "https://lists.apache.org/thread/dubbotid",  # model discussion
+            "2026-06-01",  # when ready
+            # Scan 1 (cols 7-10): when scanned / model send thread / report sent / commit
+            "2026-06-03",
+            "https://lists.apache.org/thread/sendtid",
             "2026-06-05",
-        ],
+            "abc1234",
+        ]
+    )
+    pdfbox = _sq_row(
         [
             "https://github.com/apache/pdfbox",
             "Apache PDFBox",
             "48.3%",
+            "andrea@apache.org",
+            "",  # default branch
+            "https://lists.apache.org/thread/pdfboxtid",
             "2026-06-08",
-            "",  # not yet scanned
-            "",
-            "",
-        ],
-    ]
-    manual = parse_scan_queue(sq_grid)
-    assert manual["https://github.com/apache/dubbo"] == ("2026-06-03", "abc1234")
-    # Blank manual cells round-trip as empty (no spurious entry suppression).
-    assert manual["https://github.com/apache/pdfbox"] == ("", "")
+        ]
+    )
+    sq_grid = [["t"], ["s"], ["c"], [""], SCAN_QUEUE_HEADER, dubbo, pdfbox]
+    prev = parse_scan_queue(sq_grid)
+    # Keyed by (repo, branch) — the full previous row is retained.
+    assert set(prev.keys()) == {
+        ("https://github.com/apache/dubbo", "main"),
+        ("https://github.com/apache/pdfbox", ""),
+    }
+    d = scan_queue_carried(prev[("https://github.com/apache/dubbo", "main")])
+    assert d[7] == "2026-06-03"
+    assert d[8] == "https://lists.apache.org/thread/sendtid"
+    assert d[9] == "2026-06-05"
+    assert d[10] == "abc1234"
+    assert scan_queue_has_data(prev[("https://github.com/apache/dubbo", "main")]) is True
+    # A row with no per-scan cell filled has no scan data.
+    assert scan_queue_has_data(prev[("https://github.com/apache/pdfbox", "")]) is False
 
 
 def test_parse_scan_queue_unknown_layout_is_empty() -> None:
@@ -554,38 +602,52 @@ def test_parse_scan_queue_unknown_layout_is_empty() -> None:
     assert parse_scan_queue([["wrong", "header"], ["x", "y"]]) == {}
 
 
-def test_scan_queue_manual_data_follows_repo_across_resort() -> None:
-    """The preservation contract: hand-entered values are keyed by repo, so when
-    a higher-criticality repo is added later the manual data stays attached to
-    its original repo even though the row index changes."""
-    # Round 1: only pdfbox + stormcrawler submitted; operator hand-fills pdfbox.
-    sq_round1 = [
-        ["title"],
-        ["summary"],
-        ["count"],
+def test_scan_queue_carry_over_and_retained_by_key() -> None:
+    """Per-(repo, branch) carry-over: a branch still in the spec reattaches its
+    scan data; a branch with scan data that has left the spec is retained (has
+    data), never silently dropped."""
+
+    def _dubbo_row(branch: str, when_scanned: str, commit: str) -> list[str]:
+        return _sq_row(
+            [
+                "https://github.com/apache/dubbo",
+                "Apache Dubbo",
+                "63.0%",
+                "rainyu@apache.org",
+                branch,
+                "https://lists.apache.org/thread/dubbotid",
+                "2026-06-01",
+                when_scanned,  # Scan 1 when scanned (col 7)
+                "",
+                "",
+                commit,  # Scan 1 commit (col 10)
+            ]
+        )
+
+    sq_grid = [
+        ["t"],
+        ["s"],
+        ["c"],
         [""],
         SCAN_QUEUE_HEADER,
-        [
-            "https://github.com/apache/pdfbox",
-            "Apache PDFBox",
-            "48.3%",
-            "2026-06-08",
-            "2026-06-09",  # manual when-scanned
-            "deadbee",  # manual commit
-            "",
-        ],
+        # dubbo "main" is in the current spec (dubbo pins "3.2, main").
+        _dubbo_row("main", "2026-06-09", "deadbee"),
+        # dubbo "9.9" is NOT in the current spec but carries scan data.
+        _dubbo_row("9.9", "2026-06-10", "cafef00"),
     ]
-    manual = parse_scan_queue(sq_round1)
-    # Round 2: dubbo (higher criticality) now submitted -> it sorts ABOVE pdfbox.
+    prev = parse_scan_queue(sq_grid)
     grid, col_idx = _pmcs_grid()
     rows = scan_queue_auto_rows(grid, col_idx, _repos_grid())
-    rendered = [(r["repo"], *manual.get(r["repo"], ("", ""))) for r in rows]
-    # pdfbox is no longer row 0, but its manual data is still attached to it.
-    pdfbox = next(t for t in rendered if t[0] == "https://github.com/apache/pdfbox")
-    assert pdfbox == ("https://github.com/apache/pdfbox", "2026-06-09", "deadbee")
-    # The newly-added higher-criticality repo has no manual data yet.
-    dubbo = next(t for t in rendered if t[0] == "https://github.com/apache/dubbo")
-    assert dubbo == ("https://github.com/apache/dubbo", "", "")
+    auto_keys = {(r["repo"], r["branch"]) for r in rows}
+    # "main" is in the auto set -> its carried scan data reattaches by key.
+    assert ("https://github.com/apache/dubbo", "main") in auto_keys
+    carried = scan_queue_carried(prev[("https://github.com/apache/dubbo", "main")])
+    assert carried[7] == "2026-06-09"
+    assert carried[10] == "deadbee"
+    # "9.9" is not in the auto set but has scan data -> it must be retained.
+    off = ("https://github.com/apache/dubbo", "9.9")
+    assert off not in auto_keys
+    assert scan_queue_has_data(prev[off]) is True
 
 
 # --- Repo funnel over time -------------------------------------------------

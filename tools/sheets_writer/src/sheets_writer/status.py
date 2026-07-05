@@ -57,7 +57,10 @@ TAB_DESCRIPTIONS = {
     "PMCs": "every Apache PMC, its private list, and outreach-tracking columns.",
     "Repositories": "every public github.com/apache repo, mapped to its PMC.",
     "OSS Subscriptions": "expedited Claude-for-OSS subscriptions for PMC members.",
-    "Scan Queue": "every submitted repo, criticality-ranked, with manual scan/commit tracking.",
+    "Scan Queue": (
+        "every submitted repo, criticality-ranked, with report recipients, "
+        "branches/tags to scan, model-thread ponymail links, and scan tracking."
+    ),
     "Model Status": "per-PMC threat/security model: extracted URL(s) + verification status.",
     "Timeline": "wide-format milestone dates per PMC, chart-ready.",
     "Canned Responses": "reusable answers to common PMC questions.",
@@ -236,6 +239,7 @@ class _Tab:
         self.values: list[list] = []
         self.colors: list[tuple[int, dict, int]] = []
         self.cell_colors: list[tuple[int, int, dict]] = []
+        self.range_colors: list[tuple[int, int, int, int, dict]] = []
         self.cell_text_colors: list[tuple[int, int, dict]] = []
         self.headers: list[int] = []  # bold + distinct background fill
         self.bolds: list[int] = []  # bold only (e.g. section totals)
@@ -264,6 +268,10 @@ class _Tab:
     def cell_color(self, row: int, col: int, color: dict) -> None:
         """Colour a single cell's background (row/col are 0-based)."""
         self.cell_colors.append((row, col, color))
+
+    def range_color(self, r0: int, r1: int, c0: int, c1: int, color: dict) -> None:
+        """Colour a rectangle of cells [r0, r1) × [c0, c1) in one request."""
+        self.range_colors.append((r0, r1, c0, c1, color))
 
     def cell_text_color(self, row: int, col: int, color: dict) -> None:
         """Colour a single cell's text/foreground (row/col are 0-based)."""
@@ -443,6 +451,16 @@ def _write_tab(
             {
                 "repeatCell": {
                     "range": _range(r, r + 1, col_offset, col_offset + span),
+                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                    "fields": "userEnteredFormat.backgroundColor",
+                }
+            }
+        )
+    for r0, r1, c0, c1, color in tab.range_colors:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": _range(r0, r1, col_offset + c0, col_offset + c1),
                     "cell": {"userEnteredFormat": {"backgroundColor": color}},
                     "fields": "userEnteredFormat.backgroundColor",
                 }
@@ -868,23 +886,50 @@ def fill_registry_names(rows: list[list[str]], resolver=resolve_apache_names) ->
     return filled
 
 
-# Schema of the 'Scan Queue' tab. "When scanned" and "Commit hash" are
-# hand-maintained (light-yellow) and preserved across refreshes keyed by Repo;
-# every other column is auto-derived from the PMCs + Repositories sheets on each
-# refresh. "When report sent" fills automatically from "Forwarded scan to PMC".
-SCAN_QUEUE_HEADER = [
+# Schema of the 'Scan Queue' tab. Rows are split ONE PER BRANCH/TAG: a repo whose
+# Repositories-sheet "Branches/tags to scan" cell lists N comma-separated refs
+# yields N rows (blank = one row on the default branch). The identity + readiness
+# columns (0..6) auto-derive each refresh from the PMCs + Repositories sheets:
+# "Report recipients" (PMC's "Report recipients"), "Branch/tag" (the single ref
+# for this row), "Model discussion (ponymail)" (PMC's "PMC thread (ponymail)"),
+# "When ready" ("Date scan requested"). The per-scan tracking block repeats
+# N_SCANS times (Scan 1..5), each SCAN_FIELDS wide; these have no automated
+# source yet — rendered blank, values carried over across refreshes keyed by
+# (Repo, Branch/tag). A row with ANY scan cell filled is never dropped: it is
+# retained + flagged even if it falls out of the auto-derived set.
+SCAN_QUEUE_FIXED = [
     "Repo",
     "PMC",
     "Criticality Score (%)",
+    "Report recipients",
+    "Branch/tag",
+    "Model discussion (ponymail)",
     "When ready",
-    "When scanned",
-    "Commit hash",
-    "When report sent",
 ]
-# 0-based indexes of the two hand-maintained columns within SCAN_QUEUE_HEADER.
-SCAN_QUEUE_MANUAL_COLS = (4, 5)
-# Light yellow behind the hand-maintained Scan Queue cells, signalling "edit me".
-MANUAL_FILL = {"red": 1.0, "green": 0.97, "blue": 0.80}
+# The fields tracked per individual scan, in display order (repeated per scan).
+SCAN_FIELDS = [
+    "When scanned",
+    "Model send thread (ponymail)",
+    "When report sent",
+    "Commit hash",
+]
+N_SCANS = 5
+SCAN_QUEUE_HEADER = SCAN_QUEUE_FIXED + [
+    f"Scan {n} · {f}" for n in range(1, N_SCANS + 1) for f in SCAN_FIELDS
+]
+FIXED_COLS = len(SCAN_QUEUE_FIXED)  # 7
+SCAN_BLOCK = len(SCAN_FIELDS)  # 4
+# All per-scan tracking columns are carried over (no automated source yet).
+SCAN_QUEUE_CARRIED_COLS = tuple(range(FIXED_COLS, FIXED_COLS + N_SCANS * SCAN_BLOCK))
+# Identity columns greyed on continuation (2nd+) branch rows of a repo group —
+# the repeated cells; Branch/tag (col 4) stays white so the ref reads clearly.
+SCAN_QUEUE_IDENTITY_COLS = (0, 1, 2, 3, 5, 6)
+# Two light-yellow shades alternate per scan group; grey tints continuation
+# identity cells; a warm tint flags retained off-spec rows.
+SCAN_SHADE_A = {"red": 1.0, "green": 0.94, "blue": 0.70}
+SCAN_SHADE_B = {"red": 1.0, "green": 0.98, "blue": 0.85}
+CONT_GREY = {"red": 0.91, "green": 0.91, "blue": 0.91}
+RETAINED_TINT = {"red": 1.0, "green": 0.88, "blue": 0.82}
 
 
 def parse_criticality(raw: str) -> float | None:
@@ -907,40 +952,52 @@ def parse_criticality(raw: str) -> float | None:
 def scan_queue_auto_rows(
     grid: list[list[str]], col_idx: dict, repos_grid: list[list[str]]
 ) -> list[dict]:
-    """Pure: one record per *submitted* repo, sorted by OSSF criticality
-    (descending; blank last), then repo URL.
+    """Pure: one record per *submitted* repo **× branch/tag**, sorted by OSSF
+    criticality (descending; blank last), then repo URL, then branch order.
 
     A repo is "submitted" iff it appears in some PMC row's ``Repositories
-    submitted`` cell. Each record carries the auto-derived fields the Scan Queue
-    tab renders: ``repo`` (GitHub URL — the stable key the manual columns are
-    keyed by), ``pmc``, ``crit`` (display string from the Repositories sheet),
-    ``crit_val`` (float|None sort key), ``when_ready`` (``Date scan requested``),
-    and ``when_report_sent`` (``Forwarded scan to PMC``).
+    submitted`` cell. Its Repositories-sheet ``Branches/tags to scan`` cell is
+    comma-split into one record per ref (blank -> a single record on the default
+    branch, ``branch=""``). Records for the same repo are adjacent and the first
+    carries ``first_in_group=True`` (the rest ``False`` -> greyed identity cells
+    on render). Each record carries the auto-derived fields the Scan Queue tab
+    renders: ``repo`` + ``branch`` (the (key) pair the per-scan carried columns
+    are keyed by), ``pmc``, ``crit`` (display string), ``crit_val`` (float|None
+    sort key), ``report_recipients``, ``model_discussion`` (the PMC's ``PMC
+    thread (ponymail)`` permalink), and ``when_ready`` (``Date scan requested``).
     """
     name_i = col_idx.get("PMC Name", -1)
     slug_i = col_idx.get("PMC Slug", -1)
     sub_i = col_idx.get("Repositories submitted", -1)
     dsr_i = col_idx.get("Date scan requested", -1)
-    fwd_i = col_idx.get("Forwarded scan to PMC", -1)
+    recip_i = col_idx.get("Report recipients", -1)
+    ponymail_i = col_idx.get("PMC thread (ponymail)", -1)
     if sub_i < 0:
         return []
 
-    # Criticality display string per repo URL, from the Repositories sheet.
+    # Criticality display string + branches/tags to scan per repo URL, from the
+    # Repositories sheet. "Branches/tags to scan" is blank for repos scanned on
+    # their default branch; non-blank only where a PMC pinned specific refs.
     crit_by_url: dict[str, str] = {}
+    branches_by_url: dict[str, str] = {}
     if repos_grid:
         rhdr = {h: i for i, h in enumerate(repos_grid[0])}
         url_j = rhdr.get("Repository URL", -1)
         crit_j = rhdr.get("Criticality Score (%)", -1)
+        br_j = rhdr.get("Branches/tags to scan", -1)
         if url_j >= 0:
             for rr in repos_grid[1:]:
                 url = rr[url_j].strip() if url_j < len(rr) else ""
                 if url:
                     crit_by_url[url] = rr[crit_j].strip() if 0 <= crit_j < len(rr) else ""
+                    branches_by_url[url] = rr[br_j].strip() if 0 <= br_j < len(rr) else ""
 
     def _cell(row: list[str], i: int) -> str:
         return row[i].strip() if 0 <= i < len(row) else ""
 
-    out: list[dict] = []
+    # One record per submitted repo first (branches attached), then expanded
+    # into per-branch rows after sorting so a repo's rows stay adjacent.
+    per_repo: list[dict] = []
     for row in grid[1:]:
         submitted = [
             ln.strip()
@@ -951,33 +1008,48 @@ def scan_queue_auto_rows(
             continue
         pmc = _cell(row, name_i) or _cell(row, slug_i)
         when_ready = _cell(row, dsr_i)
-        when_report = _cell(row, fwd_i)
+        recipients = _cell(row, recip_i)
+        model_discussion = _cell(row, ponymail_i)
         for url in submitted:
             crit_str = crit_by_url.get(url, "")
-            out.append(
+            per_repo.append(
                 {
                     "repo": url,
                     "pmc": pmc,
                     "crit": crit_str,
                     "crit_val": parse_criticality(crit_str),
+                    "report_recipients": recipients,
+                    "branches_cell": branches_by_url.get(url, ""),
+                    "model_discussion": model_discussion,
                     "when_ready": when_ready,
-                    "when_report_sent": when_report,
                 }
             )
-    out.sort(key=lambda e: (-(e["crit_val"] if e["crit_val"] is not None else -1.0), e["repo"]))
+    per_repo.sort(
+        key=lambda e: (-(e["crit_val"] if e["crit_val"] is not None else -1.0), e["repo"])
+    )
+
+    out: list[dict] = []
+    for e in per_repo:
+        refs = [b.strip() for b in e["branches_cell"].split(",") if b.strip()] or [""]
+        for k, ref in enumerate(refs):
+            rec = {kk: vv for kk, vv in e.items() if kk != "branches_cell"}
+            rec["branch"] = ref
+            rec["first_in_group"] = k == 0
+            out.append(rec)
     return out
 
 
-def parse_scan_queue(sq_grid: list[list[str]]) -> dict[str, tuple[str, str]]:
-    """Pure: map ``repo URL -> (when_scanned, commit_hash)`` from the existing
-    'Scan Queue' tab, so hand-entered values survive a rebuild.
+def parse_scan_queue(sq_grid: list[list[str]]) -> dict[tuple[str, str], list[str]]:
+    """Pure: map ``(repo URL, branch/tag) -> previous full row`` from the
+    existing 'Scan Queue' tab, so the per-scan tracking columns survive a rebuild
+    (carry-over) and rows with scan history can be retained (see
+    ``scan_queue_carried`` / ``scan_queue_has_data``).
 
     Locates the ``SCAN_QUEUE_HEADER`` row (the tab has title/summary rows above
-    it); rows below it with a non-empty Repo contribute their two manual
-    columns. Keying by Repo (not row position) is what lets the manual data
-    follow its repo when the table is re-sorted or new rows are inserted. A tab
-    that doesn't match the header yields ``{}`` (the rebuild re-seeds with blank
-    manual columns).
+    it); rows below it with a non-empty Repo are keyed by ``(Repo, Branch/tag)``
+    — the pair is what lets a row's scan data follow it when the table is
+    re-sorted, re-split, or new rows are inserted. A tab that doesn't match the
+    header yields ``{}`` (the rebuild re-seeds the tracking columns blank).
     """
     if not sq_grid:
         return {}
@@ -989,16 +1061,28 @@ def parse_scan_queue(sq_grid: list[list[str]]) -> dict[str, tuple[str, str]]:
             break
     if header_at < 0:
         return {}
-    ws_j, ch_j = SCAN_QUEUE_MANUAL_COLS
-    out: dict[str, tuple[str, str]] = {}
+    out: dict[tuple[str, str], list[str]] = {}
+    branch_col = SCAN_QUEUE_FIXED.index("Branch/tag")
     for row in sq_grid[header_at + 1 :]:
         repo = row[0].strip() if row else ""
         if not repo:
             continue
-        ws = row[ws_j].strip() if ws_j < len(row) else ""
-        ch = row[ch_j].strip() if ch_j < len(row) else ""
-        out[repo] = (ws, ch)
+        branch = row[branch_col].strip() if branch_col < len(row) else ""
+        out[(repo, branch)] = [c.strip() for c in row]
     return out
+
+
+def scan_queue_carried(prev_row: list[str] | None) -> dict[int, str]:
+    """Pure: the carried (per-scan tracking) cells of a previous Scan Queue row,
+    keyed by column index. ``None`` / short rows yield blanks."""
+    row = prev_row or []
+    return {j: (row[j] if j < len(row) else "") for j in SCAN_QUEUE_CARRIED_COLS}
+
+
+def scan_queue_has_data(prev_row: list[str] | None) -> bool:
+    """Pure: True iff any per-scan tracking cell of the row is non-empty — i.e.
+    the row records real scan activity and must not be dropped on rebuild."""
+    return any(scan_queue_carried(prev_row).values())
 
 
 def repo_state_counts_asof(e: dict, d: str, states: list[str]) -> dict[str, int]:
@@ -1622,12 +1706,14 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     for cells in registry_rows:
         os_sub.row(cells, span=len(SUBSCRIPTION_REGISTRY_HEADER))
 
-    # 6c. Build the "Scan Queue" tab — every submitted repo, sorted by OSSF
-    #     criticality (descending). "When scanned" + "Commit hash" are
-    #     hand-maintained (light yellow) and preserved across refreshes keyed by
-    #     Repo, so they follow their repo across re-sorts and newly-added rows;
-    #     all other columns auto-derive each refresh, with "When report sent"
-    #     filling from "Forwarded scan to PMC".
+    # 6c. Build the "Scan Queue" tab — one row per submitted repo × branch/tag,
+    #     sorted by OSSF criticality (descending). Identity + readiness columns
+    #     auto-derive each refresh; continuation branch-rows of a repo get greyed
+    #     identity cells. The per-scan tracking block (Scan 1..N_SCANS) has no
+    #     automated source yet — blank, carried over across refreshes keyed by
+    #     (Repo, Branch/tag); the blocks alternate two light-yellow shades with a
+    #     border box each. A (Repo, Branch/tag) row that carries any scan data
+    #     but has fallen out of the auto set is RETAINED + flagged, never dropped.
     try:
         repos_grid = fetch_sheet_grid(service, args.spreadsheet_id, "Repositories") or []
     except Exception:  # noqa: BLE001 — Repositories tab should exist; tolerate absence
@@ -1636,47 +1722,74 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         sq_grid = fetch_sheet_grid(service, args.spreadsheet_id, SCAN_QUEUE_SHEET) or []
     except Exception:  # noqa: BLE001 — tab may not exist yet on a first run
         sq_grid = []
-    manual_by_repo = parse_scan_queue(sq_grid)
-    manual_filled = sum(1 for v in manual_by_repo.values() if any(v))
+    prev_by_key = parse_scan_queue(sq_grid)
+    carried_filled = sum(1 for r in prev_by_key.values() if scan_queue_has_data(r))
     queue_rows = scan_queue_auto_rows(grid, col_idx, repos_grid)
+    auto_keys = {(e["repo"], e["branch"]) for e in queue_rows}
+    # Rows with scan history that dropped out of the auto set — retained, flagged.
+    retained = [
+        (key, row)
+        for key, row in prev_by_key.items()
+        if key not in auto_keys and scan_queue_has_data(row)
+    ]
+    width = len(SCAN_QUEUE_HEADER)
     sq = _Tab()
     sq.row([f"Glasswing scan pipeline — Scan Queue · as of {today}"], header=True)
     sq.row(
         [
-            "Every repo submitted to the scan vendor, sorted by OSSF Criticality "
-            "Score (highest first). 'When scanned' and 'Commit hash' are "
-            "maintained by hand (light yellow) and preserved across refreshes, "
-            "keyed by Repo; all other columns auto-refresh from the PMCs + "
-            "Repositories sheets. 'When report sent' fills automatically when the "
-            "scan is forwarded to the PMC."
+            "One row per submitted repo × branch/tag, sorted by OSSF Criticality "
+            "Score (highest first). Identity + 'When ready' auto-refresh from the "
+            "PMCs + Repositories sheets; continuation branch-rows of a repo are "
+            "greyed. Each 'Scan N' block (When scanned · Model send thread "
+            "(ponymail) · When report sent · Commit hash) has no automated source "
+            "yet — blank, carried over across refreshes keyed by (Repo, "
+            "Branch/tag); the blocks alternate two yellows with a border each. A "
+            "row with any scan data is never dropped: it is retained + flagged "
+            "(warm tint) if it leaves the current spec."
         ]
     )
-    sq.row([f"{len(queue_rows)} repo(s) submitted to the vendor."], bold=True)
+    sq.row(
+        [f"{len(queue_rows)} repo×branch row(s); {len(retained)} retained off-spec."],
+        bold=True,
+    )
     sq.row([""])
     sq_hdr_i = sq.row(SCAN_QUEUE_HEADER, header=True)
-    sq_ws_j, sq_ch_j = SCAN_QUEUE_MANUAL_COLS
-    # Tint the two manual header cells light yellow too, so the column reads as
-    # hand-maintained at a glance (cell colours apply after the header fill).
-    sq.cell_color(sq_hdr_i, sq_ws_j, MANUAL_FILL)
-    sq.cell_color(sq_hdr_i, sq_ch_j, MANUAL_FILL)
-    if not queue_rows:
+    data_rows: list[int] = []
+    if not queue_rows and not retained:
         sq.row(["(none submitted yet)"])
     for e in queue_rows:
-        ws, ch = manual_by_repo.get(e["repo"], ("", ""))
-        ri = sq.row(
-            [
-                e["repo"],
-                e["pmc"],
-                e["crit"],
-                e["when_ready"],
-                ws,
-                ch,
-                e["when_report_sent"],
-            ],
-            span=len(SCAN_QUEUE_HEADER),
-        )
-        sq.cell_color(ri, sq_ws_j, MANUAL_FILL)
-        sq.cell_color(ri, sq_ch_j, MANUAL_FILL)
+        carried = scan_queue_carried(prev_by_key.get((e["repo"], e["branch"])))
+        cells = [
+            e["repo"],
+            e["pmc"],
+            e["crit"],
+            e["report_recipients"],
+            e["branch"],
+            e["model_discussion"],
+            e["when_ready"],
+        ] + [carried.get(j, "") for j in SCAN_QUEUE_CARRIED_COLS]
+        ri = sq.row(cells, span=width)
+        data_rows.append(ri)
+        if not e["first_in_group"]:  # continuation branch-row -> grey identity
+            for c in SCAN_QUEUE_IDENTITY_COLS:
+                sq.cell_color(ri, c, CONT_GREY)
+    for _key, row in retained:
+        cells = list(row[:width]) + [""] * (width - len(row))
+        flag = "⚠ retained (has scan data; not in current spec)"
+        cells[1] = f"{cells[1]}  {flag}".strip()
+        ri = sq.row(cells, span=width)
+        data_rows.append(ri)
+        for c in SCAN_QUEUE_IDENTITY_COLS:
+            sq.cell_color(ri, c, RETAINED_TINT)
+    # Alternating light-yellow shade + border box per scan group, spanning all
+    # data rows; the border reaches up into the header row to frame the group.
+    if data_rows:
+        r0, r1 = data_rows[0], data_rows[-1] + 1
+        for g in range(N_SCANS):
+            c0 = FIXED_COLS + g * SCAN_BLOCK
+            c1 = c0 + SCAN_BLOCK
+            sq.range_color(r0, r1, c0, c1, SCAN_SHADE_A if g % 2 == 0 else SCAN_SHADE_B)
+            sq.border(sq_hdr_i, r1, c0, c1)
 
     # 6b. Build the "Model Status" tab: one row per Scan-Requested PMC with the
     #     model URL(s) extracted from its "Security Model" cell (a cell may hold
@@ -1751,7 +1864,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             f"'{TIMELINE_SHEET}' ({len(entries)} events), "
             f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, "
             f"{len(additions)} new), '{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, "
-            f"{manual_filled} with manual data), '{MODEL_STATUS_SHEET}' "
+            f"{carried_filled} with carried data), '{MODEL_STATUS_SHEET}' "
             f"({len(model_rows)} PMCs, {with_url} with a model URL), "
             f"'{README_SHEET}' (auto overview "
             f"+ legend). Model origins: "
@@ -1848,7 +1961,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         f"'{TIMELINE_SHEET}' ({len(entries)} events), "
         f"'{OSS_SUBSCRIPTIONS_SHEET}' ({len(registry_rows)} people, {len(additions)} new, "
         f"{names_filled} name(s) resolved), "
-        f"'{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, {manual_filled} with manual data), "
+        f"'{SCAN_QUEUE_SHEET}' ({len(queue_rows)} repos, {carried_filled} with carried data), "
         f"'{MODEL_STATUS_SHEET}' ({len(model_rows)} PMCs, {with_url} with a model URL), "
         f"'{README_SHEET}' ({len(tab_titles)}-tab overview). Model origins: "
         + ", ".join(f"{k}={origin_counts[k]}" for k, _ in MODEL_ORIGINS)
