@@ -400,6 +400,18 @@ if theirs is newer, it's awaiting us.
 Don't infer from `updatedAt` alone —
 a CI re-run bumps it without a human acting.
 
+**This verdict MUST come from actually fetching each open PR's `comments` + `reviews` arrays — never from the email threads, never from `reviewDecision` alone, and never skipped because the fetch is slow.**
+`reviewDecision` staying `REVIEW_REQUIRED` / empty does **not** mean "no maintainer input": a `COMMENTED` review or a plain issue-comment carries questions and scope pushback *without* changing `reviewDecision` or setting `CHANGES_REQUESTED`.
+The 2026-07-05 sweep is the cautionary tale: Maven `#12421` (elharo's scope review — "these plugins are missing from the table; are non-plugins in scope?") and CloudStack `#13293` (a maintainer's "how is this to be reviewed / is it ready to merge?") were **both** `COMMENTED` / issue-comments with **no** `CHANGES_REQUESTED` — so a `reviewDecision`-only read called them clean, and *deriving the flag from the email threads* (the shortcut taken when the comment fetch timed out) missed them too. Both were genuine unanswered questions sitting on the operator, found only on a dedicated re-run. Fetch the threads; compare recency; do not shortcut.
+
+**Mechanical recipe (the fetch that neither times out nor silently no-ops):**
+- **One event-pull call per PR** — pass the repo through the env so `env.REPO` labels the row (inlining `"$repo"` into the `--jq` string breaks the filter):
+  `REPO=apache/<repo> gh pr view <n> --repo apache/<repo> --json number,author,commits,comments,reviews --jq '{repo:env.REPO,num:.number,last_commit:(.commits|max_by(.committedDate)|.committedDate),comments:[.comments[]|{a:.author.login,at:.createdAt,body:(.body|.[0:240])}],reviews:[.reviews[]|{a:.author.login,st:.state,at:.submittedAt,body:(.body|.[0:240])}]}'`
+- **Sandbox bypass is required.** `comments` / `reviews` / `statusCheckRollup` / `reviewDecision` all traverse GitHub's **GraphQL** path, which needs authenticated `gh`; under the sandbox the keyring is unreadable and every call **401s**. Run this pass with `dangerouslyDisableSandbox: true` (loud banner per user rule). Keep `statusCheckRollup` (the slow field on big repos) in a **separate lean call** from the comments/reviews call so one heavy field can't stall the loop.
+- **Loop from a `bash` array in a script file** (`PRS=( ... ); for p in "${PRS[@]}"; do …; done`) run with `bash script.sh` — **never** an inline `for p in $LIST` in the Bash tool, whose shell is `zsh`, which does **not** word-split an unquoted variable and silently mangles every iteration (symptom: 0 lines written). For a large cohort use `run_in_background: true` so it can't block the sweep.
+- **Compare in a Python analyzer** (write it to a file per the shell-safety note): flag any PR whose latest non-us, non-bot `comment`/`review` timestamp is newer than our latest `comment`/`review`/`commit`. Treat `potiuk` as us; treat `*[bot]` / `asfgit` / `github-actions` / `apache-*` / CI apps as bots.
+- **A `COMMENTED` review with an empty top-level body means inline line-comments** (elharo's shape). Pull them with `gh api "repos/apache/<repo>/pulls/<n>/comments"` to see the actual questions.
+
 A PR can carry several flags (e.g. `pr-needs-reply` + `pr-ci-failing`).
 Collect, per flagged PR:
 PMC, `owner/repo#num`, the flags, the commenter + a one-line gist of what they want, and `updatedAt`.
@@ -682,6 +694,10 @@ Do not chain into a SKILL unbidden.
   this both buries PMC replies we owe answers to and invents "awaiting us" items we already answered.
   Resolve the latest message per-thread with `get_thread` (MINIMAL),
   cached against last sweep so it stays cheap.
+- A sweep that reports `pr-needs-reply` from `reviewDecision` / `updatedAt` / the email threads instead of actually fetching each open PR's `comments` + `reviews` (Step 3).
+  A `COMMENTED` review or an issue-comment carries a maintainer's question with **no** `CHANGES_REQUESTED` and no `reviewDecision` change, so the shortcut reports the PR clean while a real question sits unanswered.
+  The 2026-07-05 Maven `#12421` (elharo scope review) and CloudStack `#13293` (review-process question) misses are the reference failure — both were caught only by a dedicated comment-fetch re-run.
+  Fetch the comment/review threads on **every** sweep (mechanical recipe in Step 3); never derive the flag second-hand.
 
 ## Provenance
 
