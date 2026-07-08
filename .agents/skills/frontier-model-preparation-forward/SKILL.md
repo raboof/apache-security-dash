@@ -70,7 +70,7 @@ Skip when:
    - `private@<pmc>.apache.org`,
    - `security@<pmc>.apache.org` (where the alias exists),
    - `security@apache.org` (Foundation audit trail — always Cc'd),
-   - `akm@apache.org` (Andrew Musselman — technical contact for the Mythos/ASVS scans; always Cc'd, introduced on first add if not already on the thread).
+   - `private@tooling.apache.org` (the ASF Tooling PMC private list — the Tooling team's channel for the scanning effort; always Cc'd, unless already on the thread).
 
    **Not acceptable**, even if requested by a PMC member or recorded in the tracker:
 

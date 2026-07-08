@@ -498,7 +498,7 @@ we'll wait.
 ### Template 4 — Email reply: gaps in model, PMC drives
 
 The email replies to the original `[GLASSWING] <PMC>: request to scan repositories` thread.
-To/CC follow the `frontier-model-preparation-response` rules (reply to the requester; CC `security@apache.org`; CC `private@<pmc>.apache.org`; **always CC Andrew Musselman `akm@apache.org`** — the technical contact for the Mythos/ASVS scans, introduced on first add per the response rules; keep anyone already on the thread).
+To/CC follow the `frontier-model-preparation-response` rules (reply to the requester; CC `security@apache.org`; CC `private@<pmc>.apache.org`; **always CC the Tooling PMC private list `private@tooling.apache.org`** — the Tooling team's channel for the scanning effort; keep anyone already on the thread).
 **Always go through the `frontier-model-preparation-response` flow for the final draft + Gmail draft creation** —
 this SKILL drafts the body and hands it off;
 it does not call the Gmail tools directly.
