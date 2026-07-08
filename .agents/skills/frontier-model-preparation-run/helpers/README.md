@@ -9,9 +9,18 @@ credentials the sandbox hides (the `gh` keyring, the sheets OAuth token).
 
 | Script | Does | Sweep step |
 |---|---|---|
-| [`pr-attention-sweep.sh`](pr-attention-sweep.sh) | Every open operator PR → attention flags (changes-requested / approved-awaiting-merge / conflict / ci-failing / needs-reply / draft). | Step 3 |
+| [`pr-attention-sweep.sh`](pr-attention-sweep.sh) | Every open operator PR → attention flags (changes-requested / approved-awaiting-merge / conflict / ci-failing / needs-reply / draft). Fans out the fetch and does an inline jq classification. | Step 3 |
 | [`pr-fetch-one.sh`](pr-fetch-one.sh) | Worker: one PR → one JSON file. Invoked by the sweep via `xargs`. | Step 3 |
+| [`pr-attention-analyze.py`](pr-attention-analyze.py) | **Bot-aware** re-classifier over the sweep's `prs.jsonl`. Same flags, but drops CI-bot authors before the `needs-reply` recency test so the flag means a *human* is waiting. Parameterised (`--me`, `--bot-extra`, `--bot-regex`, `--needs-only`). Prefer this over the sweep's inline jq for the `needs-reply` verdict. | Step 3 |
 | [`sheet-dump.sh`](sheet-dump.sh) | Untruncated PMCs-sheet dump as JSON objects (via Sheets API, not the Drive MCP). | Step 2 |
+
+```bash
+# Step 3 — fan out the fetch, then classify with the bot-aware analyzer:
+OUT="${TMPDIR}/pr-sweep"
+.agents/skills/frontier-model-preparation-run/helpers/pr-attention-sweep.sh "$OUT"   # writes $OUT/prs.jsonl
+.agents/skills/frontier-model-preparation-run/helpers/pr-attention-analyze.py \
+  "$OUT/prs.jsonl" --me "$(gh api user --jq .login)" --needs-only
+```
 
 ```bash
 # Step 3 — PRs waiting on us:
@@ -56,3 +65,15 @@ credentials the sandbox hides (the `gh` keyring, the sheets OAuth token).
    the cap. Resolve the true latest message per changed thread with `get_thread`
    (MINIMAL). `is:unread` is not a safe "awaiting us" proxy either — the operator
    reads mail in the UI without actioning it. (MCP-side; no shell helper.)
+
+8. **`needs-reply` off raw comment recency fires on CI bots.** copilot-pull-
+   request-reviewer, codecov, sonarqubecloud, apache-* CI etc. comment *after*
+   our last activity, so a plain "is their last comment newer than ours" test
+   (the inline jq in `pr-attention-sweep.sh`) reports false `needs-reply` on
+   green doc-only PRs. Observed 2026-07-08: cloudstack#13554 + hive#6535 flagged
+   purely on bot comments; on hive the sonarqube bot was even *masking* a real
+   okumin comment underneath. Use `pr-attention-analyze.py`, which filters bot
+   authors first, so the flag means a human is genuinely waiting. It still shows
+   `pr-ci-failing` separately — but note doc-only-PR CI red is almost always
+   unrelated infra (Sonar/coverage/integration suites/jenkins-precommit), not
+   our-fault red, and is the PMC's to merge-through, not ours to chase.
