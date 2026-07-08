@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from googleapiclient.discovery import build
 
 from form_submitter import SPREADSHEET_ID
@@ -76,7 +78,6 @@ def fetch_pmc_state(slug: str) -> dict:
         "Security model verified": None,  # any non-blank
         "Repositories requested": None,
         "Contact Person": None,
-        "Backup contact": None,
         "Security Model": None,
     }
     missing = []
@@ -89,6 +90,17 @@ def fetch_pmc_state(slug: str) -> dict:
     if missing:
         raise PMCStateError(
             f"PMC {slug!r} not ready for submission:\n  - " + "\n  - ".join(missing)
+        )
+
+    # Backup contact is optional: some PMCs operate with a single confirmed
+    # contact (e.g. Santuario — Colm O hEigeartaigh, solo by the PMC's own
+    # statement). A blank backup is a warning, not a blocker; the headline
+    # form's Additional Information renders it as "(none — solo PMC contact)".
+    if not pmc_row.get("Backup contact", "").strip():
+        print(
+            f"WARN: Backup contact on {slug!r} is blank — proceeding with a "
+            "single (solo) PMC contact.",
+            file=sys.stderr,
         )
 
     requested_urls = [
