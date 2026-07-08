@@ -88,6 +88,21 @@ def branch_name(kind: str, date: str) -> str:
     return f"asf-security/{kind}-{date}"
 
 
+def clone_cmd(repo: str, base: str | None, dest: str) -> list[str]:
+    """``git clone`` argv for the upstream checkout.
+
+    When ``base`` names a non-default branch, clone THAT branch directly
+    (``--branch <base>``) so the head branch is cut from the intended base.
+    Otherwise the working tree starts on the repo's default branch and the
+    resulting PR diff would be the whole default<->base delta rather than
+    just the scaffold files."""
+    cmd = ["git", "clone", "--depth", "1"]
+    if base:
+        cmd += ["--branch", base]
+    cmd += [f"https://github.com/{repo}.git", dest]
+    return cmd
+
+
 def _agents_security_section(security_note: str = "") -> str:
     extra = f"\n\n{security_note.strip()}" if security_note.strip() else ""
     return (
