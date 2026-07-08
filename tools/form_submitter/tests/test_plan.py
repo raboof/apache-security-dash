@@ -113,6 +113,21 @@ def test_build_headline_includes_pmc_contacts_and_model(hbase_pmc_row, repo_hbas
     assert "← this submission (headline)" in out
 
 
+def test_build_headline_renders_solo_contact_when_backup_blank(hbase_pmc_row, repo_hbase) -> None:
+    """A blank Backup contact is a legitimate solo-PMC case (e.g. Santuario);
+    the headline block renders it as '(none — solo PMC contact)', not empty."""
+    row = {**hbase_pmc_row, "Backup contact": ""}
+    out = build_headline_additional_info(
+        pmc_name="Apache HBase",
+        pmc_row=row,
+        expedite_addrs=[],
+        repos=[repo_hbase],
+        headline_repo=repo_hbase,
+        submission_notes_text="",
+    )
+    assert "  - Backup:  (none — solo PMC contact)" in out
+
+
 def test_build_headline_includes_expedite_addresses_when_present(hbase_pmc_row, repo_hbase) -> None:
     out = build_headline_additional_info(
         pmc_name="Apache HBase",

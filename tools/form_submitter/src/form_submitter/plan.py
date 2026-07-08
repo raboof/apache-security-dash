@@ -116,7 +116,7 @@ def build_headline_additional_info(
         "",
         "PMC contacts:",
         f"  - Primary: {primary}",
-        f"  - Backup:  {backup}",
+        f"  - Backup:  {backup or '(none — solo PMC contact)'}",
         "",
         "Threat model (verified by the ASF Security team against the",
         "Scovetta rubric):",
