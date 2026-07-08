@@ -92,8 +92,8 @@ while a per-thread, state-aware note reads as the status update each PMC actuall
    `private@<pmc>`,
    the PMC's verified `security_contact` from `whimsy-lookup pmc-security-info <pmc>`
    (its own `security@<pmc>` when registered, else `security@apache.org`),
-   and **Andrew Musselman (`akm@apache.org`)** — always Cc'd (the ASF's technical contact for the Mythos/ASVS scans).
-   When akm@ was not already on the thread, introduce him in one line: the ASF's July scanning effort + Andrew runs the Mythos/ASVS scans.
+   and **the ASF Tooling PMC private list (`private@tooling.apache.org`)** — always Cc'd (the Tooling team's channel for the scanning effort), unless already on the thread.
+   No personal introduction is needed when Cc'ing the list.
 
 ## Procedure
 

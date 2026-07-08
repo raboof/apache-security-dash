@@ -26,7 +26,7 @@ The submission is a **form-then-email flow**:
    Subsequent submissions for the same PMC are slimmer —
    they point back to the headline submission for the maintainer roster and OSS expedite context.
 
-2. **PMC notification email.** After all forms have been submitted, the SKILL drafts a single email to the PMC's primary contact, CC'd to the backup contacts + `private@<pmc>.apache.org` + `security@<pmc>.apache.org` (if it exists) + `security@apache.org` + **`akm@apache.org`** (Andrew Musselman — always Cc'd; the technical contact for the Mythos/ASVS scans, introduced on first add: the ASF's July scanning effort + he runs the scans) + every `@apache.org` scan-result recipient from the original `[GLASSWING]` request.
+2. **PMC notification email.** After all forms have been submitted, the SKILL drafts a single email to the PMC's primary contact, CC'd to the backup contacts + `private@<pmc>.apache.org` + `security@<pmc>.apache.org` (if it exists) + `security@apache.org` + **`private@tooling.apache.org`** (the ASF Tooling PMC private list — the Tooling team's channel for the scanning effort; always Cc'd, no personal introduction needed) + every `@apache.org` scan-result recipient from the original `[GLASSWING]` request.
    Body says the scan has been submitted, lists the repos, summarises what happens next, and acknowledges the expedite ask if one was relayed in the headline form.
 
 The form-based submission replaced the prior "Email 1 to mirko@alpha-omega.dev" flow on 2026-05-19 —
