@@ -43,6 +43,7 @@ from model_pr.content import (
     branch_name,
     build_agents_md,
     build_security_md,
+    clone_cmd,
     ensure_asf_header,
 )
 
@@ -79,10 +80,12 @@ def cmd_open(args: argparse.Namespace) -> int:
         _run(["rm", "-rf", str(clone)])
 
     # Ensure the fork exists (no-op if it already does), then clone the upstream.
+    # When --base names a non-default branch, clone THAT branch directly so the
+    # head branch is cut from the intended base. Otherwise the working tree
+    # starts on the default branch and the resulting PR diff is the whole
+    # default<->base delta rather than just the scaffold files.
     _run(["gh", "repo", "fork", repo, "--clone=false"], capture=True)
-    _run(
-        ["git", "clone", "--depth", "1", f"https://github.com/{repo}.git", str(clone)], capture=True
-    )
+    _run(clone_cmd(repo, args.base, str(clone)), capture=True)
     base = args.base or _run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(clone), capture=True
     )

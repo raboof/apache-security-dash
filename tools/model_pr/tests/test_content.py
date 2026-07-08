@@ -24,6 +24,7 @@ from model_pr.content import (
     branch_name,
     build_agents_md,
     build_security_md,
+    clone_cmd,
     ensure_asf_header,
 )
 
@@ -31,6 +32,28 @@ from model_pr.content import (
 def test_branch_name() -> None:
     assert branch_name("threat-model", "2026-05-31") == "asf-security/threat-model-2026-05-31"
     assert branch_name("discoverability", "2026-05-31") == "asf-security/discoverability-2026-05-31"
+
+
+def test_clone_cmd_default_branch_when_no_base() -> None:
+    # No base -> plain clone of the default branch (no --branch).
+    cmd = clone_cmd("apache/maven-resolver", None, "/tmp/x")
+    assert "--branch" not in cmd
+    assert cmd == [
+        "git",
+        "clone",
+        "--depth",
+        "1",
+        "https://github.com/apache/maven-resolver.git",
+        "/tmp/x",
+    ]
+
+
+def test_clone_cmd_checks_out_named_base_branch() -> None:
+    # Non-default base -> clone THAT branch so the head is cut from it
+    # (the fix for the whole-default<->base delta bug).
+    cmd = clone_cmd("apache/maven-resolver", "maven-resolver-1.9.x", "/tmp/x")
+    assert cmd[:6] == ["git", "clone", "--depth", "1", "--branch", "maven-resolver-1.9.x"]
+    assert cmd[-2:] == ["https://github.com/apache/maven-resolver.git", "/tmp/x"]
 
 
 def test_build_security_md_create_inrepo() -> None:
