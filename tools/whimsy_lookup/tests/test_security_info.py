@@ -27,26 +27,33 @@ def test_pmc_security_info_own_contact(security_coordinates) -> None:
         "known": True,
         "name": "Apache Tomcat",
         "security_contact": "security@tomcat.apache.org",
-        # security_model_source wins over security_model_link.
-        "threat_model": "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
+        # source-first for reading, page-first for citing.
+        "security_model_source": "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
+        "security_model_link": "https://tomcat.apache.org/security.html",
         "advisory_link": None,
     }
 
 
-def test_threat_model_prefers_source_falls_back_to_link(security_coordinates) -> None:
-    """threat_model is security_model_source, else security_model_link, else None."""
-    # tomcat has both -> the source (raw SECURITY.md) is preferred.
+def test_security_model_source_and_link_precedence(security_coordinates) -> None:
+    """source is model_source-first; link is model_link-first; each falls back."""
+    tomcat = pmc_security_info(security_coordinates, "tomcat")
+    # tomcat has both: source -> raw SECURITY.md, link -> human page.
     assert (
-        pmc_security_info(security_coordinates, "tomcat")["threat_model"]
+        tomcat["security_model_source"]
         == "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md"
     )
-    # apisix has only security_model_link -> falls back to it.
-    assert (
-        pmc_security_info(security_coordinates, "apisix")["threat_model"]
-        == "https://github.com/apache/apisix/blob/master/THREAT_MODEL.md"
-    )
-    # hop has both fields null -> None.
-    assert pmc_security_info(security_coordinates, "hop")["threat_model"] is None
+    assert tomcat["security_model_link"] == "https://tomcat.apache.org/security.html"
+
+    # apisix has only security_model_link -> both resolve to it.
+    apisix = pmc_security_info(security_coordinates, "apisix")
+    page = "https://github.com/apache/apisix/blob/master/THREAT_MODEL.md"
+    assert apisix["security_model_source"] == page
+    assert apisix["security_model_link"] == page
+
+    # hop has both fields null -> both None.
+    hop = pmc_security_info(security_coordinates, "hop")
+    assert hop["security_model_source"] is None
+    assert hop["security_model_link"] is None
 
 
 def test_pmc_security_info_generic_fallback(security_coordinates) -> None:
@@ -54,15 +61,18 @@ def test_pmc_security_info_generic_fallback(security_coordinates) -> None:
     info = pmc_security_info(security_coordinates, "hop")
     assert info["known"] is True
     assert info["security_contact"] == "security@apache.org"
-    assert info["threat_model"] is None
+    assert info["security_model_source"] is None
+    assert info["security_model_link"] is None
 
 
 def test_pmc_security_info_null_contact_falls_back(security_coordinates) -> None:
-    """A null contact resolves to the fallback; the threat model still surfaces."""
+    """A null contact resolves to the fallback; the model URLs still surface."""
     info = pmc_security_info(security_coordinates, "apisix")
+    page = "https://github.com/apache/apisix/blob/master/THREAT_MODEL.md"
     assert info["known"] is True
     assert info["security_contact"] == "security@apache.org"
-    assert info["threat_model"] == ("https://github.com/apache/apisix/blob/master/THREAT_MODEL.md")
+    assert info["security_model_source"] == page
+    assert info["security_model_link"] == page
 
 
 def test_pmc_security_info_missing_slug(security_coordinates) -> None:
@@ -72,7 +82,8 @@ def test_pmc_security_info_missing_slug(security_coordinates) -> None:
         "known": False,
         "name": None,
         "security_contact": "security@apache.org",
-        "threat_model": None,
+        "security_model_source": None,
+        "security_model_link": None,
         "advisory_link": None,
     }
 

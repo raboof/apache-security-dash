@@ -53,16 +53,29 @@ _TOKEN = re.compile(r"[a-z0-9][a-z0-9-]*")
 class Pmc:
     """A guessed PMC:
     its committee id,
-    the documented security-page name/link and contact/contributing links
+    the documented security-model URLs and contact/contributing links
     from project-coordinates.json,
     and the mail_list token from committee-info.
+
+    Two security-model URLs, because they serve different consumers:
+
+    * ``security_model_source`` — the machine-readable model (the raw
+      ``SECURITY.md``) when present, else the human page. Use this to *read*
+      the model (WebFetch, feeding an assessor).
+    * ``security_model_link`` — the human-readable security page when present,
+      else the raw source. Use this to *cite* the model in a message to a
+      person (the PMC-facing / reporter-facing email templates).
+
+    Each falls back to the other, so neither is ``None`` when the PMC has at
+    least one model URL on record.
 
     ``contact`` is the raw project-coordinates value (``None`` when the PMC has no entry).
     """
 
     id: str
     name: str | None
-    security_link: str | None
+    security_model_source: str | None
+    security_model_link: str | None
     contact: str | None
     contributing: str | None
     mail_list: str | None
@@ -164,7 +177,10 @@ def pmc_for(slug: str, committees: dict, coordinates: dict) -> Pmc:
     return Pmc(
         slug,
         entry.get("name"),
+        # source-first: read/fetch the model
         entry.get("security_model_source") or entry.get("security_model_link"),
+        # page-first: cite the model to a person
+        entry.get("security_model_link") or entry.get("security_model_source"),
         entry.get("contact"),
         entry.get("contributing"),
         mail_list(committees, slug),

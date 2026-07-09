@@ -97,8 +97,8 @@ COMMITTEE_INFO_SAMPLE = {
 # (some entries omit the field entirely) and must classify the same
 # way as "generic".
 SECURITY_COORDINATES_SAMPLE = {
-    # Has both model URLs: threat_model resolves to security_model_source
-    # (the raw SECURITY.md), NOT the human-readable security_model_link.
+    # Has both model URLs: `security_model_source` is the raw SECURITY.md (for
+    # reading), `security_model_link` the human page (for citing).
     "tomcat": {
         "name": "Apache Tomcat",
         "security_model_source": "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
@@ -111,7 +111,7 @@ SECURITY_COORDINATES_SAMPLE = {
         "security_model_link": None,
         "contact": "security@apache.org",
     },
-    # security_model_source absent: threat_model falls back to
+    # security_model_source absent: security_model_source falls back to
     # security_model_link.
     "apisix": {
         "name": "Apache APISIX",

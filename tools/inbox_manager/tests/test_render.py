@@ -49,8 +49,14 @@ MARKERS = (
 )
 
 
-def make_pmc(*, specialized=False, security_link="https://demo.apache.org/security"):
-    """A stub Pmc with just the attributes the renderer reads."""
+def make_pmc(
+    *, specialized=False, security_model_link="https://demo.apache.org/security"
+):
+    """A stub Pmc with just the attributes the renderer reads.
+
+    The renderer cites the human security page (``security_model_link``), not
+    the raw ``security_model_source`` that feeds the assessors.
+    """
     return SimpleNamespace(
         id="demo",
         name="Apache Demo",
@@ -58,7 +64,8 @@ def make_pmc(*, specialized=False, security_link="https://demo.apache.org/securi
         security_contact="security@demo.apache.org"
         if specialized
         else "security@apache.org",
-        security_link=security_link,
+        security_model_source="https://raw.githubusercontent.com/apache/demo/main/SECURITY.md",
+        security_model_link=security_model_link,
         contributing="https://demo.apache.org/contributing",
     )
 
@@ -131,7 +138,7 @@ def test_reject_drops_model_link_line_when_pmc_has_none():
     assert "security model" in with_link  # the [security model](<model link>) line
 
     without_link = email_utils.fill_reject_template(
-        make_pmc(security_link=None), make_message(), reason, TRIAGER
+        make_pmc(security_model_link=None), make_message(), reason, TRIAGER
     )
     assert reason in without_link  # the reason survives
     assert "See the [security model]" not in without_link  # the link line is gone

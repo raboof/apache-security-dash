@@ -88,13 +88,14 @@ def cmd_check_pmc_member(args: argparse.Namespace) -> int:
 
 
 def cmd_pmc_security_info(args: argparse.Namespace) -> int:
-    """Print a PMC's security coordinates: who to CC and the threat-model link.
+    """Print a PMC's security coordinates: who to CC and the security-model URLs.
 
     Reads apache/security-site's project-coordinates.json and reports, for one PMC slug:
     the ``security_contact`` to CC
     (the PMC's own ``security@<slug>.apache.org`` when registered,
-     else the foundation-wide ``security@apache.org`` fallback)
-    and the project's ``threat_model`` link.
+     else the foundation-wide ``security@apache.org`` fallback),
+    the ``security_model_source`` to read/WebFetch the model,
+    and the ``security_model_link`` human page to cite it to a person.
 
     ``--json`` emits the full record as one JSON object (for programmatic use, e.g. triage-assess);
     the default is a human-readable key/value block.
@@ -105,10 +106,11 @@ def cmd_pmc_security_info(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(info, ensure_ascii=False))
     else:
-        print(f"slug:             {info['slug']}")
-        print(f"name:             {info['name'] or '(unknown — not in coordinates.json)'}")
-        print(f"security_contact: {info['security_contact']}")
-        print(f"threat_model:     {info['threat_model'] or '(none on record)'}")
+        print(f"slug:                  {info['slug']}")
+        print(f"name:                  {info['name'] or '(unknown — not in coordinates.json)'}")
+        print(f"security_contact:      {info['security_contact']}")
+        print(f"security_model_source: {info['security_model_source'] or '(none on record)'}")
+        print(f"security_model_link:   {info['security_model_link'] or '(none on record)'}")
 
     return 0
 
@@ -126,10 +128,10 @@ def cmd_guess_pmc(args: argparse.Namespace) -> int:
         return 1
     print("PMC guess(es):")
     for pmc in candidates:
-        if pmc.security_link is None:
+        if pmc.security_model_source is None:
             print(f"  {pmc.id:24} (no security page on record)")
         else:
-            print(f"  {pmc.id:24} {pmc.security_link}")
+            print(f"  {pmc.id:24} {pmc.security_model_source}")
     return 0
 
 
