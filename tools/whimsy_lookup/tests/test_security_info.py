@@ -27,9 +27,26 @@ def test_pmc_security_info_own_contact(security_coordinates) -> None:
         "known": True,
         "name": "Apache Tomcat",
         "security_contact": "security@tomcat.apache.org",
-        "threat_model": "https://tomcat.apache.org/security.html",
+        # security_model_source wins over security_model_link.
+        "threat_model": "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
         "advisory_link": None,
     }
+
+
+def test_threat_model_prefers_source_falls_back_to_link(security_coordinates) -> None:
+    """threat_model is security_model_source, else security_model_link, else None."""
+    # tomcat has both -> the source (raw SECURITY.md) is preferred.
+    assert (
+        pmc_security_info(security_coordinates, "tomcat")["threat_model"]
+        == "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md"
+    )
+    # apisix has only security_model_link -> falls back to it.
+    assert (
+        pmc_security_info(security_coordinates, "apisix")["threat_model"]
+        == "https://github.com/apache/apisix/blob/master/THREAT_MODEL.md"
+    )
+    # hop has both fields null -> None.
+    assert pmc_security_info(security_coordinates, "hop")["threat_model"] is None
 
 
 def test_pmc_security_info_generic_fallback(security_coordinates) -> None:

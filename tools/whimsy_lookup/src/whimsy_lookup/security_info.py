@@ -48,8 +48,7 @@ def pmc_security_info(coordinates: dict, slug: str) -> dict:
       * ``security_contact``— the address to CC: the PMC's own
                               ``security@<pmc>.apache.org`` when registered,
                               else the foundation-wide ``security@apache.org``.
-      * ``threat_model``    — the project's security-model / advisories link
-                              (the ``link`` field), or ``None``.
+      * ``threat_model``    — the project's security-model link, or ``None``.
       * ``advisory_link``   — the ``advisory_link`` field, or ``None``.
     """
     entry = coordinates.get(slug) or {}
@@ -59,6 +58,8 @@ def pmc_security_info(coordinates: dict, slug: str) -> dict:
         "known": slug in coordinates,
         "name": entry.get("name") or None,
         "security_contact": contact or "security@apache.org",
-        "threat_model": entry.get("link") or None,
+        "threat_model": (
+            entry.get("security_model_source") or entry.get("security_model_link") or None
+        ),
         "advisory_link": entry.get("advisory_link") or None,
     }

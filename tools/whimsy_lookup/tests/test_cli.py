@@ -131,7 +131,9 @@ def test_pmc_security_info_own_contact(mock_urlopen, security_coordinates, capsy
     out = capsys.readouterr().out
     assert rc == 0
     assert "security_contact: security@tomcat.apache.org" in out
-    assert "threat_model:     https://tomcat.apache.org/security.html" in out
+    assert (
+        "threat_model:     https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md" in out
+    )
 
 
 def test_pmc_security_info_fallback_contact(mock_urlopen, security_coordinates, capsys) -> None:
@@ -163,7 +165,7 @@ def test_pmc_security_info_json(mock_urlopen, security_coordinates, capsys) -> N
     rec = _json.loads(out)
     assert rec["slug"] == "tomcat"
     assert rec["security_contact"] == "security@tomcat.apache.org"
-    assert rec["threat_model"] == "https://tomcat.apache.org/security.html"
+    assert rec["threat_model"] == "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md"
     assert "specialized" not in rec
     assert "alias_status" not in rec
 

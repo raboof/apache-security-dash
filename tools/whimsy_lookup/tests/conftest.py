@@ -97,19 +97,25 @@ COMMITTEE_INFO_SAMPLE = {
 # (some entries omit the field entirely) and must classify the same
 # way as "generic".
 SECURITY_COORDINATES_SAMPLE = {
+    # Has both model URLs: threat_model resolves to security_model_source
+    # (the raw SECURITY.md), NOT the human-readable security_model_link.
     "tomcat": {
         "name": "Apache Tomcat",
-        "link": "https://tomcat.apache.org/security.html",
+        "security_model_source": "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
+        "security_model_link": "https://tomcat.apache.org/security.html",
         "contact": "security@tomcat.apache.org",
     },
     "hop": {
         "name": "Apache Hop",
-        "link": None,
+        "security_model_source": None,
+        "security_model_link": None,
         "contact": "security@apache.org",
     },
+    # security_model_source absent: threat_model falls back to
+    # security_model_link.
     "apisix": {
         "name": "Apache APISIX",
-        "link": "https://github.com/apache/apisix/blob/master/THREAT_MODEL.md",
+        "security_model_link": "https://github.com/apache/apisix/blob/master/THREAT_MODEL.md",
         "contact": None,
     },
     # Mixed-case in the JSON (real entries are observed lowercase but
@@ -117,7 +123,8 @@ SECURITY_COORDINATES_SAMPLE = {
     # break detection).
     "kafka": {
         "name": "Apache Kafka",
-        "link": "https://kafka.apache.org/security",
+        "security_model_source": "https://raw.githubusercontent.com/apache/kafka/trunk/SECURITY.md",
+        "security_model_link": "https://kafka.apache.org/security",
         "contact": "Security@Kafka.Apache.Org",
     },
 }

@@ -41,10 +41,21 @@ KNOWN = {
 COORDINATES = {
     "tomcat": {
         "name": "Apache Tomcat",
-        "link": "https://tomcat.apache.org/security.html",
+        "security_model_source": "https://tomcat.apache.org/security.html",
         "contact": "security@tomcat.apache.org",
     },
-    "kafka": {"name": "Apache Kafka", "link": None, "contact": "security@apache.org"},
+    # only the human page present -> security_link falls back to it.
+    "hop": {
+        "name": "Apache Hop",
+        "security_model_link": "https://hop.apache.org/security",
+        "contact": "security@apache.org",
+    },
+    "kafka": {
+        "name": "Apache Kafka",
+        "security_model_source": None,
+        "security_model_link": None,
+        "contact": "security@apache.org",
+    },
     "ant": {"name": "Apache Ant"},
 }
 
@@ -192,7 +203,15 @@ def test_security_link_present():
     )
 
 
+def test_security_link_falls_back_to_link_page():
+    # security_model_source absent -> security_model_link is used.
+    assert security_link(COORDINATES, "hop") == (
+        "Apache Hop",
+        "https://hop.apache.org/security",
+    )
+
+
 def test_security_link_none_when_no_link():
-    assert security_link(COORDINATES, "kafka") is None  # link is None
-    assert security_link(COORDINATES, "ant") is None  # no link key
+    assert security_link(COORDINATES, "kafka") is None  # both model URLs None
+    assert security_link(COORDINATES, "ant") is None  # no model URL key
     assert security_link(COORDINATES, "missing") is None  # no entry
