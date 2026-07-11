@@ -41,10 +41,22 @@ KNOWN = {
 COORDINATES = {
     "tomcat": {
         "name": "Apache Tomcat",
-        "link": "https://tomcat.apache.org/security.html",
+        "security_model_source": "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
+        "security_model_link": "https://tomcat.apache.org/security.html",
         "contact": "security@tomcat.apache.org",
     },
-    "kafka": {"name": "Apache Kafka", "link": None, "contact": "security@apache.org"},
+    # only the human page present -> both Pmc fields resolve to it.
+    "hop": {
+        "name": "Apache Hop",
+        "security_model_link": "https://hop.apache.org/security",
+        "contact": "security@apache.org",
+    },
+    "kafka": {
+        "name": "Apache Kafka",
+        "security_model_source": None,
+        "security_model_link": None,
+        "contact": "security@apache.org",
+    },
     "ant": {"name": "Apache Ant"},
 }
 
@@ -120,7 +132,12 @@ def test_guess_resolves_full_pmc():
     (tomcat,) = guess_pmcs("To: security@tomcat.apache.org", KNOWN, COORDINATES)
     assert tomcat.id == "tomcat"
     assert tomcat.name == "Apache Tomcat"
-    assert tomcat.security_link == "https://tomcat.apache.org/security.html"
+    # source-first for reading the model, page-first for citing it to a person.
+    assert (
+        tomcat.security_model_source
+        == "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md"
+    )
+    assert tomcat.security_model_link == "https://tomcat.apache.org/security.html"
     assert tomcat.security_contact == "security@tomcat.apache.org"
     assert tomcat.mail_list == "tomcat"
     assert tomcat.specialized is True
@@ -178,7 +195,8 @@ def test_pmc_for_security_contact_resolves_fallback():
 def test_pmc_for_unknown_slug_is_bare():
     pmc = pmc_for("nosuch", KNOWN, COORDINATES)
     assert pmc.id == "nosuch"
-    assert pmc.name is None and pmc.security_link is None
+    assert pmc.name is None
+    assert pmc.security_model_source is None and pmc.security_model_link is None
     assert pmc.contact is None and pmc.contributing is None
     assert pmc.mail_list is None
     # the raw contact is None, but security_contact resolves to the fallback
@@ -186,13 +204,23 @@ def test_pmc_for_unknown_slug_is_bare():
 
 
 def test_security_link_present():
+    # security_link() is source-first (the raw model), mirroring
+    # Pmc.security_model_source.
     assert security_link(COORDINATES, "tomcat") == (
         "Apache Tomcat",
-        "https://tomcat.apache.org/security.html",
+        "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
+    )
+
+
+def test_security_link_falls_back_to_link_page():
+    # security_model_source absent -> security_model_link is used.
+    assert security_link(COORDINATES, "hop") == (
+        "Apache Hop",
+        "https://hop.apache.org/security",
     )
 
 
 def test_security_link_none_when_no_link():
-    assert security_link(COORDINATES, "kafka") is None  # link is None
-    assert security_link(COORDINATES, "ant") is None  # no link key
+    assert security_link(COORDINATES, "kafka") is None  # both model URLs None
+    assert security_link(COORDINATES, "ant") is None  # no model URL key
     assert security_link(COORDINATES, "missing") is None  # no entry

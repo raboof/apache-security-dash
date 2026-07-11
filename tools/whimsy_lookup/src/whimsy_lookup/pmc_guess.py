@@ -30,9 +30,10 @@ Both are validated against the authoritative committee-info slug set so a
 stray word that merely *looks* like a slug isn't reported. The result is a
 ranked list of candidates the operator reviews — never an automated action.
 
-The PMC security page link comes from
-``apache/security-site:scripts/project-coordinates.json`` (the ``link``
-field), the same source ``security_info`` reads — see ``fetch`` for why we
+The PMC security-model URL comes from
+``apache/security-site:scripts/project-coordinates.json`` (its
+``security_model_source`` field, falling back to ``security_model_link``),
+the same source ``security_info`` reads — see ``fetch`` for why we
 go through the CLI/helper rather than WebFetch on the raw JSON.
 """
 
@@ -52,16 +53,29 @@ _TOKEN = re.compile(r"[a-z0-9][a-z0-9-]*")
 class Pmc:
     """A guessed PMC:
     its committee id,
-    the documented security-page name/link and contact/contributing links
+    the documented security-model URLs and contact/contributing links
     from project-coordinates.json,
     and the mail_list token from committee-info.
+
+    Two security-model URLs, because they serve different consumers:
+
+    * ``security_model_source`` — the machine-readable model (the raw
+      ``SECURITY.md``) when present, else the human page. Use this to *read*
+      the model (WebFetch, feeding an assessor).
+    * ``security_model_link`` — the human-readable security page when present,
+      else the raw source. Use this to *cite* the model in a message to a
+      person (the PMC-facing / reporter-facing email templates).
+
+    Each falls back to the other, so neither is ``None`` when the PMC has at
+    least one model URL on record.
 
     ``contact`` is the raw project-coordinates value (``None`` when the PMC has no entry).
     """
 
     id: str
     name: str | None
-    security_link: str | None
+    security_model_source: str | None
+    security_model_link: str | None
     contact: str | None
     contributing: str | None
     mail_list: str | None
@@ -163,7 +177,10 @@ def pmc_for(slug: str, committees: dict, coordinates: dict) -> Pmc:
     return Pmc(
         slug,
         entry.get("name"),
-        entry.get("link"),
+        # source-first: read/fetch the model
+        entry.get("security_model_source") or entry.get("security_model_link"),
+        # page-first: cite the model to a person
+        entry.get("security_model_link") or entry.get("security_model_source"),
         entry.get("contact"),
         entry.get("contributing"),
         mail_list(committees, slug),
@@ -180,14 +197,16 @@ def mail_list(committees: dict, slug: str) -> str | None:
 def security_link(coordinates: dict, slug: str) -> tuple[str, str] | None:
     """``(display_name, security_page_url)`` for ``slug`` from coordinates.json.
 
-    Returns None if the slug has no coordinates entry or no ``link``. The
-    ``link`` is the project's documented security page / security model — the
-    page a triager wants when sizing up a report against a PMC.
+    Returns None if the slug has no coordinates entry or no security-model URL.
+    The URL is the project's documented security model
+    — the machine-readable ``security_model_source`` (e.g. the raw ``SECURITY.md``) when present,
+    else the human-readable ``security_model_link`` page
+    — what a triager wants when sizing up a report against a PMC.
     """
     entry = coordinates.get(slug)
     if not isinstance(entry, dict):
         return None
-    link = entry.get("link")
+    link = entry.get("security_model_source") or entry.get("security_model_link")
     if not link:
         return None
     return (entry.get("name") or slug, link)

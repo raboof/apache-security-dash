@@ -97,10 +97,12 @@ def print_pmc(pmc):
     if not pmc:
         print("PMC: (could not guess)")
         return
-    if pmc.security_link is None:
+    if pmc.security_model_source is None:
         print(f"PMC: {pmc.id} ({pmc.internal_security_contact})")
     else:
-        print(f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_link}")
+        print(
+            f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_model_source}"
+        )
 
 
 def read_key():

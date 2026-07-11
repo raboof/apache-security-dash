@@ -89,7 +89,7 @@ Before spawning accessors:
 
 - **PMC security coordinates** via the `whimsy-lookup pmc-security-info <slug>` tool:
   the `security_contact` (the PMC's own `security@<pmc>` when registered, else the foundation-wide `security@apache.org` fallback)
-  and the `threat_model` link.
+  and the project's security model as two URLs: `security_model_source` (the raw `SECURITY.md`) to read/WebFetch when verifying, and `security_model_link` (the human security page) to cite in a draft to the PMC or reporter.
   A PMC counts as *specialized* (runs its own security team) when its `security_contact` is its own address rather than the fallback.
 - **Project source** under `--workspace` (default `workspace`):
   the SKILL reads `<workspace>/<pmc>` to check the report against real code.

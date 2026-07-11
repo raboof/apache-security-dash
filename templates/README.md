@@ -44,8 +44,8 @@ render literally if something goes wrong; the renderer matches `\<marker>` and
 | `<PMC security address>` | receipt-specialized | the PMC's own `security@<pmc>.apache.org` | required (this template only) |
 | `<Reporter name>` | receipt, receipt-specialized, reject | the reporter's display name (from the live message) | required |
 | `<Triager full name>` | all | the sender / operator name | required |
-| `<link>` | forward, forward-duplicate, receipt, receipt-specialized | the project's threat-model page (the `pmc-security-info` `threat_model`) | line dropped |
-| `<model link>` | reject | the project's threat-model page (kept a distinct marker from `<link>`) | line dropped |
+| `<link>` | forward, forward-duplicate, receipt, receipt-specialized | the project's human security page (the PMC's `security_model_link`, not the raw `security_model_source` that feeds the assessors) | line dropped |
+| `<model link>` | reject | the project's human security page (the PMC's `security_model_link`; kept a distinct marker from `<link>`) | line dropped |
 | `<contributing link>` | reject | the project's contribution-guidelines page | line dropped |
 | `<dashboard link>` | forward, forward-duplicate | the per-PMC open-reports dashboard URL | line dropped |
 

@@ -130,8 +130,12 @@ def test_pmc_security_info_own_contact(mock_urlopen, security_coordinates, capsy
     rc = main(["pmc-security-info", "tomcat"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "security_contact: security@tomcat.apache.org" in out
-    assert "threat_model:     https://tomcat.apache.org/security.html" in out
+    assert "security_contact:      security@tomcat.apache.org" in out
+    assert (
+        "security_model_source: https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md"
+        in out
+    )
+    assert "security_model_link:   https://tomcat.apache.org/security.html" in out
 
 
 def test_pmc_security_info_fallback_contact(mock_urlopen, security_coordinates, capsys) -> None:
@@ -140,7 +144,7 @@ def test_pmc_security_info_fallback_contact(mock_urlopen, security_coordinates, 
     rc = main(["pmc-security-info", "hop"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "security_contact: security@apache.org" in out
+    assert "security_contact:      security@apache.org" in out
 
 
 def test_pmc_security_info_missing(mock_urlopen, security_coordinates, capsys) -> None:
@@ -149,8 +153,8 @@ def test_pmc_security_info_missing(mock_urlopen, security_coordinates, capsys) -
     rc = main(["pmc-security-info", "cassandra"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "name:             (unknown" in out
-    assert "security_contact: security@apache.org" in out
+    assert "name:                  (unknown" in out
+    assert "security_contact:      security@apache.org" in out
 
 
 def test_pmc_security_info_json(mock_urlopen, security_coordinates, capsys) -> None:
@@ -163,7 +167,11 @@ def test_pmc_security_info_json(mock_urlopen, security_coordinates, capsys) -> N
     rec = _json.loads(out)
     assert rec["slug"] == "tomcat"
     assert rec["security_contact"] == "security@tomcat.apache.org"
-    assert rec["threat_model"] == "https://tomcat.apache.org/security.html"
+    assert (
+        rec["security_model_source"]
+        == "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md"
+    )
+    assert rec["security_model_link"] == "https://tomcat.apache.org/security.html"
     assert "specialized" not in rec
     assert "alias_status" not in rec
 

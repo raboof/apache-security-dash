@@ -30,7 +30,7 @@ answers four structural questions deterministically:
 - `pmc-info <slug>` — chair + full roster of a PMC committee
 - `check-pmc-member <slug> <apache-id> [...]` — true/false per ID
 - `pmc-security-info <slug> [--json]` — a PMC's security coordinates:
-  the `security_contact` to Cc (its own `security@<slug>.apache.org` when registered, else `security@apache.org`) and the threat-model link
+  the `security_contact` to Cc (its own `security@<slug>.apache.org` when registered, else `security@apache.org`), the `security_model_source` (raw `SECURITY.md`, to read/WebFetch the model) and the `security_model_link` (human security page, to cite the model to a person)
 
 **Use this from SKILL prompts instead of WebFetch on the JSON URLs.**
 WebFetch on these endpoints is unreliable and should be treated as

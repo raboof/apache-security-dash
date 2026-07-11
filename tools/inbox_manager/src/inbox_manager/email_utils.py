@@ -306,9 +306,11 @@ def fill_markers(text, pmc, original, triager_name):
         values["dashboard link"] = f"https://dash.security.apache.org/project/{pmc.id}"
         if pmc.specialized:
             values["PMC security address"] = pmc.security_contact
-        if pmc.security_link:
-            values["link"] = pmc.security_link
-            values["model link"] = pmc.security_link
+        # Human-facing templates cite the readable security page, not the raw
+        # SECURITY.md source (which feeds the assessors instead).
+        if pmc.security_model_link:
+            values["link"] = pmc.security_model_link
+            values["model link"] = pmc.security_model_link
         if pmc.contributing:
             values["contributing link"] = pmc.contributing
     text = _apply(text, values)
