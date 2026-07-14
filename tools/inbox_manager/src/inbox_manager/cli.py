@@ -16,6 +16,7 @@
 # under the License.
 
 import email
+import json
 import re
 import smtplib
 import subprocess
@@ -26,6 +27,7 @@ from datetime import datetime
 from email.policy import default
 from email.utils import formataddr, parseaddr
 from os import getenv
+from urllib.request import urlopen
 
 from dotenv import load_dotenv
 from whimsy_lookup.fetch import (
@@ -415,6 +417,35 @@ def cve_title(original, cve_id):
     return None
 
 
+CVE_ANNOUNCEMENT_RE = re.compile(r"^(CVE-\d{4}-\d+):")
+
+
+def handle_cve_announcement(inbox, original, current_labels):
+    """True if this was a CVE announcement"""
+    m = CVE_ANNOUNCEMENT_RE.match(str(original["Subject"] or ""))
+    if not m:
+        return False
+    cve = m.group(1)
+    current_label = ""
+    for lbl in current_labels:
+        if cve in lbl:
+            current_label = lbl
+    json_url = f"https://cveawg.mitre.org/api/cve-id/{cve}"
+    j = json.loads(urlopen(json_url).read())
+    state = j.get("state")
+    print(f"CVE state for {cve} is {state}")
+    print(f"Review at https://cveprocess.apache.org/cve5/{cve}")
+    # TODO also find and show ponymail link
+    print(f"Action? [s]kip [m]ark '{current_label}' resolved")
+    choice = read_key().lower()
+    if choice in ("s", "\x03"):
+        print("not marked\n")
+    elif choice == "m":
+        inbox.rename_folder(current_label, f"zzz-resolved/{current_label}")
+        # TODO also remove from inbox
+    return True
+
+
 def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
     """Attach a reserved CVE to one of the PMC's existing report labels.
 
@@ -554,6 +585,11 @@ def handle_message(inbox, uid, committees, coordinates, index):
     if original["Cc"]:
         print(f"Cc: {original['Cc']}")
     print_pmc(pmc)
+    current_labels = gmail_labels(inbox, uid)
+
+    if handle_cve_announcement(inbox, original, current_labels):
+        return
+
     if bundle:
         if bundle.status == "drafted-forward":
             print("Suggested action: [a]ccept")
