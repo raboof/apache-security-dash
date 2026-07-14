@@ -554,6 +554,9 @@ def handle_message(inbox, uid, committees, coordinates, index):
     if original["Cc"]:
         print(f"Cc: {original['Cc']}")
     print_pmc(pmc)
+    current_labels = gmail_labels(inbox, uid)
+    print(f"Current labels: {current_labels}")
+
     if bundle:
         if bundle.status == "drafted-forward":
             print("Suggested action: [a]ccept")
