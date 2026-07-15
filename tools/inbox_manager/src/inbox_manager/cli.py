@@ -586,6 +586,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
         print(f"Cc: {original['Cc']}")
     print_pmc(pmc)
     current_labels = gmail_labels(inbox, uid)
+    print(f"Current labels: {current_labels}")
 
     if handle_cve_announcement(inbox, original, current_labels):
         return
