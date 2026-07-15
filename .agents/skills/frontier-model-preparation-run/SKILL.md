@@ -657,7 +657,7 @@ Do not chain into a SKILL unbidden.
 | Save a canned response | `frontier-model-preparation-update` (append-canned) |
 | Refresh the Status sheet | `frontier-model-preparation-update` (build-status-tab) |
 | Enroll scan in the tracker + draft PMC notification | `frontier-model-preparation-submit` |
-| Sanity-check ASF Tooling's report + forward verbatim to PMC | `frontier-model-preparation-forward` |
+| Forward the scan bundle + assessment (attachments) to PMC | `frontier-model-preparation-forward` |
 | Generate a status rollup | `frontier-model-preparation-status` |
 | Produce a fresh threat-model draft for a PMC | `threat-model-producer` |
 
