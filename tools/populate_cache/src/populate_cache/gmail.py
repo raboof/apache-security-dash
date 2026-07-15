@@ -38,6 +38,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 load_dotenv()
+load_dotenv(".claude-env")
 
 # This tool only reads the inbox (gmail.readonly scope), so its credentials are
 # named GMAIL_READONLY_* to make that explicit, and to keep them distinct from
