@@ -339,6 +339,23 @@ For each PMC row, compute the same pipeline state that `build-status-tab` does (
 the team's actual activity in that state is a pre-forward sanity check, not per-finding triage —
 see `frontier-model-preparation-forward`.)
 
+### Step 2.5 — Archive sweep (new ASF Tooling scans → assess → forward)
+
+ASF Tooling delivers each scan by committing it to the `apache/tooling-agents-private` archive under `scans/mythos/<project>/<scan-id>/`. This step detects **new** scans there and routes each to its next action — pre-forward assessment, then forward — so a freshly-landed scan surfaces in the action list without waiting on an email.
+
+Work against a **local clone at `~/code/tooling-agents-private`** (clone if absent; `git pull --ff-only` on a clean tree otherwise, to pick up the **latest** commits). Reaching the private repo needs the keychain — bypass the sandbox for the fetch, loud banner per the user's rule. (Record the clone path in the `secure-setup-local-paths` memory so later sweeps find it.)
+
+Enumerate every scan-id directory under `scans/mythos/*/`. For each, read its `metadata.yml` (`project` = PMC slug, `repo`, `scan_date`, `head_sha`), then classify:
+
+1. **No assessment** at `pre-forward-results/mythos/<project>/<scan-id>/` → bucket **`scan-needs-assessment`** → route to `asvs-scan-assess`. (Eligible only if the PMC's `Security model verified` is set; if not, it's blocked on model-verify — surface that instead of assessing.)
+2. **Assessment exists** → read its `metadata.yml` `sanity_check`:
+   - `RETURNED` → bucket **`scan-returned`** → escalate to ASF Tooling; do **not** forward a broken scan.
+   - `PASS` / `PASS-with-notes` → cross-reference the PMC's tracker row:
+     - `Forwarded scan to PMC` **blank** → bucket **`scan-needs-forward`** → route to `frontier-model-preparation-forward`.
+     - `Forwarded scan to PMC` **set** → already delivered; no action (confirm the scan-id is recorded in the row's `Notes` / ponymail cell).
+
+Write the enumeration to a file and post-process with `jq`/`awk` **from a file** (never inline — shell-safety note above). A scan-id whose `project` is not a `Scan Requested = Yes` PMC is surfaced as an anomaly, never silently dropped. This is the trigger path end-to-end: new scan → `scan-needs-assessment`; assessed PASS → `scan-needs-forward` on the next sweep.
+
 ### Step 3 — Open-PR + change sweep (state + attention triage)
 
 This pass must cover **every open PR/change the operator has authored**, not only the ones recorded on the tracker —
@@ -441,7 +458,9 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
 | `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X" (or to defer further). | Surface for operator decision. `frontier-model-preparation-submit` is operator-gated — never auto-fire on this state. |
 | `submitted-awaiting-asf-tooling` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
-| `results-back-awaiting-sanity-check` | A scan report has arrived from ASF Tooling but the team hasn't sanity-checked + archived + forwarded it yet. Detection signal: a scan bundle for the PMC in the `apache/tooling-agents-private` archive (or a legacy relay email with the PMC's results), plus the PMC sheet's `Date scan received` still blank. | Run `frontier-model-preparation-forward` (covers pre-forward sanity check, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
+| `scan-needs-assessment` | A scan bundle exists at `scans/mythos/<project>/<scan-id>/` in the archive but has **no** matching `pre-forward-results/mythos/<project>/<scan-id>/` assessment (detected in Step 2.5). The pre-forward assessment (sanity check + dispositions) hasn't been produced yet. | Run `asvs-scan-assess` (eligible only if the PMC's `Security model verified` is set; else surface as blocked-on-model-verify). |
+| `scan-needs-forward` | The scan has an assessment with `sanity_check: PASS` / `PASS-with-notes`, but the PMC row's `Forwarded scan to PMC` is blank (Step 2.5). Ready to deliver. | Run `frontier-model-preparation-forward` (attaches the scan `.zip` + assessment `.md`, drafts the email, records the tracker + ponymail permalink). |
+| `scan-returned` | The scan's assessment recorded `sanity_check: RETURNED` (a broken scan — wrong project / stale model / truncation / cross-PMC leak). | Escalate to ASF Tooling for a re-run; do **not** forward. |
 | `archived-not-forwarded` | An archive commit exists under `scans/<project>/<repo>/` for this PMC but `Forwarded scan to PMC` is still blank. Process bug (the email should have been drafted at the same time). Detection signal: `git log --grep="^\[scan\] <project>/"` returns a commit newer than the sheet's `Forwarded scan to PMC` date. | Surface for manual intervention; re-run `frontier-model-preparation-forward` from step 7 (draft email) using the existing archive entry. |
 | `forwarded-closed` | `Forwarded scan to PMC` set **and** the corresponding archive commit exists in `scans/`. | Done. Move to "Completed" section of report. |
 | `blocked-on-discoverability` | Some repos in `Repositories requested` lack `AGENTS.md`; PMC needs to fix or we PR. | Surface; await PMC decision on path. |
@@ -502,6 +521,20 @@ Output format:
   says "submit X" → then frontier-model-preparation-submit
   (enroll in the tracker: set Date scan requested +
   Repositories submitted, + PMC notification email).
+
+### scan-needs-assessment (N)   [new scan in the archive — from Step 2.5]
+- <PMC> — scan <scan-id> (repo <repo>, <scan_date>); no
+  assessment yet. Next: asvs-scan-assess (if Security model
+  verified; else blocked-on-model-verify).
+
+### scan-needs-forward (N)   [assessed PASS, ready to deliver — from Step 2.5]
+- <PMC> — scan <scan-id>; assessment PASS (<VALID> VALID /
+  <hardening> hardening). Next: frontier-model-preparation-forward
+  (attach scan .zip + assessment .md, draft to designated recipients).
+
+### scan-returned (N)   [broken scan — from Step 2.5]
+- <PMC> — scan <scan-id>; assessment verdict RETURNED (<reason>).
+  Next: escalate to ASF Tooling for a re-run; do not forward.
 
 ### blocked-on-discoverability (N)
 - <PMC> — <N> of <M> repos have AGENTS.md; awaiting PMC
@@ -657,7 +690,7 @@ Do not chain into a SKILL unbidden.
 | Save a canned response | `frontier-model-preparation-update` (append-canned) |
 | Refresh the Status sheet | `frontier-model-preparation-update` (build-status-tab) |
 | Enroll scan in the tracker + draft PMC notification | `frontier-model-preparation-submit` |
-| Sanity-check ASF Tooling's report + forward verbatim to PMC | `frontier-model-preparation-forward` |
+| Forward the scan bundle + assessment (attachments) to PMC | `frontier-model-preparation-forward` |
 | Generate a status rollup | `frontier-model-preparation-status` |
 | Produce a fresh threat-model draft for a PMC | `threat-model-producer` |
 

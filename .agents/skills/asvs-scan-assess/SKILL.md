@@ -6,9 +6,9 @@ description: >-
   read the project's own threat model (the `metadata.yml` `threat_model` URL plus any delegated/umbrella model it points to),
   run the pre-forward sanity check, and triage every finding in `issues.md` against that model's disposition framework (e.g. the threat-model-producer §13 table: VALID / VALID-HARDENING / OUT-OF-MODEL / BY-DESIGN / KNOWN-NON-FINDING / MODEL-GAP).
   The assessment is written back into the private repo under `pre-forward-results/`, mirroring the exact `scans/` path structure — one assessment directory per scan, keyed by the same scan-id.
-  This is an INTERNAL working artifact for the team — it is NOT the PMC forward, it does NOT replace the verbatim-forward policy (frontier-model-preparation-forward still forwards ASF Tooling's findings unedited), and it is NEVER published to a gist or any public surface (pre-disclosure candidates stay in the private repo).
+  The assessment is the team's own read; as of 2026-07-15 it is ATTACHED to the PMC forward (frontier-model-preparation-forward) as an ADVISORY guide — the dispositions help the PMC triage quickly, but the PMC still owns the authoritative per-finding call. It is NEVER published to a gist or any public surface (pre-disclosure candidates stay in the private repo and go only to the PMC's @apache.org recipients via the forward).
   Assess ONLY scans whose project has completed threat-model preparation — i.e. the Mythos tracker's `Security model verified` is set for that PMC (per frontier-model-preparation-model-verify); skip projects whose model is merely nominated or pending verification.
-  Output is a set of files committed to `apache/tooling-agents-private` after explicit human approval — never auto-committed, never sent anywhere.
+  Output is a set of files committed to `apache/tooling-agents-private` after explicit human approval — never auto-committed; shared with the PMC only as the forward's attachment, never to a public surface.
   Use whenever Jarek says "assess the <project> scan", "do the pre-forward assessment for <project>", "triage the <project> scan against its threat model", "assess the pending scans", or "store the assessment in pre-forward-results".
 ---
 
@@ -16,14 +16,14 @@ description: >-
 
 The **pre-forward assessment** step of the Glasswing pipeline — a deeper, written-down companion to the sanity check that `frontier-model-preparation-forward` does inline.
 
-Where `frontier-model-preparation-forward` forwards ASF Tooling's findings to the PMC **verbatim** (no per-finding triage on the PMC's behalf — that policy is unchanged), this SKILL produces the team's **own internal read** of a scan against the project's threat model and files it in the private archive. The assessment helps the team:
+`frontier-model-preparation-forward` delivers the scan bundle **and this assessment** to the PMC as attachments — the assessment as an **advisory** guide (the PMC still owns the authoritative per-finding call; the team does not decide findings on the PMC's behalf). This SKILL produces the team's read of a scan against the project's threat model and files it in the private archive. The assessment helps the team:
 
 - catch catastrophic generation errors before a forward (the sanity check, written down rather than ad-hoc);
-- understand where each finding likely lands against the project's model (so the team can answer a PMC's later question, or feed ASF Tooling's next-run suppression list);
+- give the PMC a starting-point read of where each finding likely lands against their model (attached to the forward), and let the team answer a PMC's later question or feed ASF Tooling's next-run suppression list;
 - surface **model gaps** — findings whose disposition hinges on a trust boundary the project's model doesn't yet state — which become threat-model-producer follow-ups;
 - keep an auditable per-scan record of "what we thought before forwarding," diffable against the next scan of the same repo.
 
-**This is an internal artifact, not a PMC-facing one.** The PMC still owns the authoritative per-finding triage against their own model (memory: PMC scan-report framing). The assessment never gets pasted into the forwarding email as a disposition appendix, and it never leaves the private repo.
+**The assessment is advisory, and the PMC still owns the authoritative per-finding triage against their own model** (memory: PMC scan-report framing). As of 2026-07-15 it is **attached to the forward** as a guide (not pasted inline in the email body — it rides as `assessment.md`); its dispositions help the PMC decide quickly but do not decide for them. It never goes to a gist or any public surface — only to the PMC's `@apache.org` recipients via the forward, and otherwise stays in the private repo.
 
 ## When to invoke
 
@@ -40,7 +40,7 @@ For "assess the pending scans", the eligible set is the **intersection** of (sca
 
 ## Hard rules (do not skip)
 
-1. **This is internal, not the forward.** The assessment never replaces or modifies the verbatim-forward policy. `frontier-model-preparation-forward` still sends ASF Tooling's findings unedited; this SKILL's dispositions are the team's private working note, not labels applied to the PMC's copy. Do not let an assessment leak into a PMC-facing email as a per-finding triage appendix.
+1. **Advisory, not a ruling.** The assessment is attached to the PMC forward (as of 2026-07-15) as an advisory guide; the PMC still owns the authoritative per-finding call, and the team does not decide findings on the PMC's behalf. The dispositions guide the PMC to triage quickly — they are not the team's verdict imposed on the PMC's copy. Deliver the assessment as the attached `assessment.md` (via `frontier-model-preparation-forward`); do not inline the dispositions into the email body.
 
 2. **Eligible projects only — completed threat-model preparation.** Assess a scan **only if** the project's threat-model preparation is complete: the Mythos tracker's `Security model verified` cell for that PMC is set (the Model Status tab shows the model verified), per `frontier-model-preparation-model-verify`. A scan whose `metadata.yml` carries a `threat_model` URL is **not** sufficient — the URL existing only means the scanner found *a* doc; the gate is that the team has *verified* the model (discoverability + completeness against the threat-model-producer rubric). If the model is merely nominated or pending verification, **do not assess** — surface the gap and route to `frontier-model-preparation-model-verify`. Disposition without a verified contract is opinion, not triage.
 

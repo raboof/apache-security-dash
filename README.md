@@ -49,6 +49,10 @@ tools/                              — small Python projects with pyproject.tom
 ├── model_pr/                       — opens AGENTS.md→SECURITY.md→model
 │                                      discoverability PRs on PMC repos;
 │                                      see tools/model_pr/README.md
+├── forward_draft/                  — OAuth Gmail draft with attachments
+│                                      (scan .zip + assessment .md) for the
+│                                      scan-forward step; no HTML/tracking;
+│                                      see tools/forward_draft/README.md
 └── whimsy_lookup/                  — Deterministic Whimsy/LDAP lookups for
                                       Gate 2 + Gate 3 identity checks;
                                       see tools/whimsy_lookup/README.md
@@ -77,7 +81,8 @@ The repo distinguishes between two scales of Python helper:
   helper has been promoted to `tools/`.
 - **Standalone projects under `tools/`** (`tools/jira_writer/`,
   `tools/whimsy_lookup/`, `tools/form_submitter/`,
-  `tools/sheets_writer/`, `tools/model_pr/`) — proper Python projects with `pyproject.toml`,
+  `tools/sheets_writer/`, `tools/model_pr/`,
+  `tools/forward_draft/`) — proper Python projects with `pyproject.toml`,
   unit tests, CI. Right for helpers that **multiple** SKILLs need (or
   expect to soon), have non-trivial logic worth test-covering, or
   interact with a system where regressions are expensive (e.g. JIRA
@@ -479,14 +484,17 @@ to `frontier-model-preparation-update` to set
 ### When a scan report comes back from ASF Tooling
 
 → Use [`frontier-model-preparation-forward`](.github/skills/frontier-model-preparation-forward/SKILL.md).
-Runs a **pre-forward sanity check** on the ASF Tooling report —
-catching catastrophic generation errors only (wrong project,
-wrong/stale model, truncated output, missing repos,
-cross-PMC leakage, mangled formatting). If the check passes,
-forwards the scan's findings **verbatim** to the PMC's listed
-scan-result recipients; if it fails, surfaces to the operator
-to escalate back to ASF Tooling before the PMC ever sees the
-broken report. The team explicitly does **not** do per-finding
+Retrieves the scan bundle and its pre-forward assessment from
+the `apache/tooling-agents-private` archive and forwards them to
+the PMC's designated `@apache.org` recipients as **attachments** —
+the scan `.zip` (findings unedited) plus the assessment `.md`
+(dispositions, **advisory** — the PMC still owns the call). It
+forwards only when the assessment's sanity verdict is PASS; a
+`RETURNED` verdict escalates back to ASF Tooling before the PMC
+ever sees a broken report. The draft is built via the
+[`forward_draft`](tools/forward_draft/) OAuth helper (plain-text
+body + attachments, no tracking) and left UNSENT. The team
+explicitly does **not** do per-finding
 triage — no classification against the threat model, no
 filtering, no annotation. The PMC owns the read against their
 own model.
