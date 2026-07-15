@@ -44,7 +44,7 @@ uv run --project tools/forward_draft forward-draft create \
     --subject "[GLASSWING] ASVS Tooling security scan results Apache APISIX apisix-ingress-controller/main 2026-07-15" \
     --body-file /tmp/claude/forward-body.txt \
     --attach /tmp/claude/apisix-ingress-controller-2026-07-15-611487c.zip \
-    --attach /tmp/claude/apisix-ingress-controller-2026-07-15-611487c-assessment.md
+    --attach /tmp/claude/pre-forward-assessment-apisix-ingress-controller-2026-07-15-611487c.md
 ```
 
 `--dry-run` builds and validates the message (attachments exist, sizes,
