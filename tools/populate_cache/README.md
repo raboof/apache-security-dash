@@ -52,7 +52,7 @@ message's Gmail labels: the tool records what is there at download, the SKILL
 extends the same field as it labels, and a later tool reconciles `tags` against
 Gmail. A pre-existing label is a routing hint, not a sign the report was already
 handled: a message still in the inbox is untriaged (a handled one would have
-been archived, see *Reconcile* below). Gmail auto-applies some labels by subject
+been archived, see *Delete handled reports* below). Gmail auto-applies some labels by subject
 keyword, e.g. a follow-up that names a public CVE number gets that CVE's
 existing label; the SKILL uses such a label to relate the report to a prior one,
 then triages it normally. A report with no labels yet has `tags: null`. Reading
@@ -62,19 +62,19 @@ The tool is **read-only** on the mailbox: it authenticates with the
 `gmail.readonly` scope, which cannot modify, move or delete mail. It only writes
 under `report-cache/`.
 
-## Reconcile (handled reports)
+## Delete handled reports
 
 A report stays in the Gmail inbox until the team archives it, so a cached bundle
 whose message is **no longer in the inbox** has been handled. On a full inbox
-scan the tool moves such bundles into `report-cache/handled/`, keeping their
-`<date>/<pmc>/<leaf>` path. They stay inside the cache, so the Message-ID dedup
-still sees them and they are never re-downloaded; the active queue just stops
-showing what is already done.
+scan the tool deletes such bundles (and their index entry, plus the now-empty
+`<pmc>` directory) rather than keeping a tombstone: the message is gone from the
+inbox, so a later scan will not re-download it.
 
-Reconciliation only runs on a full scan (default `--label INBOX`, no `--query`),
-where the scanned set is the complete current inbox; a narrowed scan would
-wrongly "handle" everything outside its window, so it is skipped there. Pass
-`--no-reconcile` to turn it off entirely, or `--dry-run` to see what would move.
+The delete sweep only runs on a full scan (default `--label INBOX`, no
+`--query`), where the scanned set is the complete current inbox; a narrowed scan
+would wrongly "handle" everything outside its window, so it is skipped there.
+Pass `--no-delete` to turn it off entirely, or `--dry-run` to see what would be
+deleted.
 
 ## Thread heads and skips
 
@@ -143,7 +143,7 @@ uv run --project tools/populate_cache populate-cache --query newer_than:30d  # n
 | `--query` | none | Gmail search to narrow the scan (e.g. `newer_than:30d`) |
 | `--limit` | `0` (no limit) | max new reports to download |
 | `--dry-run` | off | select + report, write nothing |
-| `--no-reconcile` | off | skip moving handled (left-the-inbox) bundles to `handled/` |
+| `--no-delete` | off | skip deleting handled (left-the-inbox) bundles |
 
 ## Development
 
