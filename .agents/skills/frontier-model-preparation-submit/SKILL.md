@@ -1,7 +1,7 @@
 ---
 name: frontier-model-preparation-submit
 description: >-
-  Submit a PMC's scan request to the vendor's project-enrollment Google Form (one form submission per repo),
+  Submit a PMC's scan request to ASF Tooling's project-enrollment Google Form (one form submission per repo),
   then draft the PMC notification email.
   The form replaces the old "Email 1 to Mirko" flow as of 2026-05-19.
   Repos are ordered by OSSF Criticality Score (highest first);
@@ -15,12 +15,12 @@ description: >-
 
 # frontier-model-preparation-submit SKILL
 
-The handoff step between the ASF Security team's pre-flight work (verifying the model) and the scan vendor actually running the scan.
-This SKILL submits the scan request via the vendor's project-enrollment Google Form (one form submission per repo) and drafts the PMC notification email.
+The handoff step between the ASF Security team's pre-flight work (verifying the model) and ASF Tooling actually running the scan.
+This SKILL submits the scan request via ASF Tooling's project-enrollment Google Form (one form submission per repo) and drafts the PMC notification email.
 
 The submission is a **form-then-email flow**:
 
-1. **Form submissions — one per repo, vendor-side.** The helper fills and submits the vendor's project-enrollment Google Form once per repo in the PMC's confirmed scope.
+1. **Form submissions — one per repo, ASF-Tooling-side.** The helper fills and submits ASF Tooling's project-enrollment Google Form once per repo in the PMC's confirmed scope.
    Repos are ordered by OSSF Criticality Score, highest first;
    the top-ranked submission ("the headline form") carries the maintainer roster + the OSS-expedite addresses (with one-line "for whom" explanation) and has the "I'm interested in Claude Max 20x for my Open Source work" checkbox ticked.
    Subsequent submissions for the same PMC are slimmer —
@@ -30,7 +30,7 @@ The submission is a **form-then-email flow**:
    Body says the scan has been submitted, lists the repos, summarises what happens next, and acknowledges the expedite ask if one was relayed in the headline form.
 
 The form-based submission replaced the prior "Email 1 to mirko@alpha-omega.dev" flow on 2026-05-19 —
-the vendor now collects scan-request intake via the Google Form rather than via free-form email.
+ASF Tooling now collects scan-request intake via the Google Form rather than via free-form email.
 The PMC-notification email shape is unchanged from the prior flow except for wording updates that reflect the new submission channel.
 
 ## When to invoke
@@ -186,11 +186,11 @@ Before running the form-submission gate:
    `Submission notes (operator-supplied):` header. Each
    line is indented two spaces. The Submission notes
    column is the operator's free-text channel for per-PMC
-   quirks that the vendor's scan team should see — e.g.
+   quirks that the ASF Tooling scan team should see — e.g.
    "scan main + 2.x branches of log4j2", "PMC asked us
    to leave repo X out of this batch despite it being in
    scope", "model URL points at a draft pending merge in
-   PR #N". Vendor-facing only — do NOT put internal-process
+   PR #N". ASF-Tooling-facing only — do NOT put internal-process
    overrides here (e.g. don't write the scan-result
    delivery destination; that's an ASF-internal
    forwarding detail and the Security team handles it
@@ -198,8 +198,8 @@ Before running the form-submission gate:
    contents verbatim without parsing tags.>
    ```
 
-   **Why no "Scan-result recipients" block?** The form is the vendor-facing intake;
-   the scan vendor sends results back to the submitter (the ASF Security team),
+   **Why no "Scan-result recipients" block?** The form is the ASF-Tooling-facing intake;
+   ASF Tooling sends results back to the submitter (the ASF Security team),
    and the team forwards manually to the PMC's named contacts via `frontier-model-preparation-forward`.
    Binding the downstream forwarding destination into the form submission makes it brittle to PMC-contact changes after the scan was queued.
    The form should describe what is to be scanned and against what threat model;
@@ -228,7 +228,7 @@ Before running the form-submission gate:
    The Google account the submitter signs in with during `form-submitter setup` can be any account they prefer —
    the form will collect that login-anchored email separately from the "Your Email Address" field.
    The two don't need to match;
-   the form-collected one is the vendor's audit trail,
+   the form-collected one is ASF Tooling's audit trail,
    and the "Your Email Address" field is what they'll respond to.
 
 8. **Expedite request handling.** The form has an "I'm interested in Claude Max 20x for my Open Source work" checkbox.
@@ -263,12 +263,11 @@ Before running the form-submission gate:
     This SKILL does not write to the spreadsheet directly;
     it produces the two values (`Date scan requested`, `Repositories submitted`) and hands off to the update SKILL.
 
-11. **Vendor opacity on PMC-facing email.** The PMC notification email follows `frontier-model-preparation-response`'s hard rule 5 (Vendor opacity):
-    the body must not name the scan vendor in any form (no "Mirko", no "Alpha-Omega", no naming the vendor company or specific staff).
-    Canonical PMC-facing wordings: "our scan vendor partner" / "the vendor's enrollment form" / "the scan pipeline".
-    The Frontier Model Preparation *program name* is fine (it's already in the `[GLASSWING]` subject line);
-    Anthropic + Apache Magpie + Claude OSS are fine to name.
-    What's redacted is **who runs the pipeline downstream of the Security team**.
+11. **Program-cost confidentiality on PMC-facing email.** The PMC notification email follows `frontier-model-preparation-response`'s hard rule 5 (Program-cost confidentiality):
+    the body must not disclose the program's cost mechanics (the $1M credit value, per-MTok credit pricing, or seat/provisioning mechanics).
+    ASF Tooling (the runner), the Frontier Model Preparation *program name* (already in the `[GLASSWING]` subject line),
+    Mythos / Mythos-5, Anthropic, Apache Magpie, and Claude OSS are all fine to name.
+    What stays out is only the program's cost mechanics.
 
 ## Inputs the SKILL needs before submitting
 
@@ -279,9 +278,9 @@ Before running the form-submission gate:
 | Repos to submit | The subset of `Repositories requested` that passed pre-flight, ordered by OSSF Criticality Score (descending) — read from the Repositories sheet. If pre-flight passed for *all* repos in `Repositories requested`, the submit list equals that cell. If pre-flight passed for only some, submit only those — the rest land in a later batch once their discoverability is fixed. **Always show the per-repo verdict explicitly when drafting** so the operator can see why some repos are in this batch and others aren't. |
 | Threat-model URL | From the PMC sheet's `Security Model` column + the verify SKILL's notes; if the model is on a project site, that URL |
 | Primary + backup PMC contacts | From the PMC sheet's `Contact Person` + `Backup contact` cells (already `@apache.org` per scan-request verification) — for the PMC notification email AND for the Additional Information block on the headline form |
-| Scan-result recipients | Tracked separately for the PMC notification email's CC (derived from `Contact Person` + `Backup contact` cells + the original `[GLASSWING]` request body's "send results to" list). **Not used in the form's Additional Information** — the form is the vendor-facing intake and shouldn't pin the downstream forwarding destination; the Security team handles forwarding manually when results land. |
+| Scan-result recipients | Tracked separately for the PMC notification email's CC (derived from `Contact Person` + `Backup contact` cells + the original `[GLASSWING]` request body's "send results to" list). **Not used in the form's Additional Information** — the form is the ASF-Tooling-facing intake and shouldn't pin the downstream forwarding destination; the Security team handles forwarding manually when results land. |
 | Expedite addresses | From the PMC sheet's `Expedite Claude OSS Requests` column. May be empty or `none` — in which case the headline form's checkbox stays unchecked and the expedite-block in Additional Information is omitted. |
-| Submission notes (optional) | From the PMC sheet's `Submission notes` column. Free-text operator notes rendered verbatim in the headline form's Additional Information under a `Submission notes (operator-supplied):` section. Vendor-facing only: use for per-PMC quirks the vendor's scan team should know (branch-level scope, repo opt-outs, model-URL caveats). Do NOT put internal-process overrides here (no scan-result delivery destinations — that's an ASF-internal forwarding detail). Empty cell = no section appended. |
+| Submission notes (optional) | From the PMC sheet's `Submission notes` column. Free-text operator notes rendered verbatim in the headline form's Additional Information under a `Submission notes (operator-supplied):` section. ASF-Tooling-facing only: use for per-PMC quirks the ASF Tooling scan team should know (branch-level scope, repo opt-outs, model-URL caveats). Do NOT put internal-process overrides here (no scan-result delivery destinations — that's an ASF-internal forwarding detail). Empty cell = no section appended. |
 | `Security model verified` date | From the PMC sheet — confirms pre-flight gate |
 | Submitter identity | From `~/.config/asf-security/glasswing/submitter.json` (Name, @apache.org email, GitHub profile URL). One-time setup. |
 
@@ -289,11 +288,10 @@ If any of these are missing or ambiguous, surface as a question to the user befo
 
 ## PMC notification email template
 
-**Vendor opacity reminder** — this email is PMC-facing.
-Per `frontier-model-preparation-response` hard rule 5, the body must not name the scan vendor.
-Canonical phrasing is "our scan vendor partner" / "the vendor's enrollment form" / "the scan pipeline".
-Anthropic + Apache Magpie + Claude OSS are fine to mention by name in the expedite block of the body;
-vendor identity is what's redacted.
+**Program-cost confidentiality reminder** — this email is PMC-facing.
+Per `frontier-model-preparation-response` hard rule 5, the body must not disclose the program's cost mechanics (the $1M credit value, per-MTok credit pricing, or seat/provisioning mechanics).
+ASF Tooling (the runner), the Frontier Model Preparation program name, Mythos / Mythos-5, Anthropic, Apache Magpie, and Claude OSS are all fine to mention by name in the body;
+only the cost mechanics are what stays out.
 
 **To**: primary PMC contact (the `Contact Person` cell's `@apache.org` address)
 
@@ -304,7 +302,7 @@ reuse that thread's subject with a `Re:` prefix (e.g. `Re: [GLASSWING] <PMC name
 Do **not** invent a new subject:
 a distinct subject is what used to split the notification off into its own Gmail thread.
 Keeping the original subject (and replying in-thread per step 12) keeps the whole engagement — scoping → submission → eventual forward — on a single thread.
-(Vendor opacity still applies to the subject: never name the vendor in it.)
+(Program-cost confidentiality still applies to the subject: keep the program's cost mechanics out of it.)
 
 **Body**:
 
@@ -312,7 +310,7 @@ Keeping the original subject (and replying in-thread per step 12) keeps the whol
 Hi <Primary contact first name>,
 
 The scan request for Apache <PMC name> has been submitted
-through the vendor's enrollment form by the ASF Security
+through ASF Tooling's enrollment form by the ASF Security
 team. Queue position is TBD — usually a few days to a
 couple of weeks, with no commitment.
 
@@ -327,27 +325,22 @@ by OSSF Criticality Score):
 The headline submission for Apache <PMC name> includes
 the full maintainer roster and scan-result recipient
 list in its Additional Information field, so the
-vendor's scan team has full context. Subsequent
+ASF Tooling scan team has full context. Subsequent
 submissions are slimmer and point back to the headline
 submission for that context.
 
 A program-shape note for context.
 
-In parallel with the vendor-relay path above, the ASF Security,
-ASF Infrastructure, and ASF Tooling teams are jointly pursuing
-direct-access scanning of ASF projects without the third-party
-vendor relay. This is what we're currently working on at the
-ASF in parallel. Both paths feed the same internal queue; we
-work whichever lands fastest for any given PMC, to make the
-best use of the opportunities each party involved has made
-available. From the PMC's perspective the process is identical
-either way: pre-flight gate, scan, sanity-check, forward
-results to your named recipients. We mention it so you have
-the full picture of how the program is wired — nothing changes
-about what shows up in your inbox.
+The scans are run internally by the ASF — the ASF Security,
+ASF Infrastructure, and ASF Tooling teams jointly (ASF Tooling),
+on the Mythos-5 model. From the PMC's perspective the process
+is pre-flight gate, scan, sanity-check, and forward of results
+to your named recipients. We mention it so you have the full
+picture of how the program is wired — nothing changes about
+what shows up in your inbox.
 
 You don't need to do anything until the results arrive
-— we'll sanity-check the vendor's report and forward it
+— we'll sanity-check ASF Tooling's report and forward it
 verbatim to your named scan-result recipients on a fresh
 thread.
 
@@ -366,7 +359,7 @@ that the request refers specifically to the following
 
 That should be the expedite signal the program team
 needs. No promises from us or from Anthropic — the
-vendor's team makes the call. The named PMC members
+ASF Tooling scan team makes the call. The named PMC members
 should already have registered at
 https://claude.com/contact-sales/claude-for-oss with
 their @apache.org address (which is the prerequisite
@@ -410,7 +403,7 @@ Best,
    - the original `[GLASSWING]` thread (for the scan-result recipient list — used in the PMC notification CC AND in the headline form's Additional Information);
    - the `PR/Issues` cell (for any discoverability PR URL to reference in submission notes);
    - the `Expedite Claude OSS Requests` cell (parse newline-separated `@apache.org` addresses; empty cell or `none` = no expedite block and unchecked OSS checkbox on the headline form);
-   - the `Submission notes` cell (free-text vendor-facing notes; rendered verbatim in the headline form's Additional Information).
+   - the `Submission notes` cell (free-text ASF-Tooling-facing notes; rendered verbatim in the headline form's Additional Information).
 
 5. **Look up the per-PMC `security@<pmc>` alias** at <https://security.apache.org/projects/> (or the source-of-truth JSON at <https://github.com/apache/security-site/blob/main/scripts/project-coordinates.json>).
    If the alias exists, add it to the PMC notification email's CC list.
@@ -506,7 +499,7 @@ it returns the values for `frontier-model-preparation-update` to apply.
 - **One PMC per submission run.** Don't batch multiple PMCs into a single form-submission run.
   Each PMC has its own ordering, its own headline form, its own expedite ask.
   Run them sequentially; one PMC submission run produces one PMC notification email.
-- **No marketing.** The audience is the vendor's program staff (form Additional Information) + Apache PMC members (notification email);
+- **No marketing.** The audience is the ASF Tooling scan team (form Additional Information) + Apache PMC members (notification email);
   neither needs "cutting-edge" or "next-generation" framing.
 - **Be specific about per-repo discoverability.** If a repo's SECURITY.md is only present via a pending PR, leave the "valid security.txt or SECURITY.md" checkbox unchecked for that form and note it in the Additional Information ("AGENTS.md+SECURITY.md is pending in apache/<repo>#NN, expected to merge before the scan agent runs").
   Don't tick a checkbox the form's assertion contradicts.
@@ -532,26 +525,25 @@ it returns the values for `frontier-model-preparation-update` to apply.
 - Putting the maintainer roster + OSS expedite block on every form.
   The headline form (highest Criticality Score) carries that;
   subsequent forms point back to it.
-  Repeating the roster on every form is verbose and means the vendor's team has to dedupe.
-- Naming the scan vendor in the PMC notification email body (per hard rule 11).
-  The form is internal vendor-side;
-  the email is PMC-side;
-  the names of vendor staff or company go on the form's submissions, never in the email.
+  Repeating the roster on every form is verbose and means the ASF Tooling scan team has to dedupe.
+- Disclosing the program's cost mechanics — the $1M credit value, per-MTok credit pricing, or seat/provisioning details — in the PMC notification email body (per hard rule 11).
+  ASF Tooling (the runner), the program name, Mythos / Mythos-5, and Anthropic are all fine to name;
+  only the cost mechanics stay out of the PMC-facing email.
 
 ## Provenance
 
-This SKILL captures the handoff step between the ASF Security team's pre-flight (which lives in `frontier-model-preparation-model-verify`) and the scan vendor actually running the scan.
+This SKILL captures the handoff step between the ASF Security team's pre-flight (which lives in `frontier-model-preparation-model-verify`) and ASF Tooling actually running the scan.
 The 2026-05-19 form-based submission flow replaces the earlier `mirko@alpha-omega.dev`-by-email flow (which itself was the 2026-05-17 evolution of an even earlier auto-fire-on-pre-flight-pass shape).
-The vendor's project-enrollment Google Form is now the canonical submission channel.
+ASF Tooling's project-enrollment Google Form is now the canonical submission channel.
 
 Reasons for the form transition:
 
-- The vendor needs structured per-repo intake;
+- ASF Tooling needs structured per-repo intake;
   the free-form email Mirko was triaging by hand didn't scale as more PMCs opted in.
-- The form bundles the Claude-for-OSS expedite ask ("I'm interested in Claude Max 20x for my Open Source work" checkbox) directly into the intake flow so the vendor's program team doesn't have to forward expedite asks as a separate step.
-- Per-repo submissions match the vendor's actual scan cardinality —
+- The form bundles the Claude-for-OSS expedite ask ("I'm interested in Claude Max 20x for my Open Source work" checkbox) directly into the intake flow so the ASF Tooling scan team doesn't have to forward expedite asks as a separate step.
+- Per-repo submissions match ASF Tooling's actual scan cardinality —
   each scan is per-repo, so each enrollment should be too.
 
-The PMC notification email shape is unchanged from the prior flow except for wording updates that reflect the new submission channel (the vendor's enrollment form replaces the email to vendor staff).
+The PMC notification email shape is unchanged from the prior flow except for wording updates that reflect the new submission channel (ASF Tooling's enrollment form replaces the email to ASF Tooling staff).
 The operator-gated trigger and the `pre-flight-passed-awaiting-operator-decision` pipeline state both stay;
 submission still requires explicit operator say-so, not just pre-flight pass.

@@ -145,15 +145,15 @@ that's a prerequisite handled by `frontier-model-preparation-response` (the disc
    Public artefacts are: PR titles, PR bodies, commit messages on PMC repos, branch names,
    and anything else that lands on `github.com/apache/<repo>` or any other public-visible surface.
    The PMC-facing rationale for the change in a public PR is "improving the project's security model discoverability for automated scanners" —
-   the specific scan program / vendor / model identity stays off-record there.
+   the specific scan program / model identity stays off-record there.
    The name *is* fine in email replies to the `[GLASSWING]` thread,
    because those go to `private@<pmc>.apache.org` and `security@apache.org` — both private lists.
    It's also fine inside this repo (`apache/security`) and in user-scope memory,
    because those surfaces are already inside the Security team's trust boundary.
 
    Why:
-   the program / vendor identity is information the Security team controls disclosure of.
-   Putting it on public issue trackers or in commit messages forecloses choices later (rebranding, switching vendor, running multiple scans in parallel) and gives hostile researchers a single string to grep for.
+   the program identity is information the Security team controls disclosure of.
+   Putting it on public issue trackers or in commit messages forecloses choices later (rebranding, running multiple scans in parallel) and gives hostile researchers a single string to grep for.
    Neutral phrasing — "an automated agentic security scan being piloted by the ASF Security team" — is precise enough for the maintainer to act on the PR without naming the program.
 
 9. **Always use `gh pr create --web` for the final PR submit step.**
@@ -275,7 +275,7 @@ Every other failure mode produces a proposal that the PMC decides what to do wit
 
 4. **Summarize the assessment**, per-repo.
    Be explicit in the summary about *which repos were checked* —
-   the user (and later, the scan vendor) needs to know that "the Logging Services model is good" actually means "we verified all 4 listed repos: logging-log4j2 (PASS/PASS), logging-log4net (FAIL/N/A), …".
+   the user (and later, ASF Tooling) needs to know that "the Logging Services model is good" actually means "we verified all 4 listed repos: logging-log4j2 (PASS/PASS), logging-log4net (FAIL/N/A), …".
    Don't elide which repos in the cell got which verdict;
    the cell is the authoritative scope.
 
@@ -719,7 +719,7 @@ Surface the model-verified handoff offer:
 **Do not** offer to invoke `frontier-model-preparation-submit` here.
 Pre-flight pass is not a trigger for submission anymore —
 the next step is `frontier-model-preparation-response`'s pre-flight-pass template (OSS-expedite pitch + ready-to-scan notification), sent to the PMC.
-Submission to the vendor (via the form flow) only fires after the PMC has replied with their expedite-account list (or `none`) **and** the operator has explicitly said "submit X".
+Submission to ASF Tooling (via the form flow) only fires after the PMC has replied with their expedite-account list (or `none`) **and** the operator has explicitly said "submit X".
 See `frontier-model-preparation-run`'s `pre-flight-passed-pitch-not-sent` and `pmc-pitch-replied-awaiting-operator-decision` pipeline states for the gating logic.
 
 ### B. PR opened (discoverability fix) but pre-flight not yet complete

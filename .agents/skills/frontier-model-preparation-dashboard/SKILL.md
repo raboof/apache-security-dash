@@ -7,7 +7,7 @@ description: >-
   and its URL is kept in the operator's config (`~/.config/asf-security/glasswing/dashboard_gist.json`).
   Invoke when asked to "refresh the dashboard", "update the program totals", or after any change that moves the tracker (a submit, a forward, a model verification).
   Only aggregate counts go to the gist —
-  never PMC names, individual data, or the vendor identity.
+  never PMC names, individual data, or the program's cost mechanics.
 ---
 
 # Frontier Model Preparation dashboard SKILL
@@ -49,9 +49,9 @@ point them at the existing gist URL in the config file instead.
    The renderer (`tools/sheets_writer/.../dashboard.py`) is built to emit only aggregates;
    do not extend it to include per-PMC rows.
 
-2. **No vendor identity.** Same vendor-opacity rule as the other Frontier Model Preparation SKILLs —
-   the gist must not name the scan vendor.
-   The Frontier Model Preparation program name is fine; the vendor running the pipeline is not.
+2. **No program-cost mechanics.** Same program-cost-confidentiality rule as the other Frontier Model Preparation SKILLs —
+   the gist must not include the program's cost mechanics (the $1M credit value, per-MTok pricing, or seat/provisioning details).
+   The Frontier Model Preparation program name, Mythos / Mythos-5, and ASF Tooling (the runner) are all fine to name; only the cost mechanics stay out.
 
 3. **Private (secret) gist, single instance.** The gist is created with `public: false`.
    There is exactly one dashboard gist;

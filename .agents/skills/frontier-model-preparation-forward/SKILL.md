@@ -1,16 +1,16 @@
 ---
 name: frontier-model-preparation-forward
 description: >-
-  Process a scan report received from Mirko Svilus / Alpha-Omega and forward it to the appropriate PMC after a Security-team pre-forward sanity check.
+  Process a scan report produced by ASF Tooling (landing in the tooling-agents-private archive; legacy external-relay email as back-compat) and forward it to the appropriate PMC after a Security-team pre-forward sanity check.
   Identifies which PMC the scan belongs to,
   sanity-checks the report for catastrophic generation errors (wrong project, wrong/stale model, truncated output, accidentally-mixed PMCs, mangled formatting),
   archives the raw scan into the team's private `scans/` tree,
-  and drafts a forwarding email to the PMC's listed scan-result recipients with the vendor's findings forwarded verbatim.
+  and drafts a forwarding email to the PMC's listed scan-result recipients with ASF Tooling's findings forwarded verbatim.
   The team does NOT do per-finding triage —
   that's the PMC's job against their own threat model.
   Output is a Gmail draft for human review — never sends directly.
   After send, hand off to frontier-model-preparation-update to set `Date scan received` and `Forwarded scan to PMC` on the PMC's row.
-  Use whenever an email from `@alpha-omega.dev` arrives with a scan report,
+  Use whenever an ASF Tooling scan lands in the `apache/tooling-agents-private` archive (or a legacy scan-report email arrives),
   or whenever Jarek says "process the X scan results", "forward the X report", or "the X scan is back".
 ---
 
@@ -21,18 +21,18 @@ Where `submit` sends a request *to* Mirko and waits,
 this SKILL handles the report coming *back*: identify the PMC,
 do a **pre-forward sanity check** on the report,
 archive the raw scan into the team's private `scans/` tree,
-and forward the vendor's report to the PMC's named recipients.
+and forward ASF Tooling's report to the PMC's named recipients.
 
 The Security team's role is **gatekeeping for catastrophic generation errors** —
 wrong project, wrong/stale model, truncated output, accidentally-mixed PMCs, mangled formatting.
-The PMC gets the vendor's findings unedited;
+The PMC gets ASF Tooling's findings unedited;
 per-finding triage is the PMC's job against their own threat model.
 The goal is to spend a few minutes of a Security-team member's time so the PMC isn't asked to read a clearly broken report —
 not to second-guess individual findings.
 
 ## When to invoke
 
-- An email arrives from `mirko@alpha-omega.dev` or `@alpha-omega.dev` with a scan report attached, inline, or linked.
+- An ASF Tooling scan lands in the `apache/tooling-agents-private` archive (the primary path), **or** a legacy external-relay email arrives with a scan report attached, inline, or linked.
 - Jarek says "process the <PMC> scan results", "the <PMC> scan is back, let's forward it", "sanity-check the <PMC> scan", or anything similarly explicit.
 - The Mythos tracker shows a PMC with `Date scan requested` filled but `Date scan received` blank,
   and a Mirko reply has landed in Gmail.
@@ -49,12 +49,12 @@ Skip when:
    If anything looks broken, surface to the user before drafting;
    typically that means going back to Mirko with the issue rather than forwarding a known-broken report.
 
-2. **Forward the vendor's findings verbatim — no per-finding triage.** The PMC owns the read against their own threat model.
+2. **Forward ASF Tooling's findings verbatim — no per-finding triage.** The PMC owns the read against their own threat model.
    The Security team does **not** classify findings, drop findings, filter findings, suppress findings, or annotate findings with model citations on the PMC's behalf.
    The team's role is the sanity check in rule 1 and nothing further on the substance of the findings.
    If a finding looks weak, misguided, or out of scope to the team — that's the PMC's call to make, not ours.
 
-3. **When uncertain whether something is a generation error or a real finding, forward as-is.** Sanity-check bar is "the report is recognisably the vendor's actual output for this project at this model", not "the findings look correct to the team".
+3. **When uncertain whether something is a generation error or a real finding, forward as-is.** Sanity-check bar is "the report is recognisably ASF Tooling's actual output for this project at this model", not "the findings look correct to the team".
    If a finding looks odd but the report otherwise passes the checklist, forward —
    the PMC's reviewer decides.
 
@@ -79,7 +79,7 @@ Skip when:
 
    **Why**: scan reports contain pre-disclosure vulnerability candidates.
    The `@apache.org` rooting is the cheapest verification that the recipient is still an ASF member with the right to see them.
-   The vendor (Alpha-Omega) also expects ASF-anchored recipient addresses as the trust boundary.
+   ASF Tooling also expects ASF-anchored recipient addresses as the trust boundary.
    A PMC member who wants results to land in their personal inbox can configure their `@apache.org` address to forward there —
    that's the standard Apache committer pattern and it keeps the boundary on our side.
 
@@ -108,8 +108,8 @@ Skip when:
 
    This SKILL does not write to the spreadsheet directly.
 
-8. **Surface sanity-check observations explicitly when present.** If the sanity check turned up anything worth the PMC's awareness (e.g. "vendor's metadata cites a stale model commit; current model body is unchanged",
-   "one of the three submitted repos is missing from the report — asked the vendor to re-run for it"),
+8. **Surface sanity-check observations explicitly when present.** If the sanity check turned up anything worth the PMC's awareness (e.g. "ASF Tooling's metadata cites a stale model commit; current model body is unchanged",
+   "one of the three submitted repos is missing from the report — asked ASF Tooling to re-run for it"),
    include a short `Sanity-check observations` block in the forwarding email.
    If the check passed cleanly with nothing to note, omit the block —
    don't pad with "everything looked fine".
@@ -118,37 +118,32 @@ Skip when:
    The archive commit happens **before** the Gmail draft is created so the forwarding email can cite the canonical filename.
    A scan that has been forwarded without an archive entry is a process bug.
 
-10. **Vendor opacity in the PMC-facing forwarding email.** This email is PMC-facing;
-    per `frontier-model-preparation-response` hard rule 5, the body must not name the scan vendor (no "Mirko", no "Alpha-Omega", no "the Frontier Model Preparation pipeline" used as vendor synonym, no `mirko@alpha-omega.dev`).
-    The existing template uses generic "vendor" and "scan pipeline" phrasing throughout —
-    keep it that way.
-    The Frontier Model Preparation **program name** is fine ("The Frontier Model Preparation scan for Apache X is back" is what the template opens with —
-    that's the program name in the subject line, not vendor identity).
-    Anthropic / Apache Magpie / Claude OSS are fine to mention by name;
-    vendor identity is what's redacted.
-    Internal SKILL doc sections (the "Why" rationales, the procedure steps) can name Mirko / Alpha-Omega freely —
-    those are internal context for the agent, not PMC-visible.
+10. **Program-cost confidentiality in the PMC-facing forwarding email.** This email is PMC-facing;
+    per `frontier-model-preparation-response` hard rule 5, the body must not disclose the program's cost mechanics (the $1M credit value, the per-MTok credit pricing, the seat/provisioning mechanics).
+    ASF Tooling (the internal ASF team that runs the scans), the Frontier Model Preparation **program name**, Mythos / Mythos 5, Anthropic, Apache Magpie, and Claude OSS are all fine to mention by name
+    ("The Frontier Model Preparation scan for Apache X is back" is what the template opens with — fine).
+    The credit / cost mechanics are what's redacted.
 
 ## Sanity-check checklist
 
-Before forwarding, scan the vendor's output for catastrophic generation errors:
+Before forwarding, scan ASF Tooling's output for catastrophic generation errors:
 
 | Check | What "fail" looks like |
 | --- | --- |
 | **Project identity** | The report's project / repo identifiers match what was submitted. Catches obvious cases like a scan accidentally run against `apache/foo` when we submitted `apache/bar`, or report metadata naming a different PMC. |
-| **Model identity** | The threat model the vendor cites in metadata matches the model URL recorded for the PMC, at a recent enough commit. Catches "vendor ran against a stale or wrong model" cases. |
-| **Repo coverage** | Every repo the team submitted appears somewhere in the report. A scan that silently dropped one of N submitted repos is a generation error worth surfacing back to the vendor. |
+| **Model identity** | The threat model ASF Tooling cites in metadata matches the model URL recorded for the PMC, at a recent enough commit. Catches "ASF Tooling ran against a stale or wrong model" cases. |
+| **Repo coverage** | Every repo the team submitted appears somewhere in the report. A scan that silently dropped one of N submitted repos is a generation error worth surfacing back to ASF Tooling. |
 | **Truncation** | The report doesn't end mid-finding / mid-section / mid-line. Mirko's output is typically a single markdown document; if the last finding's body is cut off mid-sentence, that's a truncation. |
 | **Cross-PMC leakage** | No findings or text from a different PMC's scan accidentally ended up in this report. Rare but high-blast-radius if it slips through. |
 | **Formatting integrity** | Markdown actually renders; no half-escaped JSON blobs in the body; no obviously broken tables; no missing headings that would render as plain text. |
-| **Plausibility** | Sanity-check that the finding count and topic distribution look reasonable for the project (e.g. a scan of a logging library returning 100 findings about cryptography is a signal the report may have been misrouted). Not a triage step — just a "does this look like the vendor actually ran on the right thing" check. |
+| **Plausibility** | Sanity-check that the finding count and topic distribution look reasonable for the project (e.g. a scan of a logging library returning 100 findings about cryptography is a signal the report may have been misrouted). Not a triage step — just a "does this look like ASF Tooling actually ran on the right thing" check. |
 
 If any check fails: **stop**, surface to the user before drafting the forward.
 Typically the resolution is asking Mirko to re-run or re-send, not forwarding a known-broken report to the PMC.
 
 If every check passes: the report is forwarded **verbatim** to the PMC.
 The team does not add finding-by-finding annotations, classifications, or filter decisions.
-Anything worth flagging from the sanity check itself (e.g. "vendor metadata cites a stale model commit; model body unchanged") goes into the `Sanity-check observations` block in the forwarding email.
+Anything worth flagging from the sanity check itself (e.g. "ASF Tooling metadata cites a stale model commit; model body unchanged") goes into the `Sanity-check observations` block in the forwarding email.
 
 **This is not per-finding triage.** Do not classify findings against the threat model, drop findings as "out of scope", suppress findings as "known non-findings", or annotate findings with model citations.
 The PMC owns that read.
@@ -159,7 +154,7 @@ The PMC owns that read.
 | --- | --- |
 | PMC name and slug | From Mirko's email subject (`[GLASSWING] results for <PMC>` or similar), or the user supplies it |
 | Scan report content | Attachment(s) or inline content of Mirko's email |
-| PMC threat model URL | From the PMC sheet's `Security Model` column. Used only for the **model identity** sanity check (does the vendor's metadata cite this URL?) and as the URL the forward references — not for per-finding filtering. |
+| PMC threat model URL | From the PMC sheet's `Security Model` column. Used only for the **model identity** sanity check (does ASF Tooling's metadata cite this URL?) and as the URL the forward references — not for per-finding filtering. |
 | Submitted repos list | From the PMC sheet's `Repositories submitted` cell (filled when `frontier-model-preparation-submit` ran). Used for the **repo coverage** sanity check. |
 | Scan-result recipient list | From the original `[GLASSWING]` request thread (or the PMC sheet's `Notes` if recorded there) |
 | Primary + backup PMC contacts | From the PMC sheet |
@@ -183,7 +178,7 @@ refuse and surface the gap.
 
    Refuse if any pre-condition is wrong.
 
-3. **Note the threat model URL.** Used for the **model identity** sanity check (does the vendor's metadata cite this URL, at a recent enough commit?) and as the URL the forwarding email references.
+3. **Note the threat model URL.** Used for the **model identity** sanity check (does ASF Tooling's metadata cite this URL, at a recent enough commit?) and as the URL the forwarding email references.
    Do **not** read the model to triage findings —
    the team's job is sanity check, not classification.
 
@@ -193,7 +188,7 @@ refuse and surface the gap.
 
    ```
    Project identity: PASS
-   Model identity: PASS-with-note: vendor cites model
+   Model identity: PASS-with-note: ASF Tooling cites model
      commit abc123; current HEAD is def456, model body
      unchanged (verified by diff).
    Repo coverage: PASS — all 3 submitted repos present.
@@ -207,7 +202,7 @@ refuse and surface the gap.
    On any `FAIL`: stop, surface to user, escalate to Mirko before continuing.
    Do not draft the forward.
 
-5. **Take the vendor's findings verbatim.** No classification, no filtering, no per-finding annotation.
+5. **Take ASF Tooling's findings verbatim.** No classification, no filtering, no per-finding annotation.
    The forwarded-findings list is just Mirko's findings in the order Mirko provided.
 
 6. **Archive the scan into the `scans/` tree** — per the [`scans/README.md`](../../../scans/README.md) spec.
@@ -248,7 +243,7 @@ refuse and surface the gap.
       ---
       ```
 
-      followed by the vendor's findings **verbatim** (one finding per `## ` heading, with whatever file/lines / property / reproducer / severity hint the vendor included — not re-formatted by the team).
+      followed by ASF Tooling's findings **verbatim** (one finding per `## ` heading, with whatever file/lines / property / reproducer / severity hint ASF Tooling included — not re-formatted by the team).
 
    4. **Write the `.json` sidecar** with the same filename prefix and `.json` extension —
       Mirko's raw report verbatim, so the archive is auditable later.
@@ -256,7 +251,7 @@ refuse and surface the gap.
 
    5. **Write the `.notes.md` sidecar** with the sanity-check log from step 4 (the per-check PASS/PASS-with-note/FAIL lines,
       plus any free-form observation worth recording —
-      e.g. "asked Mirko to re-run because the lucene-core repo was missing" or "current PMC model URL has moved since vendor ran; updated the canonical archive file with the live URL").
+      e.g. "asked ASF Tooling to re-run because the lucene-core repo was missing" or "current PMC model URL has moved since ASF Tooling ran; updated the canonical archive file with the live URL").
       Same filename prefix, `.notes.md` extension.
       This is the audit record of *what we sanity-checked*, not a per-finding decision log.
 
@@ -315,12 +310,12 @@ refuse and surface the gap.
 Hi <primary contact first name (and any others)>,
 
 The Frontier Model Preparation scan for Apache <PMC name> is back. Sanity
-check passed; the vendor's findings are forwarded verbatim
+check passed; ASF Tooling's findings are forwarded verbatim
 below for your triage against the project's threat model
 at <model URL>.
 
 Canonical scan reference(s) (cite these in your tracker —
-each archives the raw vendor output + our sanity-check notes
+each archives the raw ASF Tooling output + our sanity-check notes
 against apache/<repo> at the listed commit):
 
   - <project>-<repo>-<YYYY-MM-DD>-<short-sha>
@@ -347,7 +342,7 @@ Threat model the scan was run against:
 this block; otherwise omit entirely. Do not pad with
 "everything looked fine".>
 Sanity-check observations:
-  - <one-line bullet per observation — e.g. "vendor cites
+  - <one-line bullet per observation — e.g. "ASF Tooling cites
     threat-model commit abc123; current HEAD is def456,
     model body unchanged" or "the apache/lucene-solr repo
     in scope returned zero findings, flagging in case
@@ -355,10 +350,10 @@ Sanity-check observations:
 
 === FINDINGS ===
 
-[Vendor's findings, forwarded verbatim, in the order the
-vendor provided. Each finding's heading, file/line refs,
+[ASF Tooling's findings, forwarded verbatim, in the order
+ASF Tooling provided. Each finding's heading, file/line refs,
 property cited, severity hint, reproducer sketch — all left
-as the vendor wrote them. The Security team does not
+as ASF Tooling wrote them. The Security team does not
 re-format, re-classify, or add notes inside individual
 findings.]
 
@@ -369,7 +364,7 @@ findings.]
 If any findings fall clearly outside your threat model
 (§3 out-of-scope, §11a known non-findings, §9 disclaimed
 properties), a one-line reply back to security@apache.org
-helps us pass that back to the vendor for the next scan's
+helps us pass that back to ASF Tooling for the next scan's
 suppression list. The disposition call is yours.
 
 Best,
@@ -388,7 +383,7 @@ a 5-finding scan with all 5 forwarded is still short.
   Keep the forward email short:
   state the result (sanity check passed / observations), the archive references, the findings, and the disposition ask.
   Cut process preambles.
-- **Preserve the vendor's output verbatim.** Don't reformat findings, don't merge them, don't re-order them, don't rename their IDs.
+- **Preserve ASF Tooling's output verbatim.** Don't reformat findings, don't merge them, don't re-order them, don't rename their IDs.
   The PMC's triagers will quote findings back by ID;
   the IDs and shape need to match what's in the archived raw report.
 - **Don't editorialize on severity, scope, or validity.** These are the PMC's calls.
@@ -410,8 +405,8 @@ a 5-finding scan with all 5 forwarded is still short.
   None of that.
   The PMC owns the read against their own model;
   the team's role is the sanity check.
-- Re-formatting or condensing the vendor's findings to make the email shorter.
-  The PMC needs the full vendor text; if it's long, it's long.
+- Re-formatting or condensing ASF Tooling's findings to make the email shorter.
+  The PMC needs the full ASF Tooling text; if it's long, it's long.
 - Sending the forward back to Mirko.
   Mirko doesn't need the PMC-facing email;
   if the Security team has follow-up for Mirko, that's a separate reply on Mirko's thread.
@@ -428,5 +423,5 @@ That scope was narrowed:
 the team's role on results is now a **pre-forward sanity check only** —
 catch catastrophic generation errors so the PMC isn't asked to read a clearly broken report.
 Per-finding triage stays with the PMC against their own model.
-The shift keeps the Security team out of the position of editorialising the vendor's output,
+The shift keeps the Security team out of the position of editorialising ASF Tooling's output,
 and keeps the PMC's relationship with the report direct rather than mediated.

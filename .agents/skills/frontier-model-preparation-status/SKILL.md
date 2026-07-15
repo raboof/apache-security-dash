@@ -79,7 +79,7 @@ The workbook has up to five sheets:
    | `PMC Slug` | Short identifier used as the join key on the repos sheet, e.g. `logging`. |
    | `Scan Requested` | `Yes` if the PMC has formally opted in via the `[GLASSWING]` request flow; blank otherwise. |
    | `Repositories requested` | The repos the PMC asked for / confirmed as in-scope for the scan — what they *want* scanned. One URL per line (newline-separated). Populated by `frontier-model-preparation-response` gate 4 after the PMC confirms scope. Empty when scope hasn't been confirmed yet. This is the *input* scope; model-verify reads it. |
-   | `Repositories submitted` | The repos actually submitted to the scan vendor — typically the subset of `Repositories requested` that passed pre-flight discoverability + completeness. Written by `frontier-model-preparation-update` after the human sends the PMC notification email from `frontier-model-preparation-submit` (which submits one form per repo via the vendor's project-enrollment Google Form, ordered by OSSF Criticality Score). May be smaller than `Repositories requested` when some repos couldn't be verified before the first submit (their AGENTS.md / SECURITY.md was missing and the fix is still in flight); those land in a later batch. |
+   | `Repositories submitted` | The repos actually submitted to ASF Tooling — typically the subset of `Repositories requested` that passed pre-flight discoverability + completeness. Written by `frontier-model-preparation-update` after the human sends the PMC notification email from `frontier-model-preparation-submit` (which submits one form per repo via ASF Tooling's project-enrollment Google Form, ordered by OSSF Criticality Score). May be smaller than `Repositories requested` when some repos couldn't be verified before the first submit (their AGENTS.md / SECURITY.md was missing and the fix is still in flight); those land in a later batch. |
    | `Request date` | Date the PMC's `[GLASSWING]` request arrived at `security@apache.org`. `YYYY-MM-DD`. Blank if not yet requested. |
    | `Contact Person` | Primary PMC contact — name + `@apache.org` address. |
    | `Backup contact` | Backup PMC contact, same shape. |
@@ -90,18 +90,18 @@ The workbook has up to five sheets:
    | `Forwarded scan to PMC` | Date (or `Yes`) marking when the Security team forwarded the scan output to the PMC's listed recipients. Blank if not yet forwarded. |
    | `Notes` | Free-text. |
    | `Initial Model assessment` | Free-text snapshot of the pre-flight findings for this PMC — per-repo discoverability status, model completeness verdict, open questions. Set by `frontier-model-preparation-model-verify`. |
-   | `Expedite Claude OSS Requests` | Newline-separated `@apache.org` addresses the PMC has nominated for an Anthropic Claude-for-Open-Source subscription expedite request, relayed via our vendor relationship. Populated by `frontier-model-preparation-update apply` after the PMC replies to the pre-flight-pass OSS-tooling offer sent by `frontier-model-preparation-response`. **Prerequisite**: each address must have already registered at https://claude.com/contact-sales/claude-for-oss before the PMC confirms it for the expedite ask — we don't write addresses that haven't registered yet because the expedite would be a no-op. The literal string `none` means the PMC explicitly opted out (deliberate-and-recorded rather than blank-and-unclear). Empty = the offer hasn't been sent yet, or the PMC hasn't replied to it. Added 2026-05-17. |
+   | `Expedite Claude OSS Requests` | Newline-separated `@apache.org` addresses the PMC has nominated for an Anthropic Claude-for-Open-Source subscription expedite request, relayed via the ASF Tooling relationship. Populated by `frontier-model-preparation-update apply` after the PMC replies to the pre-flight-pass OSS-tooling offer sent by `frontier-model-preparation-response`. **Prerequisite**: each address must have already registered at https://claude.com/contact-sales/claude-for-oss before the PMC confirms it for the expedite ask — we don't write addresses that haven't registered yet because the expedite would be a no-op. The literal string `none` means the PMC explicitly opted out (deliberate-and-recorded rather than blank-and-unclear). Empty = the offer hasn't been sent yet, or the PMC hasn't replied to it. Added 2026-05-17. |
    | `Claude OSS Subscriptions Submitted` | Newline-separated `@apache.org` addresses for which Anthropic has actually confirmed/granted the Claude-for-Open-Source subscription (typically via reply to the expedite-ask thread). Populated by `frontier-model-preparation-update apply` (append-mode — preserve existing rows) as confirmations come back. Distinct from `Expedite Claude OSS Requests` (which tracks who the PMC asked us to expedite *for*); this column tracks the actually-granted outcomes. Added 2026-05-17. |
    | `PR/Issues` | URLs of PRs the Security team has opened on the PMC's repos (AGENTS.md / SECURITY.md / model-additions PRs), one per line. Multiple PRs for the same PMC (e.g. discoverability fixes across several repos) are kept as separate lines — `frontier-model-preparation-response` and `frontier-model-preparation-model-verify` **append** rather than overwrite. Free-text annotations on the same line (`(discoverability PR)`, `+ Email reply 2026-05-14`) are allowed and ignored by parsers that only care about the PR URLs. `build-status-tab` parses every PR URL out of this cell and queries `gh pr view` to count open vs merged for the Status tab. |
    | `PMC thread (ponymail)` | **Direct** lists-apache.org thread permalink (`https://lists.apache.org/thread/<tid>`) to the PMC-side correspondence — the original `[GLASSWING]` request + all replies between Security team and the PMC. Resolved by `frontier-model-preparation-run` via ponymail search on `private@<pmc>.apache.org` filtered by `subject:GLASSWING`. Requires `mcp__ponymail__login` to have been run first (private lists need auth). Left blank when ponymail-auth isn't set up — never populated with a non-direct fallback URL, since those would mislead readers expecting a single click into the thread. |
-   | `Mirko thread (ponymail)` | Direct lists-apache.org thread permalink to the vendor correspondence thread (historically the Mirko/Alpha-Omega scan-submission email + scan-results delivery). **For submissions made after 2026-05-19 this cell stays blank by design** — `frontier-model-preparation-submit` now submits scan requests via the vendor's project-enrollment Google Form rather than by email, so there is no public-list thread to permalink to. The vendor-side audit trail lives in the form-response confirmations captured by the `form-submitter` CLI (in `tools/form_submitter/`) and in any subsequent inbound replies the vendor sends about results (which still use email and go through `frontier-model-preparation-forward`). The column is preserved for backward-compatibility with pre-2026-05-19 submissions but is no longer maintained going forward. |
+   | `Mirko thread (ponymail)` | Direct lists-apache.org thread permalink to the scan-correspondence thread (historically the legacy external-relay scan-submission email + scan-results delivery). **For submissions made after 2026-05-19 this cell stays blank by design** — `frontier-model-preparation-submit` now submits scan requests via ASF Tooling's project-enrollment Google Form rather than by email, so there is no public-list thread to permalink to. The audit trail lives in the form-response confirmations captured by the `form-submitter` CLI (in `tools/form_submitter/`) and in any subsequent inbound replies about results (which still use email and go through `frontier-model-preparation-forward`). The column is preserved for backward-compatibility with pre-2026-05-19 submissions but is no longer maintained going forward. |
 
    The four date-tracking columns
    (`Request date`, `Date scan requested`, `Date scan received`, `Forwarded scan to PMC`)
    and the `Security model verified` marker were added by Jarek by hand after the workbook was first generated —
    they split the original single-date model into four observable legs
    (request received → submitted to Frontier Model Preparation → results back → results forwarded to PMC),
-   so the team can see queue / vendor / forwarding lag separately.
+   so the team can see queue / ASF Tooling / forwarding lag separately.
    If they're absent in an older snapshot, the skill should gracefully degrade:
    skip the turnaround-leg computation and surface a one-line note that the columns are missing rather than failing.
 
@@ -184,15 +184,15 @@ The `Status` column on the in-flight table comes from the following state machin
 | State | Condition | Color |
 | --- | --- | --- |
 | Pre-flight | Scan requested, model not yet verified | light red |
-| Ready | `Security model verified` set, not yet submitted to vendor | yellow |
+| Ready | `Security model verified` set, not yet submitted to ASF Tooling | yellow |
 | Submitted | `Date scan requested` set, results not yet back | light green |
 | Triaging | `Date scan received` set, not yet forwarded. (Legacy state-column name written to the sheet by `sheets_writer.py`; the team's actual activity in this state is a pre-forward sanity check for catastrophic generation errors, not per-finding triage — see `frontier-model-preparation-forward`.) | medium green |
 | Delivered | `Forwarded scan to PMC` set | dark green (appears in the COMPLETED table, not in-flight) |
 
 The `Triaging → Delivered` transition includes a side-effect that does **not** get its own state column:
-the `frontier-model-preparation-forward` SKILL commits the vendor's scan + sidecars (raw `.json` + `.notes.md` sanity-check log)
+the `frontier-model-preparation-forward` SKILL commits ASF Tooling's scan + sidecars (raw `.json` + `.notes.md` sanity-check log)
 to the [`scans/`](../../../scans/README.md) tree before drafting the forwarding email
-(vendor findings verbatim — no per-finding triage).
+(ASF Tooling findings verbatim — no per-finding triage).
 The archive commit and the email draft are produced together under a single approval gate,
 so a PMC normally moves Triaging → Delivered in one operator interaction.
 If something abnormal interrupts that flow (archive committed but email never drafted),
@@ -304,7 +304,7 @@ that's a different artefact (the scan output markdown), not the outreach tracker
      skip the rest silently):
      - *Queue lag*: `Request date` → `Date scan requested` —
        how long requests sit in the Security team's queue.
-     - *Vendor lag*: `Date scan requested` → `Date scan received` —
+     - *ASF Tooling lag*: `Date scan requested` → `Date scan received` —
        how long Frontier Model Preparation takes per run.
      - *Forwarding lag*: `Date scan received` → `Forwarded scan to PMC` —
        how long results sit in pre-forward sanity check.
@@ -358,7 +358,7 @@ that's a different artefact (the scan output markdown), not the outreach tracker
 
 ## Turnaround legs (where data is present)
 - Queue lag (request → submit): min/median/max days
-- Vendor lag (submit → result): min/median/max days
+- ASF Tooling lag (submit → result): min/median/max days
 - Forwarding lag (result → forward): min/median/max days
 - End-to-end (request → forward): min/median/max days
 
