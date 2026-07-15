@@ -64,9 +64,9 @@ def parse_submission_notes(raw: str) -> str:
     cell -> empty string -> no section appended.
 
     The helper does not parse structured tags out of this cell.
-    Operators write whatever per-PMC quirks they need the vendor's
+    Operators write whatever per-PMC quirks they need ASF Tooling's
     scan team to see (branch-level scope, repo opt-outs, model-URL
-    caveats, etc.). Vendor-facing only; don't put internal-process
+    caveats, etc.). ASF-Tooling-facing only; don't put internal-process
     overrides here.
     """
     return (raw or "").strip()
@@ -101,7 +101,7 @@ def build_headline_additional_info(
     """Build the headline form's Additional Information block.
 
     Deliberately does NOT include the scan-result delivery destination.
-    Vendor scan results come back to the ASF Security team's submitter
+    ASF Tooling scan results come back to the ASF Security team's submitter
     address; the team then forwards manually to the PMC's named contacts
     via ``frontier-model-preparation-forward``. The form's submission shouldn't pin
     the downstream forwarding destination — that's an internal ASF

@@ -20,6 +20,7 @@ from __future__ import annotations
 from sheets_writer.status import (
     SCAN_QUEUE_HEADER,
     _parse_addrs,
+    added_after_asf_tooling,
     classify_model_origin,
     compute_pmc_status,
     compute_subscription_syncs,
@@ -535,6 +536,8 @@ def test_scan_queue_auto_rows_split_per_branch_sorted() -> None:
     pdf = by[("https://github.com/apache/pdfbox", "")]
     assert pdf["pmc"] == "Apache PDFBox"
     assert pdf["when_ready"] == "2026-06-08"
+    # Requested 2026-06-08 (before ASF Tooling's 2026-07-15 internal start).
+    assert pdf["added_after_asf_tooling"] == "No"
     assert pdf["report_recipients"] == "andrea@apache.org\ntilman@apache.org"
     assert pdf["model_discussion"] == "https://lists.apache.org/thread/pdfboxtid"
     # Both Dubbo repos share the one PMC-level recipients + ponymail thread.
@@ -542,6 +545,32 @@ def test_scan_queue_auto_rows_split_per_branch_sorted() -> None:
     assert dubbo_go["report_recipients"] == "rainyu@apache.org"
     assert by[("https://github.com/apache/dubbo", "main")]["crit"] == "63.0%"
     assert by[("https://github.com/apache/dubbo-go", "")]["crit"] == ""
+
+
+def test_added_after_asf_tooling_boundary() -> None:
+    # Blank when undated; "No" strictly before the 2026-07-15 cutover; "Yes" on
+    # and after it (ISO dates compare lexically).
+    assert added_after_asf_tooling("") == ""
+    assert added_after_asf_tooling("   ") == ""
+    assert added_after_asf_tooling("2026-07-01") == "No"
+    assert added_after_asf_tooling("2026-07-14") == "No"
+    assert added_after_asf_tooling("2026-07-15") == "Yes"
+    assert added_after_asf_tooling("2026-07-20") == "Yes"
+
+
+def test_scan_queue_auto_rows_flags_added_after_asf_tooling() -> None:
+    grid, col_idx = _pmcs_grid()
+    # Move PDFBox's scan request to after the ASF Tooling internal start.
+    dsr = col_idx["Date scan requested"]
+    for row in grid[1:]:
+        if row[col_idx["PMC Slug"]] == "pdfbox":
+            row[dsr] = "2026-07-20"
+    rows = scan_queue_auto_rows(grid, col_idx, _repos_grid())
+    by = {(r["repo"], r["branch"]): r for r in rows}
+    assert by[("https://github.com/apache/pdfbox", "")]["added_after_asf_tooling"] == "Yes"
+    # Dubbo (2026-06-01) stays on the legacy side for both its branch rows.
+    assert by[("https://github.com/apache/dubbo", "main")]["added_after_asf_tooling"] == "No"
+    assert by[("https://github.com/apache/dubbo", "3.2")]["added_after_asf_tooling"] == "No"
 
 
 def test_scan_queue_auto_rows_blank_repositories_sheet_leaves_crit_blank() -> None:
@@ -561,8 +590,9 @@ def test_parse_scan_queue_keys_by_repo_and_branch() -> None:
             "rainyu@apache.org",
             "main",  # Branch/tag (col 4)
             "https://lists.apache.org/thread/dubbotid",  # model discussion
-            "2026-06-01",  # when ready
-            # Scan 1 (cols 7-10): when scanned / model send thread / report sent / commit
+            "2026-06-01",  # when ready (col 6)
+            "No",  # Added after ASF tooling started (col 7)
+            # Scan 1 (cols 8-11): when scanned / model send thread / report sent / commit
             "2026-06-03",
             "https://lists.apache.org/thread/sendtid",
             "2026-06-05",
@@ -578,6 +608,7 @@ def test_parse_scan_queue_keys_by_repo_and_branch() -> None:
             "",  # default branch
             "https://lists.apache.org/thread/pdfboxtid",
             "2026-06-08",
+            "No",  # Added after ASF tooling started (col 7)
         ]
     )
     sq_grid = [["t"], ["s"], ["c"], [""], SCAN_QUEUE_HEADER, dubbo, pdfbox]
@@ -588,10 +619,10 @@ def test_parse_scan_queue_keys_by_repo_and_branch() -> None:
         ("https://github.com/apache/pdfbox", ""),
     }
     d = scan_queue_carried(prev[("https://github.com/apache/dubbo", "main")])
-    assert d[7] == "2026-06-03"
-    assert d[8] == "https://lists.apache.org/thread/sendtid"
-    assert d[9] == "2026-06-05"
-    assert d[10] == "abc1234"
+    assert d[8] == "2026-06-03"
+    assert d[9] == "https://lists.apache.org/thread/sendtid"
+    assert d[10] == "2026-06-05"
+    assert d[11] == "abc1234"
     assert scan_queue_has_data(prev[("https://github.com/apache/dubbo", "main")]) is True
     # A row with no per-scan cell filled has no scan data.
     assert scan_queue_has_data(prev[("https://github.com/apache/pdfbox", "")]) is False
@@ -617,10 +648,11 @@ def test_scan_queue_carry_over_and_retained_by_key() -> None:
                 branch,
                 "https://lists.apache.org/thread/dubbotid",
                 "2026-06-01",
-                when_scanned,  # Scan 1 when scanned (col 7)
+                "No",  # Added after ASF tooling started (col 7)
+                when_scanned,  # Scan 1 when scanned (col 8)
                 "",
                 "",
-                commit,  # Scan 1 commit (col 10)
+                commit,  # Scan 1 commit (col 11)
             ]
         )
 
@@ -642,8 +674,8 @@ def test_scan_queue_carry_over_and_retained_by_key() -> None:
     # "main" is in the auto set -> its carried scan data reattaches by key.
     assert ("https://github.com/apache/dubbo", "main") in auto_keys
     carried = scan_queue_carried(prev[("https://github.com/apache/dubbo", "main")])
-    assert carried[7] == "2026-06-09"
-    assert carried[10] == "deadbee"
+    assert carried[8] == "2026-06-09"
+    assert carried[11] == "deadbee"
     # "9.9" is not in the auto set but has scan data -> it must be retained.
     off = ("https://github.com/apache/dubbo", "9.9")
     assert off not in auto_keys

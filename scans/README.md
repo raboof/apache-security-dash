@@ -10,9 +10,9 @@ at one specific commit, after the ASF Security team's
 **pre-forward sanity check** (catching catastrophic generation
 errors only — wrong project, wrong/stale model, truncated
 output, missing repos, cross-PMC leakage, mangled formatting).
-The team does not do per-finding triage; the vendor's findings
-are archived and forwarded verbatim, with per-finding triage
-staying with the PMC against the project's own threat model.
+The team does not do per-finding triage; the ASF Tooling scan's
+findings are archived and forwarded verbatim, with per-finding
+triage staying with the PMC against the project's own threat model.
 
 Scans live here because:
 
@@ -105,7 +105,7 @@ them next to the markdown file with the **same prefix** and an
 appropriate extension:
 
 ```
-scans/<project>/<repo>/<project>-<repo>-2026-05-13-a95e678d.md       ← canonical, human-readable (vendor findings, verbatim)
+scans/<project>/<repo>/<project>-<repo>-2026-05-13-a95e678d.md       ← canonical, human-readable (ASF Tooling scan findings, verbatim)
 scans/<project>/<repo>/<project>-<repo>-2026-05-13-a95e678d.json     ← raw Glasswing output
 scans/<project>/<repo>/<project>-<repo>-2026-05-13-a95e678d.notes.md ← Security team's pre-forward sanity-check log
 ```
@@ -115,7 +115,7 @@ then returns the complete record of that scan run.
 
 ## What goes in each scan file
 
-The scan markdown is the vendor's report, archived **verbatim**
+The scan markdown is the ASF Tooling scan report, archived **verbatim**
 after the ASF Security team's pre-forward sanity check passes.
 Each file MUST contain, at the top, a metadata block in the
 shape below — agents and humans both rely on this header to
@@ -130,26 +130,26 @@ scan_date:         2026-05-13T14:21:00Z
 glasswing_model:   glasswing-v<NN>-<YYYY-MM-DD>
 threat_model:      https://github.com/apache/lucene/blob/<sha>/SECURITY.md
 findings_total:    <N>
-sanity_check:      PASS              # or PASS-with-notes / RETURNED-TO-VENDOR
+sanity_check:      PASS              # or PASS-with-notes / RETURNED-TO-ASF-TOOLING
 sanity_checked_by: <asf-security-team-member>@apache.org
 sanity_check_date: 2026-05-13
 ---
 ```
 
-Followed by the vendor's findings, **verbatim** in the order
-the vendor provided them. Each finding under its own heading,
-with whatever the vendor included — affected file(s) and line
+Followed by the ASF Tooling scan's findings, **verbatim** in the
+order they were produced. Each finding under its own heading,
+with whatever the scan included — affected file(s) and line
 range(s), security property cited, reproducer sketch, severity
 hint. The Security team does **not** re-format, classify, drop,
 or annotate individual findings; per-finding triage is the
 PMC's job against the project's own threat model.
 
-The complete Glasswing scan output (raw vendor JSON) goes in
+The complete Glasswing scan output (raw scan JSON) goes in
 the `.json` sidecar so the archive is auditable later. The
 `.notes.md` sidecar holds the Security team's sanity-check
 log — what was checked, the verdict (PASS / PASS-with-note /
 FAIL on each check), and any free-form observation worth
-recording (e.g. "asked Mirko to re-run because the
+recording (e.g. "asked ASF Tooling to re-run because the
 lucene-core repo was missing"). The sidecar is the audit
 record of *what we sanity-checked*, **not** a per-finding
 decision log.
@@ -213,18 +213,18 @@ what got fixed, what stayed."
    PMC-designated tag), reading the threat model from
    `SECURITY.md` (via `AGENTS.md`'s pointer).
 4. **Pre-forward sanity check.** The Security team reads the
-   vendor's report looking for catastrophic generation errors
-   only — wrong project, wrong/stale model, truncated output,
-   missing repos, cross-PMC leakage, mangled formatting. If
-   anything fails, the report is returned to the vendor before
+   ASF Tooling scan report looking for catastrophic generation
+   errors only — wrong project, wrong/stale model, truncated
+   output, missing repos, cross-PMC leakage, mangled formatting.
+   If anything fails, the report is returned to ASF Tooling before
    the PMC sees it; if every check passes, the team proceeds
    to forward verbatim. The team does **not** do per-finding
    triage (no classification against the model, no filtering,
    no annotation).
-5. **Commit to this folder.** The vendor's markdown (verbatim)
-   + raw JSON + the sanity-check log (`.notes.md`) go in at
-   the path described above. Each commit covers one scan run.
-6. **Forward to PMC.** The Security team emails the vendor's
+5. **Commit to this folder.** The ASF Tooling scan markdown
+   (verbatim) + raw JSON + the sanity-check log (`.notes.md`) go
+   in at the path described above. Each commit covers one scan run.
+6. **Forward to PMC.** The Security team emails the scan's
    findings **verbatim** to `security@<project>.apache.org`
    (or `private@<pmc>` if no project-level security alias
    exists), citing the scan's filename so the PMC has a

@@ -16,7 +16,7 @@
 # under the License.
 """Glasswing scan-submission helper.
 
-Fills the vendor's project-enrollment Google Form once per repo for a
+Fills ASF Tooling's project-enrollment Google Form once per repo for a
 given PMC, ordered by OSSF Criticality Score (highest first). Headline
 repo carries the maintainer roster + OSS-expedite addresses + the
 Claude Max 20x checkbox; subsequent forms point back to the headline.

@@ -22,7 +22,7 @@ build-backend = "hatchling.build"
 [project]
 name = "form-submitter"
 version = "0.1.0"
-description = "Scan-submission helper that fills the vendor's project-enrollment Google Form (one per repo, OSSF-criticality-ordered) for a PMC. Playwright-driven against a persistent Chromium profile."
+description = "Scan-submission helper that fills ASF Tooling's project-enrollment Google Form (one per repo, OSSF-criticality-ordered) for a PMC. Playwright-driven against a persistent Chromium profile."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
