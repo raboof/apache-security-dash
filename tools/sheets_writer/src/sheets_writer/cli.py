@@ -28,6 +28,7 @@ from sheets_writer.auth import AuthError, run_setup
 from sheets_writer.canned import cmd_append_canned, cmd_init_canned
 from sheets_writer.dump import cmd_dump
 from sheets_writer.pmcs import cmd_append_pmc
+from sheets_writer.scan_queue import cmd_scan_queue_set
 from sheets_writer.schema import cmd_add_columns, cmd_insert_column, cmd_rename_column
 from sheets_writer.status import cmd_build_status_tab
 
@@ -172,6 +173,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     addcol_p.add_argument("--dry-run", action="store_true")
 
+    sq_p = sub.add_parser(
+        "scan-queue-set",
+        help="Set a repo's per-scan tracking cells (Scan N block) in the 'Scan Queue' tab.",
+    )
+    sq_p.add_argument("--spreadsheet-id", required=True)
+    sq_p.add_argument(
+        "--repo", required=True, help="Repo URL exactly as in the Scan Queue 'Repo' column."
+    )
+    sq_p.add_argument(
+        "--branch", default="", help="Branch/tag ('' = the default-branch row; the default)."
+    )
+    sq_p.add_argument(
+        "--scan", type=int, default=1, help="Which Scan N block to write (1..5; default 1)."
+    )
+    sq_p.add_argument("--when-scanned", help="'When scanned' date (YYYY-MM-DD).")
+    sq_p.add_argument(
+        "--model-thread",
+        help="'Model send thread (ponymail)' — the scan-delivery thread permalink.",
+    )
+    sq_p.add_argument("--when-report-sent", help="'When report sent' date (YYYY-MM-DD).")
+    sq_p.add_argument("--commit", help="'Commit hash' — the scanned head SHA (short or full).")
+    sq_p.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -186,6 +210,7 @@ DISPATCH = {
     "rename-column": cmd_rename_column,
     "insert-column": cmd_insert_column,
     "add-columns": cmd_add_columns,
+    "scan-queue-set": cmd_scan_queue_set,
 }
 
 

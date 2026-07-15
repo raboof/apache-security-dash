@@ -63,7 +63,9 @@ Skip when:
 
    This SKILL does not write to the spreadsheet directly.
 
-   **Then refresh the derived tabs — MANDATORY, not optional.** After the row cells are set, run `sheets-writer build-status-tab` so the PMC shows Delivered/forwarded-closed across the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist. A forward is **not complete** until this refresh has run. Do it after **every** forward (i.e. after all reports in a batch are sent), every time.
+   **Also record the per-scan status in the Scan Queue tab** via `sheets-writer scan-queue-set` for the scanned repo — the `Scan N` block: `When scanned` (the scan's `scan_date`), `Model send thread (ponymail)` (the forward's tooling-list permalink from step 12), `When report sent` (today), `Commit hash` (the scanned `head_sha`). These per-scan cells are carried over across `build-status-tab` refreshes keyed by (Repo, Branch/tag), so they persist.
+
+   **Then refresh the derived tabs — MANDATORY, not optional.** Run `sheets-writer build-status-tab` so the PMC shows Delivered/forwarded-closed across the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist (it also carries over the Scan Queue per-scan cells just written). A forward is **not complete** until this refresh has run. Do it after **every** forward (i.e. after all reports in a batch are sent), every time.
 
 8. **Ponymail must be authenticated to resolve the permalink.** Before the post-send permalink lookup, run `mcp__ponymail__auth_status`; if it reports "Not authenticated", `mcp__ponymail__login` first (the private `tooling` list is not readable anonymously). If ponymail can't be authenticated, don't block the forward — record the permalink as pending and surface a one-line note so a later sweep can fill it. (Note: the ponymail MCP blocks `security@apache.org` entirely, so resolve via the `private@tooling.apache.org` list, not the Security list.)
 
@@ -175,7 +177,23 @@ Plain text; no marketing flourish; links verbatim (no tracking). The findings an
 
 13. **Hand off to `frontier-model-preparation-update`** (hard rules 7 + 8) once the operator confirms they've sent: set `Date scan received` (archive commit date) + `Forwarded scan to PMC` (today) + the tooling-list ponymail permalink (from step 12) + the draft id / scan-id in `Notes`. Do not set `Forwarded scan to PMC` before the operator has actually sent.
 
-14. **Refresh the derived tabs — MANDATORY closing step (hard rule 7).** After the cells are written, run `sheets-writer build-status-tab` so the PMC shows Delivered/forwarded-closed across the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist. The forward is not complete until this has run — do it after every forward (after all reports in a batch are sent), every time. This is not optional.
+14. **Record the per-scan status in the Scan Queue tab** (hard rule 7). Run `sheets-writer scan-queue-set` for the scanned repo and its `Scan N` block (Scan 1 for a first scan):
+
+    ```bash
+    uv run --project tools/sheets_writer sheets-writer scan-queue-set \
+      --spreadsheet-id <id> \
+      --repo <repo URL, exactly as in the Scan Queue 'Repo' column> \
+      --branch <ref, or omit for the default-branch row> \
+      --scan 1 \
+      --when-scanned <scan_date> \
+      --model-thread <tooling-list ponymail permalink from step 12> \
+      --when-report-sent <today> \
+      --commit <head_sha>
+    ```
+
+    (`--dry-run` first to confirm it targets the right row/cells.) A repo with a branch-scoped scan uses that `--branch`; a multi-repo PMC runs this once per scanned repo.
+
+15. **Refresh the derived tabs — MANDATORY closing step (hard rule 7).** Run `sheets-writer build-status-tab` so the PMC shows Delivered/forwarded-closed across the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist (it carries over the Scan Queue per-scan cells from step 14). The forward is not complete until this has run — do it after every forward (after all reports in a batch are sent), every time. This is not optional.
 
 ## Style notes
 
