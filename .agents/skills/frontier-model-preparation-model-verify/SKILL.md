@@ -308,7 +308,7 @@ Every other failure mode produces a proposal that the PMC decides what to do wit
        §13 Triage dispositions   ...
    ```
 
-   When the verification message goes to the PMC (or into the Additional Information field on the per-repo form submissions),
+   When the verification message goes to the PMC (or into the per-PMC enrollment notes ASF Tooling reads off the tracker),
    the same per-repo breakdown should appear —
    implicit summary ("the model is good") hides which repos were actually checked.
 

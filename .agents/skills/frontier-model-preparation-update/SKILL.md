@@ -41,7 +41,7 @@ The helper (`sheets-writer` CLI in [`tools/sheets_writer/`](../../../tools/sheet
 
   **Auto-synced on every refresh.** You normally don't edit this cell by hand:
   `build-status-tab` appends each *submitted* PMC's `Expedite Claude OSS Requests` addresses into `Claude OSS Subscriptions Submitted` on every live refresh (append-only — never removes an address already there).
-  "Submitted" means the PMC's `Date scan requested` is set, because the expedite list rides the headline scan-submission form.
+  "Submitted" means the PMC's `Date scan requested` is set, because the expedite list is recorded on the tracker at enrollment (ASF Tooling reads it there — there is no submission form).
   So once a PMC is submitted with a non-empty expedite list,
   its addresses flow into this cell automatically at the next refresh;
   manual appends are only needed for out-of-band additions.

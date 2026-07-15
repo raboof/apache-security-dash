@@ -17,7 +17,7 @@ description: >-
 # frontier-model-preparation-forward SKILL
 
 The "results path" of the Frontier Model Preparation pipeline — the inverse of `frontier-model-preparation-submit`.
-Where `submit` sends a request *to* Mirko and waits,
+Where `submit` enrolls a request *with* ASF Tooling and waits,
 this SKILL handles the report coming *back*: identify the PMC,
 do a **pre-forward sanity check** on the report,
 archive the raw scan into the team's private `scans/` tree,
@@ -35,7 +35,7 @@ not to second-guess individual findings.
 - An ASF Tooling scan lands in the `apache/tooling-agents-private` archive (the primary path), **or** a legacy external-relay email arrives with a scan report attached, inline, or linked.
 - Jarek says "process the <PMC> scan results", "the <PMC> scan is back, let's forward it", "sanity-check the <PMC> scan", or anything similarly explicit.
 - The Mythos tracker shows a PMC with `Date scan requested` filled but `Date scan received` blank,
-  and a Mirko reply has landed in Gmail.
+  and an ASF Tooling scan report has landed (in the `apache/tooling-agents-private` archive, or as a legacy relay email in Gmail).
 
 Skip when:
 - The scan is for a PMC whose row indicates incomplete pre-flight (`Security model verified` blank).
@@ -43,11 +43,11 @@ Skip when:
 
 ## Hard rules (do not skip)
 
-1. **Sanity-check the report before forwarding.** Read through Mirko's output looking for catastrophic generation errors —
+1. **Sanity-check the report before forwarding.** Read through ASF Tooling's output looking for catastrophic generation errors —
    wrong project, wrong/stale model metadata, truncated output, accidentally-mixed PMCs, mangled formatting, repos the PMC didn't submit (or submitted repos missing entirely).
    The checklist below ("Sanity-check checklist") names what to look for.
    If anything looks broken, surface to the user before drafting;
-   typically that means going back to Mirko with the issue rather than forwarding a known-broken report.
+   typically that means going back to ASF Tooling with the issue rather than forwarding a known-broken report.
 
 2. **Forward ASF Tooling's findings verbatim — no per-finding triage.** The PMC owns the read against their own threat model.
    The Security team does **not** classify findings, drop findings, filter findings, suppress findings, or annotate findings with model citations on the PMC's behalf.
@@ -99,11 +99,11 @@ Skip when:
    - `private@<pmc>.apache.org` (PMC collective visibility);
    - the project's `security@<pmc>.apache.org` alias if one exists;
    - the PMC's primary + backup contacts (the named humans);
-   - **not** Mirko/Alpha-Omega (the forward is internal to ASF;
-     if Mirko needs follow-up, that's a separate thread).
+   - **not** ASF Tooling (the forward is to the PMC;
+     if ASF Tooling needs follow-up, that's a separate thread).
 
 7. **After the user sends, hand off to `frontier-model-preparation-update`** to write two cells on the PMC's row:
-   - `Date scan received` — the date Mirko's email arrived (the original send date, not today).
+   - `Date scan received` — the date ASF Tooling's report landed (the scan bundle's commit date in the archive, or the legacy relay send date — not today).
    - `Forwarded scan to PMC` — today's date (when the user clicked Send on the forward).
 
    This SKILL does not write to the spreadsheet directly.
@@ -114,7 +114,7 @@ Skip when:
    If the check passed cleanly with nothing to note, omit the block —
    don't pad with "everything looked fine".
 
-9. **Always archive the scan into `scans/` before forwarding.** Per the spec in [`scans/README.md`](../../../scans/README.md), every Mirko-delivered scan that the team forwards must first land in `scans/<project>/<repo>/<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md` (plus `.json` raw + `.notes.md` decision-log sidecars) and be committed with a `[scan]` prefixed message.
+9. **Always archive the scan into `scans/` before forwarding.** Per the spec in [`scans/README.md`](../../../scans/README.md), every ASF Tooling-delivered scan that the team forwards must first land in `scans/<project>/<repo>/<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md` (plus `.json` raw + `.notes.md` decision-log sidecars) and be committed with a `[scan]` prefixed message.
    The archive commit happens **before** the Gmail draft is created so the forwarding email can cite the canonical filename.
    A scan that has been forwarded without an archive entry is a process bug.
 
@@ -133,13 +133,13 @@ Before forwarding, scan ASF Tooling's output for catastrophic generation errors:
 | **Project identity** | The report's project / repo identifiers match what was submitted. Catches obvious cases like a scan accidentally run against `apache/foo` when we submitted `apache/bar`, or report metadata naming a different PMC. |
 | **Model identity** | The threat model ASF Tooling cites in metadata matches the model URL recorded for the PMC, at a recent enough commit. Catches "ASF Tooling ran against a stale or wrong model" cases. |
 | **Repo coverage** | Every repo the team submitted appears somewhere in the report. A scan that silently dropped one of N submitted repos is a generation error worth surfacing back to ASF Tooling. |
-| **Truncation** | The report doesn't end mid-finding / mid-section / mid-line. Mirko's output is typically a single markdown document; if the last finding's body is cut off mid-sentence, that's a truncation. |
+| **Truncation** | The report doesn't end mid-finding / mid-section / mid-line. ASF Tooling's output is typically a single markdown document; if the last finding's body is cut off mid-sentence, that's a truncation. |
 | **Cross-PMC leakage** | No findings or text from a different PMC's scan accidentally ended up in this report. Rare but high-blast-radius if it slips through. |
 | **Formatting integrity** | Markdown actually renders; no half-escaped JSON blobs in the body; no obviously broken tables; no missing headings that would render as plain text. |
 | **Plausibility** | Sanity-check that the finding count and topic distribution look reasonable for the project (e.g. a scan of a logging library returning 100 findings about cryptography is a signal the report may have been misrouted). Not a triage step — just a "does this look like ASF Tooling actually ran on the right thing" check. |
 
 If any check fails: **stop**, surface to the user before drafting the forward.
-Typically the resolution is asking Mirko to re-run or re-send, not forwarding a known-broken report to the PMC.
+Typically the resolution is asking ASF Tooling to re-run or re-send, not forwarding a known-broken report to the PMC.
 
 If every check passes: the report is forwarded **verbatim** to the PMC.
 The team does not add finding-by-finding annotations, classifications, or filter decisions.
@@ -152,8 +152,8 @@ The PMC owns that read.
 
 | Input | Source |
 | --- | --- |
-| PMC name and slug | From Mirko's email subject (`[GLASSWING] results for <PMC>` or similar), or the user supplies it |
-| Scan report content | Attachment(s) or inline content of Mirko's email |
+| PMC name and slug | From the scan bundle's `metadata.yml` in the `apache/tooling-agents-private` archive, or a legacy ASF Tooling relay email subject (`[GLASSWING] results for <PMC>` or similar), or the user supplies it |
+| Scan report content | The scan bundle committed to the `apache/tooling-agents-private` archive (`metadata.yml`, `issues.md`, etc.); or the attachment(s) / inline content of a legacy relay email |
 | PMC threat model URL | From the PMC sheet's `Security Model` column. Used only for the **model identity** sanity check (does ASF Tooling's metadata cite this URL?) and as the URL the forward references — not for per-finding filtering. |
 | Submitted repos list | From the PMC sheet's `Repositories submitted` cell (filled when `frontier-model-preparation-submit` ran). Used for the **repo coverage** sanity check. |
 | Scan-result recipient list | From the original `[GLASSWING]` request thread (or the PMC sheet's `Notes` if recorded there) |
@@ -165,13 +165,13 @@ refuse and surface the gap.
 
 ## Procedure
 
-1. **Identify the PMC.** From the subject line of Mirko's email (`[GLASSWING] results for Apache <PMC name>` is the expected pattern).
+1. **Identify the PMC.** From the scan bundle's `metadata.yml` in the `apache/tooling-agents-private` archive (the primary surface), or from the subject line of a legacy ASF Tooling relay email (`[GLASSWING] results for Apache <PMC name>` is the expected pattern).
    If ambiguous, surface a question listing the candidate PMCs.
 
 2. **Pull the PMC's row** from the Mythos tracker (via the `frontier-model-preparation-status` flow or a direct read of the `mythos-tracker` reference memory file ID).
    Confirm:
    - `Scan Requested = Yes`
-   - `Repositories submitted` is non-empty (matches what was sent to Mirko)
+   - `Repositories submitted` is non-empty (matches what was enrolled with ASF Tooling)
    - `Date scan requested` is filled
    - `Date scan received` is blank (no double-forward)
    - `Forwarded scan to PMC` is blank
@@ -199,21 +199,21 @@ refuse and surface the gap.
      surface area.
    ```
 
-   On any `FAIL`: stop, surface to user, escalate to Mirko before continuing.
+   On any `FAIL`: stop, surface to user, escalate back to ASF Tooling before continuing.
    Do not draft the forward.
 
 5. **Take ASF Tooling's findings verbatim.** No classification, no filtering, no per-finding annotation.
-   The forwarded-findings list is just Mirko's findings in the order Mirko provided.
+   The forwarded-findings list is just ASF Tooling's findings in the order ASF Tooling provided.
 
 6. **Archive the scan into the `scans/` tree** — per the [`scans/README.md`](../../../scans/README.md) spec.
    This step happens **before** the email is drafted so the forwarding email can cite the canonical filename, giving the PMC a stable identifier to refer back to without needing access to this private repo.
 
-   For each repo that Mirko's report covers (a scan may cover multiple repos in one report;
+   For each repo that ASF Tooling's report covers (a scan may cover multiple repos in one report;
    treat each as a separate archive entry):
 
-   1. **Determine the head SHA** — extract from Mirko's report if present;
-      otherwise query `gh api repos/apache/<repo>/commits/HEAD --jq .sha` using the date Mirko ran the scan (typically the `scan_date` Mirko reports,
-      or the report's own received date if Mirko omitted it).
+   1. **Determine the head SHA** — extract from ASF Tooling's report if present;
+      otherwise query `gh api repos/apache/<repo>/commits/HEAD --jq .sha` using the date ASF Tooling ran the scan (typically the `scan_date` ASF Tooling reports,
+      or the report's own received date if ASF Tooling omitted it).
 
    2. **Compute the path**:
 
@@ -234,10 +234,10 @@ refuse and surface the gap.
       repo:              apache/<repo>
       head_sha:          <full 40-char SHA>
       scan_date:         <YYYY-MM-DD>T<HH:MM:SS>Z
-      frontier-model-preparation_model:   <model id Mirko reported>
+      frontier-model-preparation_model:   <model id ASF Tooling reported>
       threat_model:      <model URL recorded for the PMC in the tracker>
-      findings_total:    <count from Mirko's report>
-      sanity_check:      <PASS / PASS-with-notes / RETURNED-TO-VENDOR>
+      findings_total:    <count from ASF Tooling's report>
+      sanity_check:      <PASS / PASS-with-notes / RETURNED-TO-ASF-TOOLING>
       sanity_checked_by: <agent operator's @apache.org>
       sanity_check_date: <YYYY-MM-DD>
       ---
@@ -246,7 +246,7 @@ refuse and surface the gap.
       followed by ASF Tooling's findings **verbatim** (one finding per `## ` heading, with whatever file/lines / property / reproducer / severity hint ASF Tooling included — not re-formatted by the team).
 
    4. **Write the `.json` sidecar** with the same filename prefix and `.json` extension —
-      Mirko's raw report verbatim, so the archive is auditable later.
+      ASF Tooling's raw report verbatim, so the archive is auditable later.
       Use the exact filename: `<project>-<repo>-<YYYY-MM-DD>-<short-sha>.json`.
 
    5. **Write the `.notes.md` sidecar** with the sanity-check log from step 4 (the per-check PASS/PASS-with-note/FAIL lines,
@@ -263,7 +263,7 @@ refuse and surface the gap.
 
       Frontier Model Preparation scan against apache/<repo> at <full-sha>.
       Findings: <N>. Sanity check: <PASS / PASS-with-notes
-      / RETURNED-TO-VENDOR>. Forwarded to PMC verbatim.
+      / RETURNED-TO-ASF-TOOLING>. Forwarded to PMC verbatim.
 
       Generated-by: Claude Code (Claude Opus 4.7)
       ```
@@ -285,7 +285,7 @@ refuse and surface the gap.
 
 9. **Create the Gmail draft** via `mcp__claude_ai_Gmail__create_draft`.
    `replyToMessageId` is **omitted** —
-   this is a new thread to the PMC's recipients, not a reply to Mirko's thread.
+   this is a new thread to the PMC's recipients, not a reply to ASF Tooling's thread.
 
 10. **Push the archive commit** to `origin/main` (or open a PR per local convention —
     the spec is that the canonical archive lives in `main`).
@@ -293,7 +293,7 @@ refuse and surface the gap.
     so an archive commit without a corresponding draft is rare;
     surface if it happens.
 
-11. **Hand off to `frontier-model-preparation-update`** to write `Date scan received` (Mirko's send date) and `Forwarded scan to PMC` (today's date) on the PMC's row.
+11. **Hand off to `frontier-model-preparation-update`** to write `Date scan received` (the date ASF Tooling's report landed) and `Forwarded scan to PMC` (today's date) on the PMC's row.
     The Gmail draft id and archive filename(s) should also land in the `Notes` cell so the next sweep sees a complete record.
 
 ## Email template
@@ -387,7 +387,7 @@ a 5-finding scan with all 5 forwarded is still short.
   The PMC's triagers will quote findings back by ID;
   the IDs and shape need to match what's in the archived raw report.
 - **Don't editorialize on severity, scope, or validity.** These are the PMC's calls.
-  If the team thinks a finding is off-base, the right move is to flag it back to Mirko for the next scan's tuning — not annotate it in the forward.
+  If the team thinks a finding is off-base, the right move is to flag it back to ASF Tooling for the next scan's tuning — not annotate it in the forward.
 - **No PMC findings should leak across PMCs.** The forwarded email is per-PMC.
   Don't accidentally CC a different PMC's `private@` list or include another PMC's findings as context.
   (This is also one of the sanity checks in step 4.)
@@ -398,7 +398,7 @@ a 5-finding scan with all 5 forwarded is still short.
 
 ## Examples of bad forwards (avoid)
 
-- Forwarding a report that failed sanity check (wrong project, wrong/stale model, truncated, missing repos) rather than escalating to Mirko first.
+- Forwarding a report that failed sanity check (wrong project, wrong/stale model, truncated, missing repos) rather than escalating back to ASF Tooling first.
   The whole point of the sanity check is to **not** waste the PMC's time on a clearly broken report —
   bypass it and you've defeated the purpose.
 - Per-finding triage in the forward — disposition labels, "filtered as out-of-model" appendix, "we dropped 30 findings as known non-findings", per-finding model citations from the team.
@@ -407,9 +407,9 @@ a 5-finding scan with all 5 forwarded is still short.
   the team's role is the sanity check.
 - Re-formatting or condensing ASF Tooling's findings to make the email shorter.
   The PMC needs the full ASF Tooling text; if it's long, it's long.
-- Sending the forward back to Mirko.
-  Mirko doesn't need the PMC-facing email;
-  if the Security team has follow-up for Mirko, that's a separate reply on Mirko's thread.
+- Sending the forward back to ASF Tooling.
+  ASF Tooling doesn't need the PMC-facing email;
+  if the Security team has follow-up for ASF Tooling, that's a separate thread.
 - Setting `Forwarded scan to PMC` before the user has actually clicked Send in Gmail.
   That cell tracks real delivery turnaround; pre-filling it pollutes the metric.
 - A forward that pads the `Sanity-check observations` block with "all checks passed, nothing to note" or similar boilerplate.

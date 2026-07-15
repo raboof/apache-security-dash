@@ -19,7 +19,7 @@ gist that ``build-status-tab`` overwrites on every refresh.
 
 The gist id is persisted at ``~/.config/asf-security/glasswing/dashboard_gist.json``
 so each run updates the same gist; its URL is printed and kept in that file.
-Only aggregate counts go into the dashboard — no PMC names, no vendor identity.
+Only aggregate counts go into the dashboard — no PMC names, no program cost mechanics.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def render_dashboard(today: str, sheet_url: str, data: dict) -> str:
         f"**{verified}** verified ({_pct(verified, total)})."
     )
     out.append(
-        f"- **{repos_sub}/{repos_req}** repos submitted to the vendor "
+        f"- **{repos_sub}/{repos_req}** repos submitted to ASF Tooling "
         f"({_pct(repos_sub, repos_req)})."
     )
     out.append(f"- **{pr_total}** PRs — {pr_open} open, {pr_merged} merged, {pr_closed} closed.")
@@ -121,7 +121,7 @@ def render_dashboard(today: str, sheet_url: str, data: dict) -> str:
         ("Pre-flight (model not yet verified)", sc["Pre-flight"]),
         ("Nominated (model awaiting verification)", data["nominated"]),
         ("Ready (model verified, awaiting submit)", sc["Ready"]),
-        ("Submitted (sent to vendor)", sc["Submitted"]),
+        ("Submitted (sent to ASF Tooling)", sc["Submitted"]),
         ("Triaging (results back, sanity check)", sc["Triaging"]),
         ("Delivered (forwarded to PMC)", sc["Delivered"]),
         ("Results back (Triaging + Delivered)", data["results_back"]),
@@ -135,7 +135,7 @@ def render_dashboard(today: str, sheet_url: str, data: dict) -> str:
     out.append("")
     out.append("| | Repos | % |")
     out.append("|---|--:|--:|")
-    out.append(f"| Submitted to vendor | {repos_sub} | {_pct(repos_sub, repos_req)} |")
+    out.append(f"| Submitted to ASF Tooling | {repos_sub} | {_pct(repos_sub, repos_req)} |")
     out.append(f"| Not yet submitted | {repos_not} | {_pct(repos_not, repos_req)} |")
     out.append(f"| **Total — requested** | **{repos_req}** | **100%** |")
     out.append("")

@@ -97,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="form-submitter",
         description=(
-            "Submit per-repo scan-request forms for a PMC via the vendor's "
+            "Submit per-repo scan-request forms for a PMC via ASF Tooling's "
             "project-enrollment Google Form."
         ),
     )

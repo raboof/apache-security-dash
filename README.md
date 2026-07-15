@@ -27,8 +27,8 @@ team's tooling, not the public reporting entry point.
 ├── frontier-model-preparation-update/          — all writes to the Mythos tracker
 │                                      (writes go through tools/sheets_writer/)
 ├── frontier-model-preparation-status/          — status / rollup view
-├── frontier-model-preparation-submit/          — operator-gated form-then-email submission
-│                                      (one vendor form per repo, then PMC email)
+├── frontier-model-preparation-submit/          — operator-gated spreadsheet-then-email enrollment
+│                                      (set tracker cells, then PMC email)
 ├── frontier-model-preparation-forward/         — sanity-check + forward results to PMC verbatim
 ├── frontier-model-preparation-dashboard/            — refresh tracker tabs + a private gist dashboard
 │   # Inbound security-report triage (foundation-wide security@apache.org)
@@ -42,8 +42,8 @@ tools/                              — small Python projects with pyproject.tom
                                       tests, and CI; invoked from SKILLs
 ├── jira_writer/                    — Apache JIRA write helper (PAT-authed);
 │                                      see tools/jira_writer/README.md
-├── form_submitter/                 — Playwright-driven vendor-form filler;
-│                                      see tools/form_submitter/README.md
+├── form_submitter/                 — retired legacy form filler (external-relay
+│                                      era); see tools/form_submitter/README.md
 ├── sheets_writer/                  — Google Sheets writer for the tracker;
 │                                      see tools/sheets_writer/README.md
 ├── model_pr/                       — opens AGENTS.md→SECURITY.md→model
@@ -57,9 +57,10 @@ tools/                              — small Python projects with pyproject.tom
 ```
 
 The SKILLs cover two programs: the **Glasswing scan-outreach** pipeline
-(PMC opt-in → pre-flight → vendor submit → forward) and **inbound
-security-report triage** (pulling `security@apache.org` reports into a
-local cache and drafting responses). `threat-model-producer` is shared.
+(PMC opt-in → pre-flight → enroll in tracker → ASF Tooling scan → forward)
+and **inbound security-report triage** (pulling `security@apache.org`
+reports into a local cache and drafting responses). `threat-model-producer`
+is shared.
 
 Adding a new agent-runtime convention later means adding another
 symlink under that runtime's expected location — never duplicating
@@ -93,20 +94,23 @@ first project of that tier — added 2026-05-27 after the inline
 
 ## The Mythos / Glasswing scan program
 
-Mythos (internal name) / Glasswing (public name) is an
-Alpha-Omega / OpenAI partnership that lets Apache PMCs opt in to
-**agentic security scans** of their repositories. The compute
-cost is on the program; the PMC commits to (a) triaging real
-findings and (b) maintaining a threat model the scan can run
-against. The Security team coordinates the operational side:
-inbound requests, pre-flight checks, vendor handoff, pre-forward
-sanity check of returned reports (catching catastrophic
-generation errors only — wrong project, wrong/stale model,
-truncated output, missing repos), and verbatim delivery of the
-vendor's findings to the PMC. Per-finding triage stays with
-the PMC against the project's own threat model — the Security
-team does not curate, classify, or filter findings on the PMC's
-behalf.
+Mythos (internal name) / Glasswing (public name) lets Apache
+PMCs opt in to **agentic security scans** of their repositories.
+The compute cost is on the program; the PMC commits to (a)
+triaging real findings and (b) maintaining a threat model the
+scan can run against. Scans are now run **internally by the ASF**
+— VP Tooling + Infra + Security jointly (**ASF Tooling**), on the
+Mythos-5 model — with results landing in the
+`apache/tooling-agents-private` archive (the earlier external
+Alpha-Omega relay path is retired). The Security team coordinates
+the operational side: inbound requests, pre-flight checks,
+enrolling the scan in the Mythos tracker, pre-forward sanity
+check of returned reports (catching catastrophic generation
+errors only — wrong project, wrong/stale model, truncated output,
+missing repos), and verbatim delivery of the scan's findings to
+the PMC. Per-finding triage stays with the PMC against the
+project's own threat model — the Security team does not curate,
+classify, or filter findings on the PMC's behalf.
 
 ### Pipeline
 
@@ -119,17 +123,17 @@ flowchart LR
     V --> P{{scan-response<br/>pre-flight-pass template<br/>pitch + OSS-tooling offer}}:::skill
     P --> PR([PMC reply<br/>expedite list / 'none' /<br/>scoping]):::pmc
     PR --> G{{Operator gate<br/>explicit per-PMC<br/>go-ahead}}:::gate
-    G --> S{{scan-submit<br/>vendor enrollment form per repo<br/>+ PMC notification email}}:::skill
-    S --> M[(Mirko @<br/>Alpha-Omega<br/>runs the scan)]:::vendor
+    G --> S{{scan-submit<br/>set tracker: Date scan requested<br/>+ Repositories submitted<br/>+ PMC notification email}}:::skill
+    S --> M[(ASF Tooling<br/>runs the scan<br/>internally, Mythos-5)]:::tooling
     M --> F{{scan-forward<br/>sanity check<br/>catastrophic errors only}}:::skill
     F --> A[(Archive to scans/<br/>md + .json + .notes.md<br/>committed to private repo)]:::archive
-    A --> RES([Vendor findings forwarded<br/>verbatim to PMC<br/>citing archive filename]):::pmc
+    A --> RES([Scan findings forwarded<br/>verbatim to PMC<br/>citing archive filename]):::pmc
     RES --> T([PMC normal triage<br/>CVE / disclosure / release]):::pmc
 
     classDef pmc fill:#fff3cd,stroke:#9a7d00,color:#553e00
     classDef skill fill:#d4e6f9,stroke:#1f6feb,color:#0a2e5c
     classDef gate fill:#ffcccc,stroke:#cc0000,color:#660000
-    classDef vendor fill:#e2d6f9,stroke:#6f42c1,color:#3d2469
+    classDef tooling fill:#e2d6f9,stroke:#6f42c1,color:#3d2469
     classDef archive fill:#cfe9d7,stroke:#1f7a3a,color:#0a3a1c
 ```
 
@@ -143,13 +147,13 @@ ask. If it does, the flow is:
 flowchart LR
     PR2([PMC reply nominates<br/>expedite addresses]):::pmc --> REG([Step 1: PMC members<br/>register at<br/>claude.com/contact-sales/<br/>claude-for-oss]):::pmc
     REG --> CELL{{Step 2: Expedite list<br/>written to 'Expedite Claude<br/>OSS Requests' cell}}:::skill
-    CELL --> RELAY{{We relay expedite<br/>via vendor to Anthropic<br/>best-effort, not a promise}}:::skill
-    RELAY --> A2[(Anthropic grants<br/>subscription)]:::vendor
+    CELL --> RELAY{{We relay expedite<br/>via ASF Tooling to Anthropic<br/>best-effort, not a promise}}:::skill
+    RELAY --> A2[(Anthropic grants<br/>subscription)]:::tooling
     A2 --> REC{{Recorded in<br/>'Claude OSS Subscriptions<br/>Submitted' cell}}:::skill
 
     classDef pmc fill:#fff3cd,stroke:#9a7d00,color:#553e00
     classDef skill fill:#d4e6f9,stroke:#1f6feb,color:#0a2e5c
-    classDef vendor fill:#e2d6f9,stroke:#6f42c1,color:#3d2469
+    classDef tooling fill:#e2d6f9,stroke:#6f42c1,color:#3d2469
 ```
 
 The two flows are independent: the scan can be submitted
@@ -162,12 +166,12 @@ response.
 
 The **archive step** (`scans/`) is the canonical audit trail —
 every scan we forward to a PMC lands there as three files:
-`<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md` (the vendor's
-findings as forwarded, verbatim), a `.json` sidecar (Mirko's
+`<project>-<repo>-<YYYY-MM-DD>-<short-sha>.md` (the scan
+findings as forwarded, verbatim), a `.json` sidecar (the
 raw report verbatim, so the archive is auditable), and a
 `.notes.md` sidecar (the team's pre-forward sanity-check log
 — what we looked for, what we found, whether anything was
-returned to the vendor before forwarding). The archive
+returned to ASF Tooling before forwarding). The archive
 filename is cited in the PMC-facing email so the PMC has a
 stable identifier without needing access to this private repo.
 See [`scans/README.md`](scans/README.md) for the layout, the
@@ -196,8 +200,8 @@ stateDiagram-v2
     BlockedDiscoverability --> ModelVerifyPending: PRs merged<br/>or scope narrowed
     PreFlightPassedPitchNotSent --> PreFlightPassedAwaitingPmcPitchReply: pitch sent<br/>(scan-response pre-flight-pass<br/>template, OSS-tooling offer)
     PreFlightPassedAwaitingPmcPitchReply --> PmcPitchRepliedAwaitingOperatorDecision: PMC replies<br/>(expedite list / 'none' /<br/>scoping clarification)
-    PmcPitchRepliedAwaitingOperatorDecision --> Submitted: operator says "submit"<br/>(scan-submit: vendor form per repo<br/>+ PMC notification email)
-    Submitted --> Triaging: vendor returns report
+    PmcPitchRepliedAwaitingOperatorDecision --> Submitted: operator says "submit"<br/>(scan-submit: set tracker cells<br/>+ PMC notification email)
+    Submitted --> Triaging: ASF Tooling returns report
     Triaging --> ArchivedForwarded: pre-forward sanity check +<br/>commit to scans/ +<br/>forwarding email sent
     ArchivedForwarded --> [*]: PMC triages normally
 ```
@@ -219,7 +223,8 @@ an automatic trigger for submission. Instead, the
 (raising the OSS-tooling offer + asking for scoping
 follow-up), the PMC replies, then the Security team
 operator decides per-PMC whether to invoke
-`scan-submit`'s form-then-email flow. The OSS subscription
+`scan-submit`'s enroll-then-email flow (set the tracker
+cells, then notify the PMC). The OSS subscription
 expedite ask travels through a parallel side flow (see
 the pipeline diagram above) and does not gate the scan
 itself.
@@ -231,7 +236,7 @@ sequenceDiagram
     autonumber
     participant PMC
     participant Sec as Security Team
-    participant V as Vendor (Alpha-Omega)
+    participant TL as ASF Tooling (Mythos-5)
     participant A as Anthropic
     PMC->>Sec: GLASSWING request<br/>(repos, contacts, model URL)
     Sec->>Sec: scan-response: gates 1-4
@@ -250,17 +255,17 @@ sequenceDiagram
         Sec->>Sec: Write addresses to<br/>'Expedite Claude OSS Requests' cell
     end
     Note over Sec: Wait for operator gate<br/>(explicit per-PMC go-ahead)
-    Sec->>V: scan-submit — one vendor enrollment<br/>form per repo, in OSSF-criticality order.<br/>Headline form carries the maintainer roster<br/>and expedite addresses if the PMC nominated any
-    Sec-->>PMC: PMC notification email<br/>(scan request submitted,<br/>results forthcoming,<br/>NO vendor identity in body)
+    Sec->>TL: scan-submit — set tracker cells<br/>(Date scan requested + Repositories<br/>submitted, OSSF-criticality order).<br/>ASF Tooling reads the queue off the tracker
+    Sec-->>PMC: PMC notification email<br/>(scan request queued,<br/>results forthcoming,<br/>NO program cost mechanics in body)
     par OSS side flow (only if expedite asked)
-        V->>A: Vendor relays expedite ask
+        TL->>A: ASF Tooling relays expedite ask
         A-->>Sec: Subscription grant confirmation
         Sec->>Sec: Append to<br/>'Claude OSS Subscriptions<br/>Submitted' cell
     and Scan path
-        V-->>Sec: Scan report
+        TL-->>Sec: Scan report
         Sec->>Sec: scan-forward: sanity-check<br/>(catastrophic generation<br/>errors only — wrong project,<br/>truncation, missing repos)
         Sec->>Sec: Archive to scans/<br/>(md + .json + .notes.md commit)
-        Sec-->>PMC: Vendor findings forwarded<br/>verbatim (cites archive filename,<br/>NO vendor identity in body)
+        Sec-->>PMC: Scan findings forwarded<br/>verbatim (cites archive filename,<br/>NO program cost mechanics in body)
     end
     PMC->>PMC: Triage / CVE /<br/>coordinated disclosure
 ```
@@ -379,7 +384,8 @@ frontier-model-preparation-run
 
 It does a read-only sweep across Gmail, the tracker
 spreadsheet, the GitHub PRs the team has opened on PMC repos,
-and Mirko correspondence. It emits a single action list,
+and the ASF Tooling scan results landing in the private
+archive. It emits a single action list,
 classified by pipeline stage, with the per-task SKILL named
 for each next action. Pick an item and invoke that SKILL.
 
@@ -423,7 +429,7 @@ on a new line in the `PR/Issues` cell — never overwriting.
 PMC thread: confirms pre-flight is complete, raises the
 Anthropic-Claude-for-OSS subscription offer for PMC
 triagers (with register-first sequencing + the
-best-effort-via-vendor framing), and asks the PMC for any
+best-effort-via-ASF-Tooling framing), and asks the PMC for any
 `@apache.org` addresses to nominate for the expedite ask.
 The PMC's reply lands as either an expedite list or
 "none" in the `Expedite Claude OSS Requests` cell. After
@@ -438,45 +444,48 @@ operator decides per-PMC whether to actually queue.
 ### When the operator says "submit X for scan"
 
 → Use [`frontier-model-preparation-submit`](.github/skills/frontier-model-preparation-submit/SKILL.md).
-Drafts the **form-then-email submission flow** for a PMC the
+Drafts the **enroll-then-email flow** for a PMC the
 operator has explicitly green-lit:
 
-  - **One vendor enrollment-form submission per repo** in
-    scope, ordered by OSSF Criticality Score (highest
-    first). The headline (top-criticality) form carries the
-    maintainer roster + threat-model URL + the OSS-expedite
-    addresses + the "I'm interested in Claude Max 20x"
-    checkbox; later forms are slimmer and point back to it.
-    Repos with no discoverability anchor (`AGENTS.md` /
-    `SECURITY.md` / `security.txt`) are auto-skipped and
-    surfaced for a later batch. Form filling runs through
-    [`tools/form_submitter/`](tools/form_submitter/) (a
-    Playwright persistent profile; one-time Google sign-in
-    via `form-submitter setup`). The operator approves a
-    `--dry-run` plan before anything is submitted live.
+  - **Enrollment in the Mythos tracker** — set the PMC row's
+    `Date scan requested` (today) and `Repositories submitted`
+    (the pre-flight-passing repos, ordered by OSSF Criticality
+    Score, highest first). There is **no external form**: ASF
+    Tooling runs the scan internally (Mythos-5) and reads the
+    queue off the tracker + the `apache/tooling-agents-private`
+    archive. On enrollment, `build-status-tab` projects each
+    repo into the **Scan Queue** tab (flagged `Added after ASF
+    tooling started`) and relays any expedite addresses into
+    the OSS-subscription columns. Repos with no discoverability
+    anchor (`AGENTS.md` / `SECURITY.md` / `security.txt`) are
+    held back for a later batch. The threat-model URL,
+    maintainer roster, expedite ask, and per-PMC submission
+    notes all live on the tracker row already — ASF Tooling
+    reads them there. (The legacy `form-submitter` Google-Form
+    flow is retired.)
   - **A PMC notification email** to the PMC primary, CC
     backup + named contacts + `private@<pmc>` +
     `security@<pmc>` alias (if exists) + `security@apache.org`
-    + the `@apache.org` scan-result recipients. Notifies the
-    PMC the scan has been queued. **Body redacts vendor
-    identity** — "the scan pipeline" / "our vendor partner"
-    generic phrasing.
+    + `private@tooling.apache.org` + the `@apache.org`
+    scan-result recipients. Notifies the PMC the scan has been
+    queued. **Body keeps the program's cost mechanics out** —
+    ASF Tooling, Mythos, and Anthropic are all nameable.
 
-Output is the live form submissions (after dry-run approval)
-plus a Gmail draft for the PMC email; you click Send. After
-send, hand off to `frontier-model-preparation-update` to set
+Output is the enrollment plan (operator-approved) plus a Gmail
+draft for the PMC email; you click Send. After send, hand off
+to `frontier-model-preparation-update` to set
 `Date scan requested` + `Repositories submitted`.
 
-### When a scan report comes back from the vendor
+### When a scan report comes back from ASF Tooling
 
 → Use [`frontier-model-preparation-forward`](.github/skills/frontier-model-preparation-forward/SKILL.md).
-Runs a **pre-forward sanity check** on the vendor's report —
+Runs a **pre-forward sanity check** on the ASF Tooling report —
 catching catastrophic generation errors only (wrong project,
 wrong/stale model, truncated output, missing repos,
 cross-PMC leakage, mangled formatting). If the check passes,
-forwards the vendor's findings **verbatim** to the PMC's listed
+forwards the scan's findings **verbatim** to the PMC's listed
 scan-result recipients; if it fails, surfaces to the operator
-to escalate back to the vendor before the PMC ever sees the
+to escalate back to ASF Tooling before the PMC ever sees the
 broken report. The team explicitly does **not** do per-finding
 triage — no classification against the threat model, no
 filtering, no annotation. The PMC owns the read against their
@@ -502,24 +511,21 @@ changes, `build-status-tab` to rebuild the auto-generated
   PMC notification email) also CC the PMC's
   `private@<pmc>.apache.org` and `security@<pmc>.apache.org`
   alias (when one exists, looked up via
-  <https://security.apache.org/projects/>). The
-  vendor-facing scan request is no longer an email at all —
-  it's a per-repo submission to the vendor's enrollment form
-  — so it carries no CC list and keeps the vendor and PMC
-  threads separate by construction.
-- **PMC-facing vendor opacity.** Emails that go to PMC
-  audiences (any of the four PMC-facing SKILLs above)
-  never name the scan vendor. Canonical wordings: "our
-  scan vendor partner" / "our vendor relationship" /
-  "the scan pipeline". The Glasswing **program name** is
-  fine (it's already in the `[GLASSWING]` subject line).
-  Anthropic + Apache Magpie + Claude OSS are fine to
-  name; vendor identity (Mirko / Alpha-Omega /
-  `mirko@alpha-omega.dev` / "the Glasswing pipeline"
-  used as vendor synonym) is what's redacted in
-  PMC-facing email bodies. Internal SKILL docs and this
-  README name the vendor freely; the redaction is
-  PMC-facing-content-only.
+  <https://security.apache.org/projects/>). Scan enrollment
+  is no longer an outbound message at all — it's just setting
+  the PMC's row in the Mythos tracker — so it carries no CC
+  list and keeps enrollment and PMC-facing threads separate
+  by construction.
+- **PMC-facing program-cost confidentiality.** Emails that
+  go to PMC audiences (any of the four PMC-facing SKILLs
+  above) never disclose the program's **cost mechanics** —
+  the $1M credit value, the per-MTok credit pricing, or the
+  seat/provisioning details. Everything else is nameable:
+  ASF Tooling (the internal runner), the Glasswing **program
+  name** (already in the `[GLASSWING]` subject line), Mythos
+  / Mythos-5, Anthropic, Apache Magpie, and Claude OSS. This
+  README and internal SKILL docs carry the full picture; only
+  the cost mechanics stay out of PMC-facing email bodies.
 - **Identity anchoring.** General discussion can come from
   any email; the formal `[GLASSWING]` request needs at least
   one `@apache.org` address attached, because scan results
@@ -545,7 +551,7 @@ changes, `build-status-tab` to rebuild the auto-generated
   (wrong project, wrong/stale model, truncated output,
   missing repos, cross-PMC leakage, mangled formatting) so
   the PMC isn't asked to read a clearly broken report. The
-  vendor's findings are then forwarded **verbatim**. The team
+  scan's findings are then forwarded **verbatim**. The team
   does not classify findings against the threat model, drop
   findings as out-of-scope, suppress findings as known
   non-findings, or annotate findings with model citations —

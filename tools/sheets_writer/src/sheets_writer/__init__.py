@@ -79,7 +79,7 @@ PROGRAM_TOTALS_SHEET = "Program totals"
 # OSS-subscription expedite has been submitted (synced from the PMCs sheet's
 # "Claude OSS Subscriptions Submitted" column on every refresh).
 OSS_SUBSCRIPTIONS_SHEET = "OSS Subscriptions"
-# Every repo submitted to the scan vendor, one row per repo, sorted by OSSF
+# Every repo submitted to ASF Tooling, one row per repo, sorted by OSSF
 # criticality. "When scanned" + "Commit hash" are hand-maintained (light
 # yellow) and preserved across refreshes keyed by repo; the rest auto-derive
 # from the PMCs + Repositories sheets on every build-status-tab refresh.

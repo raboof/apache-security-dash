@@ -71,7 +71,7 @@ LEGEND_ENTRIES = [
     ("Pre-flight — model not yet verified", STATE_COLOR["Pre-flight"]),
     ("Pre-flight — model nominated, pending verification", NOMINATED_COLOR),
     ("Ready — model verified, awaiting operator submit", STATE_COLOR["Ready"]),
-    ("Submitted — sent to vendor, awaiting results", STATE_COLOR["Submitted"]),
+    ("Submitted — sent to ASF Tooling, awaiting results", STATE_COLOR["Submitted"]),
     ("Triaging — results back, pre-forward sanity check", STATE_COLOR["Triaging"]),
     ("Delivered — forwarded to PMC", STATE_COLOR["Delivered"]),
 ]
@@ -728,7 +728,7 @@ def compute_subscription_syncs(
     out: list[tuple[int, list[str], list[str]]] = []
     for r, row in enumerate(grid[1:], start=2):  # sheet row number (header is row 1)
         if dsr_i >= 0 and not _cell(row, dsr_i):
-            continue  # not yet submitted — expedite not relayed to the vendor
+            continue  # not yet submitted — expedite not relayed to ASF Tooling
         expedite = _parse_addrs(_cell(row, exp_i))
         if not expedite:
             continue
@@ -886,17 +886,27 @@ def fill_registry_names(rows: list[list[str]], resolver=resolve_apache_names) ->
     return filled
 
 
+# The date ASF Tooling began enrolling scans internally (Mythos-5; the ASF was
+# officially provisioned 2026-07-01, and internal enrollment via the tracker
+# started 2026-07-15). Scans requested on/after this date go through the internal
+# ASF Tooling path; earlier ones went through the legacy external path
+# (Alpha-Omega relay / Google Form). Drives the "Added after ASF tooling started"
+# Scan Queue column — a one-line tunable if the cutover date is ever refined.
+ASF_TOOLING_START = "2026-07-15"
+
 # Schema of the 'Scan Queue' tab. Rows are split ONE PER BRANCH/TAG: a repo whose
 # Repositories-sheet "Branches/tags to scan" cell lists N comma-separated refs
 # yields N rows (blank = one row on the default branch). The identity + readiness
-# columns (0..6) auto-derive each refresh from the PMCs + Repositories sheets:
+# columns (0..7) auto-derive each refresh from the PMCs + Repositories sheets:
 # "Report recipients" (PMC's "Report recipients"), "Branch/tag" (the single ref
 # for this row), "Model discussion (ponymail)" (PMC's "PMC thread (ponymail)"),
-# "When ready" ("Date scan requested"). The per-scan tracking block repeats
-# N_SCANS times (Scan 1..5), each SCAN_FIELDS wide; these have no automated
-# source yet — rendered blank, values carried over across refreshes keyed by
-# (Repo, Branch/tag). A row with ANY scan cell filled is never dropped: it is
-# retained + flagged even if it falls out of the auto-derived set.
+# "When ready" ("Date scan requested"), and "Added after ASF tooling started"
+# (Yes/No derived from "When ready" vs ASF_TOOLING_START — flags scans enrolled
+# via the internal ASF Tooling path vs the legacy external one; blank if undated).
+# The per-scan tracking block repeats N_SCANS times (Scan 1..5), each SCAN_FIELDS
+# wide; these have no automated source yet — rendered blank, values carried over
+# across refreshes keyed by (Repo, Branch/tag). A row with ANY scan cell filled is
+# never dropped: it is retained + flagged even if it falls out of the auto set.
 SCAN_QUEUE_FIXED = [
     "Repo",
     "PMC",
@@ -905,6 +915,7 @@ SCAN_QUEUE_FIXED = [
     "Branch/tag",
     "Model discussion (ponymail)",
     "When ready",
+    "Added after ASF tooling started",
 ]
 # The fields tracked per individual scan, in display order (repeated per scan).
 SCAN_FIELDS = [
@@ -923,7 +934,9 @@ SCAN_BLOCK = len(SCAN_FIELDS)  # 4
 SCAN_QUEUE_CARRIED_COLS = tuple(range(FIXED_COLS, FIXED_COLS + N_SCANS * SCAN_BLOCK))
 # Identity columns greyed on continuation (2nd+) branch rows of a repo group —
 # the repeated cells; Branch/tag (col 4) stays white so the ref reads clearly.
-SCAN_QUEUE_IDENTITY_COLS = (0, 1, 2, 3, 5, 6)
+# "Added after ASF tooling started" (col 7) is per-repo (same for every branch
+# row), so it greys with the rest of the identity block on continuation rows.
+SCAN_QUEUE_IDENTITY_COLS = (0, 1, 2, 3, 5, 6, 7)
 # Two light-yellow shades alternate per scan group; grey tints continuation
 # identity cells; a warm tint flags retained off-spec rows.
 SCAN_SHADE_A = {"red": 1.0, "green": 0.94, "blue": 0.70}
@@ -947,6 +960,21 @@ def parse_criticality(raw: str) -> float | None:
     except ValueError:
         return None
     return v * 100 if v <= 1 else v
+
+
+def added_after_asf_tooling(when_ready: str) -> str:
+    """Pure: "Yes"/"No" flag for whether a scan was enrolled after ASF Tooling
+    began running scans internally (``ASF_TOOLING_START``), from its "When ready"
+    ("Date scan requested") date. Blank when undated. ISO dates compare lexically.
+
+    Distinguishes scans that went through the internal ASF Tooling path (new)
+    from those enrolled via the legacy external path (Alpha-Omega relay / Google
+    Form). Drives the Scan Queue's "Added after ASF tooling started" column.
+    """
+    w = (when_ready or "").strip()
+    if not w:
+        return ""
+    return "Yes" if w >= ASF_TOOLING_START else "No"
 
 
 def scan_queue_auto_rows(
@@ -1022,6 +1050,7 @@ def scan_queue_auto_rows(
                     "branches_cell": branches_by_url.get(url, ""),
                     "model_discussion": model_discussion,
                     "when_ready": when_ready,
+                    "added_after_asf_tooling": added_after_asf_tooling(when_ready),
                 }
             )
     per_repo.sort(
@@ -1273,7 +1302,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             STATE_COLOR["Ready"],
         ),
         (
-            "Submitted to vendor",
+            "Submitted to ASF Tooling",
             sum(state_counts[s] for s in ("Submitted", "Triaging", "Delivered")),
             STATE_COLOR["Submitted"],
         ),
@@ -1281,7 +1310,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         ("Delivered", state_counts["Delivered"], STATE_COLOR["Delivered"]),
     ]
 
-    # Aggregate counts for the private dashboard gist (no PMC names / no vendor).
+    # Aggregate counts for the private dashboard gist (no PMC names / no program cost mechanics).
     sheet_url = f"https://docs.google.com/spreadsheets/d/{args.spreadsheet_id}/edit"
     dashboard_data = {
         "total_pmcs": total_pmcs,
@@ -1426,7 +1455,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     )
     _pipe("Nominated (model awaiting verification)", nominated_count, NOMINATED_COLOR)
     _pipe("Ready (model verified, awaiting submit)", state_counts["Ready"], STATE_COLOR["Ready"])
-    _pipe("Submitted (sent to vendor)", state_counts["Submitted"], STATE_COLOR["Submitted"])
+    _pipe("Submitted (sent to ASF Tooling)", state_counts["Submitted"], STATE_COLOR["Submitted"])
     _pipe(
         "Triaging (results back, sanity check)", state_counts["Triaging"], STATE_COLOR["Triaging"]
     )
@@ -1440,7 +1469,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     s = pt.row(["Repositories", "Repos", "% of requested"], color=HEADING_FILL, span=3, header=True)
     r = pt.row(
         [
-            "  Submitted to vendor",
+            "  Submitted to ASF Tooling",
             total_repos_submitted,
             _pct(total_repos_submitted, total_repos_requested),
         ]
@@ -1738,7 +1767,9 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     sq.row(
         [
             "One row per submitted repo × branch/tag, sorted by OSSF Criticality "
-            "Score (highest first). Identity + 'When ready' auto-refresh from the "
+            "Score (highest first). Identity + 'When ready' + 'Added after ASF "
+            "tooling started' (Yes = enrolled via the internal ASF Tooling path "
+            "on/after 2026-07-15; No = legacy external path) auto-refresh from the "
             "PMCs + Repositories sheets; continuation branch-rows of a repo are "
             "greyed. Each 'Scan N' block (When scanned · Model send thread "
             "(ponymail) · When report sent · Commit hash) has no automated source "
@@ -1767,6 +1798,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
             e["branch"],
             e["model_discussion"],
             e["when_ready"],
+            e["added_after_asf_tooling"],
         ] + [carried.get(j, "") for j in SCAN_QUEUE_CARRIED_COLS]
         ri = sq.row(cells, span=width)
         data_rows.append(ri)

@@ -3,27 +3,42 @@
 
 # form-submitter
 
-Glasswing scan-submission helper. Fills the vendor's
-project-enrollment Google Form once per repo for a PMC,
-ordered by OSSF Criticality Score (highest first). The
-headline submission carries the maintainer roster +
+> **RETIRED — do not use.** The scan program moved in-house:
+> **ASF Tooling** now runs scans internally (Mythos-5,
+> officially provisioned 2026-07-01) and enrolls them from
+> the Mythos tracker spreadsheet + the
+> `apache/tooling-agents-private` archive. There is **no
+> external Google Form** to fill anymore. Enrollment is done
+> by `frontier-model-preparation-submit`, which just sets
+> `Date scan requested` + `Repositories submitted` on the
+> PMC's tracker row. This tool is kept in-tree only as a
+> historical reference to the legacy external-relay
+> (Alpha-Omega Google-Form) intake; it is not part of the
+> current flow. The rest of this document describes that
+> retired flow.
+
+Glasswing scan-submission helper (legacy). Filled ASF
+Tooling's project-enrollment Google Form once per repo for a
+PMC, ordered by OSSF Criticality Score (highest first). The
+headline submission carried the maintainer roster +
 OSS-expedite addresses + the Claude Max 20x checkbox;
-subsequent submissions point back to the headline.
+subsequent submissions pointed back to the headline.
 
-Used by the `frontier-model-preparation-submit` SKILL.
+Formerly used by the `frontier-model-preparation-submit` SKILL
+(which now enrolls via the tracker instead — see that SKILL).
 
-## Why this exists
+## Why this existed
 
 Apache projects with multi-repo scopes (HBase: 12+ repos;
-Tomcat: 4; Spark: 3) need a separate form submission per
-repo against the vendor's enrollment form. Doing that
-manually is error-prone — wrong ordering, copy-paste drift
+Tomcat: 4; Spark: 3) needed a separate form submission per
+repo against the external enrollment form. Doing that
+manually was error-prone — wrong ordering, copy-paste drift
 between headline and follow-ups, forgotten checkboxes.
-`form-submitter` builds the plan from the Mythos tracker,
-shows it to the operator with a dry-run, then drives a
+`form-submitter` built the plan from the Mythos tracker,
+showed it to the operator with a dry-run, then drove a
 headless Chromium through Playwright to submit each form
 in order. The persistent profile + lazy Playwright import
-keep the surface area narrow.
+kept the surface area narrow.
 
 ## One-time setup
 

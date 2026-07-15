@@ -35,7 +35,7 @@ The pipeline this SKILL covers:
 +--------+  +---------+  +---------+  +-----------+  +-----------+  +-----------+  +-----------+  +-----------+
 |[GLASS- |->|Pre-     |->|Pitch    |->|PMC reply  |->|Operator   |->|Submitted  |->|Sanity-    |->|Archived + |
 | WING]  |  |flight   |  |sent to  |  |(expedite  |  |gate       |  |ASF Tooling|  |checked    |  |Forwarded  |
-| request|  |(model + |  |PMC      |  | list /    |  |(explicit  |  |(Forms +   |  |(catastr.  |  |to PMC     |
+| request|  |(model + |  |PMC      |  | list /    |  |(explicit  |  |(Tracker + |  |(catastr.  |  |to PMC     |
 |        |  | discov.) |  |(scan-   |  | 'none')   |  | go-ahead) |  | PMC mail) |  | errors    |  |verbatim   |
 |        |  |         |  | response|  |           |  |           |  |           |  | only)     |  |(named     |
 |        |  |         |  | template)|  |           |  |           |  |           |  |           |  | contacts) |
@@ -72,7 +72,7 @@ The pitch step in the scan pipeline raises the OSS-tooling offer (one outbound e
 and the PMC reply step collects both decisions in one inbound response (which @apache.org addresses to expedite — if any — and any substantive scoping / threat-model follow-up).
 
 The `Archived` step is a synchronous part of `frontier-model-preparation-forward`:
-the SKILL sanity-checks Mirko's report (catching catastrophic generation errors — wrong project, wrong/stale model, truncation, missing repos),
+the SKILL sanity-checks ASF Tooling's report (catching catastrophic generation errors — wrong project, wrong/stale model, truncation, missing repos),
 commits ASF Tooling's markdown + `.json` raw + `.notes.md` sanity-check log to [`scans/<project>/<repo>/`](../../../scans/README.md),
 then drafts the forwarding email (ASF Tooling findings verbatim, no per-finding triage) citing the archive filename.
 The single user-approval gates both the commit and the email; see [`scans/README.md`](../../../scans/README.md) for the path / metadata / confidentiality spec.
@@ -239,7 +239,7 @@ For each thread (across all pages), classify into one of these buckets:
 | **Reply we haven't acted on** | Same as above but our last action (Gmail draft or sheet write) is older than the most recent PMC message. |
 | **Pure announcement-thread chatter** | A reply to the original `[IMPORTANT][SECURITY]` announcement that isn't substantive (just "+1", "interesting", etc.). Log and skip. |
 | **Bot / automated** | Git push notifications, PR review notifications, MAILER-DAEMON, etc. Filter out — don't include in the action list. |
-| **Mirko / Alpha-Omega correspondence** | From `mirko@alpha-omega.dev` or `@alpha-omega.dev`; subject containing scan-request acknowledgement, queue position, or scan result delivery. |
+| **ASF Tooling correspondence** | Scan results / queue updates from ASF Tooling; they land in the `apache/tooling-agents-private` archive, and any legacy relay email is back-compat — subject containing scan-request acknowledgement, queue position, or scan result delivery. |
 
 Filter out noise (the announcement-thread `+1`s, the git push emails, the GitHub PR-review notifications, MAILER-DAEMON bounces).
 These typically arrive in volume; skipping them keeps the action list useful.
@@ -441,12 +441,12 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
 | `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X" (or to defer further). | Surface for operator decision. `frontier-model-preparation-submit` is operator-gated — never auto-fire on this state. |
 | `submitted-awaiting-asf-tooling` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
-| `results-back-awaiting-sanity-check` | A scan report has arrived from Mirko but the team hasn't sanity-checked + archived + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `frontier-model-preparation-forward` (covers pre-forward sanity check, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
+| `results-back-awaiting-sanity-check` | A scan report has arrived from ASF Tooling but the team hasn't sanity-checked + archived + forwarded it yet. Detection signal: a scan bundle for the PMC in the `apache/tooling-agents-private` archive (or a legacy relay email with the PMC's results), plus the PMC sheet's `Date scan received` still blank. | Run `frontier-model-preparation-forward` (covers pre-forward sanity check, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
 | `archived-not-forwarded` | An archive commit exists under `scans/<project>/<repo>/` for this PMC but `Forwarded scan to PMC` is still blank. Process bug (the email should have been drafted at the same time). Detection signal: `git log --grep="^\[scan\] <project>/"` returns a commit newer than the sheet's `Forwarded scan to PMC` date. | Surface for manual intervention; re-run `frontier-model-preparation-forward` from step 7 (draft email) using the existing archive entry. |
 | `forwarded-closed` | `Forwarded scan to PMC` set **and** the corresponding archive commit exists in `scans/`. | Done. Move to "Completed" section of report. |
 | `blocked-on-discoverability` | Some repos in `Repositories requested` lack `AGENTS.md`; PMC needs to fix or we PR. | Surface; await PMC decision on path. |
 | `blocked-on-gate-2` | Request came from non-`@apache.org` address and no `@apache.org` anchor stated. | Wait for PMC reply confirming Apache identity. |
-| `mirko-correspondence` | Reply from Mirko on a queued / submitted scan. | Read the message; possibly forward to the PMC; update sheet. |
+| `asf-tooling-correspondence` | Scan-results / queue update from ASF Tooling on a queued / submitted scan (from the `apache/tooling-agents-private` archive, or a legacy relay email). | Read the update; possibly forward to the PMC; update sheet. |
 
 The "time-overdue" rule: any engagement in `awaiting-pmc-reply` or `submitted-awaiting-asf-tooling` for more than 14 days gets flagged for a nudge.
 **There is again a hard cliff — the 31 July 2026 Mythos 5 credit window (see "Program timeline" above) — so the nudge now carries real urgency: land the prerequisite in time for the scan to run before the window closes, not merely "eventually":**
@@ -500,8 +500,8 @@ Output format:
   <N addresses / "none" / "empty">; awaiting operator
   decision on whether to submit. Next: operator
   says "submit X" → then frontier-model-preparation-submit
-  (form-per-repo submission via ASF Tooling's enrollment form
-  + PMC notification email).
+  (enroll in the tracker: set Date scan requested +
+  Repositories submitted, + PMC notification email).
 
 ### blocked-on-discoverability (N)
 - <PMC> — <N> of <M> repos have AGENTS.md; awaiting PMC
@@ -511,8 +511,8 @@ Output format:
 - <PMC> — last reply from non-apache.org; we asked for
   anchor <date>.
 
-### mirko-correspondence (N)
-- <thread> — re: <PMC>; <one-line summary>.
+### asf-tooling-correspondence (N)
+- <thread / archive ref> — re: <PMC>; <one-line summary>.
 
 ### prs-needing-attention (N)   [waiting on US — from Step 3 triage]
 - <PMC> — <owner/repo#num> — <flags: pr-needs-reply / pr-changes-requested /
@@ -529,7 +529,7 @@ Output format:
 
 ## Submitted, awaiting ASF Tooling (no action needed)
 - <PMC> — submitted <date>; <D days> ago.
-- (overdue >14d): <PMC> — Mirko nudge candidate.
+- (overdue >14d): <PMC> — ASF Tooling nudge candidate.
 
 ## Completed since last sweep
 - <PMC> — forwarded <date>; end-to-end <D days>.
@@ -559,11 +559,11 @@ The PMCs sheet has two columns dedicated to **direct** lists-apache.org thread p
 - `PMC thread (ponymail)` — the `[GLASSWING]` request thread between the Security team and the PMC.
 - `Mirko thread (ponymail)` — historically the scan-submission
   + scan-results delivery thread (legacy external-relay era; pre-ASF-Tooling).
-    As of
-  2026-05-19, `frontier-model-preparation-submit` submits scan requests via a Google form rather than email,
+    Since the
+  move to internal ASF Tooling, `frontier-model-preparation-submit` enrolls scans by setting the tracker rather than emailing a relay,
   so this column stays blank for new submissions —
   there is no public-list thread to permalink to.
-  Kept for back-compat with pre-2026-05-19 submissions; not maintained for new ones.
+  Kept for back-compat with pre-transition submissions; not maintained for new ones.
 
 Both cells should only ever contain `https://lists.apache.org/thread/<tid>` URLs — direct permalinks to the actual thread.
 **No fallback or "starter" URLs.**
@@ -588,11 +588,11 @@ Procedure:
    the original `[GLASSWING]` request is CC'd there,
    so the thread is in that archive too.
 
-3. **`Mirko thread (ponymail)` is not maintained for submissions made after 2026-05-19.**
-   `frontier-model-preparation-submit` now uses a Google form rather than email,
+3. **`Mirko thread (ponymail)` is not maintained for submissions made after the move to internal ASF Tooling.**
+   `frontier-model-preparation-submit` now enrolls scans by setting the tracker rather than emailing a relay,
    so there is no public-list thread to permalink to.
    Leave the cell blank for new submissions; do not search for it.
-   The column stays in the schema for back-compat with pre-2026-05-19 submissions whose Mirko-email thread was permalinked before the transition.
+   The column stays in the schema for back-compat with pre-transition submissions whose legacy scan-delivery thread was permalinked before the transition.
 
 4. If a thread can't be found despite ponymail auth being active, leave the cell blank and surface the row in the action list under a "ponymail thread not yet indexed" note.
    Indexing can lag by a day or two for new threads.
@@ -656,8 +656,8 @@ Do not chain into a SKILL unbidden.
 | Add a new column / rename / insert | `frontier-model-preparation-update` (add-columns / insert-column / rename-column) |
 | Save a canned response | `frontier-model-preparation-update` (append-canned) |
 | Refresh the Status sheet | `frontier-model-preparation-update` (build-status-tab) |
-| Submit per-repo scan-request forms + draft PMC notification | `frontier-model-preparation-submit` |
-| Sanity-check Mirko's report + forward verbatim to PMC | `frontier-model-preparation-forward` |
+| Enroll scan in the tracker + draft PMC notification | `frontier-model-preparation-submit` |
+| Sanity-check ASF Tooling's report + forward verbatim to PMC | `frontier-model-preparation-forward` |
 | Generate a status rollup | `frontier-model-preparation-status` |
 | Produce a fresh threat-model draft for a PMC | `threat-model-producer` |
 
