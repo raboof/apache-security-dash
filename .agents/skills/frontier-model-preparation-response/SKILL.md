@@ -90,29 +90,19 @@ The SKILL never sends mail directly.
    even if the requester is also on those lists.
    Keep references abstract ("other PMCs have asked similar questions" — never names).
 
-5. **Vendor opacity in PMC-facing communications.**
-   The Security team's relationship with the scan vendor is internal context
+5. **Program-cost confidentiality in PMC-facing communications.**
+   The program's cost mechanics are internal context
    and **must not** be disclosed in any PMC-facing email this SKILL drafts.
-   Never include the vendor's individual contact name, the vendor company name,
-   the vendor email address,
-   or any phrasing that identifies them (e.g. "the Frontier Model Preparation pipeline" when used as a synonym for the vendor).
-   Canonical replacement phrases for PMC-facing text:
+   Never include the program's $1M credit value, its per-MTok credit pricing, or the seat/provisioning mechanics.
 
-   - "our scan vendor partner"
-   - "our vendor relationship"
-   - "the scan pipeline"
-   - "the third-party scan vendor"
-
-   The Frontier Model Preparation **program name** is fine to use (it's already in the `[GLASSWING]` subject line PMCs use).
-   What's redacted is **who runs the pipeline downstream of the Security team**.
-   Anthropic — as the Claude-for-OSS program runner and the model provider —
-   IS fine to mention by name in PMC-facing text;
-   the redaction is specifically the scan vendor.
+   ASF Tooling (VP Tooling + Infra + Security — who runs the scans internally on Mythos-5),
+   the Frontier Model Preparation **program name** (already in the `[GLASSWING]` subject line PMCs use),
+   Mythos / Mythos-5, Anthropic, Apache Magpie, and Claude are all fine to name in PMC-facing text.
+   What stays out is only the program's cost mechanics.
 
    This rule applies to every PMC-facing template in this SKILL:
-   the four gate-reply fragments, the pre-flight- pass template, the canned-response answers, and any ad-hoc replies.
-   Cross-referenced from `frontier-model-preparation-submit` (PMC notification email;
-   not the form submission itself, which is internal vendor-side and may name vendor staff freely)
+   the four gate-reply fragments, the pre-flight-pass template, the canned-response answers, and any ad-hoc replies.
+   Cross-referenced from `frontier-model-preparation-submit` (PMC notification email)
    and `frontier-model-preparation-forward` (scan-results forwarding email) —
    both apply the same rule.
 
@@ -168,12 +158,10 @@ Three reasons we want the PMC to consciously choose the list-delivery path:
    Some PMCs prefer the list (broader visibility);
    others prefer named individuals (clear ownership).
    Either is valid — we surface the choice.
-3. **Vendor trust boundary.**
-   Our scan vendor partner expects ASF-anchored recipient addresses.
+3. **ASF Tooling trust boundary.**
+   ASF Tooling expects ASF-anchored recipient addresses.
    Both personal `@apache.org` and project-list `@<pmc>.apache.org` addresses satisfy that requirement;
    the trust-boundary constraint is just "must be ASF-rooted", not "must be personal".
-   (Internal note — the vendor here is Alpha-Omega;
-   do *not* name them in the PMC-facing reply fragment below per Hard Rule 5.)
 
 If a request lists a non-Apache address (Gmail, employer address, etc.),
 reject with the corresponding reply fragment below.
@@ -418,7 +406,7 @@ Reply fragment (case b — request narrower than active set):
 > rather ask than guess. The list you confirm here is what
 > we'll run pre-flight (model discoverability +
 > completeness) against for each repo, and what we'll pass to
-> the scan vendor as the actual scope.
+> ASF Tooling as the actual scope.
 
 Reply fragment (case c — no repos enumerated):
 
@@ -434,7 +422,7 @@ Reply fragment (case c — no repos enumerated):
 > Which of these should be in scope? The list you confirm
 > here determines which repos we run pre-flight against
 > (model discoverability + completeness) and what we pass to
-> the scan vendor as the actual scope. Subset or include all
+> ASF Tooling as the actual scope. Subset or include all
 > — either is fine.
 
 **After scope is confirmed**,
@@ -472,11 +460,11 @@ this template is what goes out first instead.
 **One path, not two.**
 The scan itself follows a single path:
 when the Security team operator gives the green light,
-we submit the request to our scan vendor partner,
+we submit the request to ASF Tooling,
 the scan runs,
 results come back to the Security team for a pre-forward sanity check
 (catching catastrophic generation errors only — wrong project, wrong/stale model, truncated output),
-then we forward the vendor's report verbatim to the PMC's named triage contacts
+then we forward ASF Tooling's report verbatim to the PMC's named triage contacts
 for the PMC's own per-finding triage against the project's threat model.
 That sequence is the same for every PMC.
 
@@ -490,7 +478,7 @@ draft fixes and PRs based on the maintainer discussion around each issue.
 The OSS subscription is a *tool the triagers may want to use on the results*, not an alternative path for the scan itself.
 PMC members who want the subscription **register first** at the Anthropic form
 and **then** tell us which @apache.org addresses to include in an expedite ask —
-we can attempt (no promise) to expedite via our vendor relationship
+we can attempt (no promise) to expedite via the ASF Tooling relationship
 for projects that have completed pre-flight.
 
 The template collects the PMC's expedite-account list —
@@ -498,12 +486,11 @@ the `@apache.org` addresses they want included in the expedite ask after registe
 into the new `Expedite Claude OSS Requests` column on the PMC's row via `frontier-model-preparation-update`.
 Confirmed subscriptions (once they come back) land in the `Claude OSS Subscriptions Submitted` column.
 
-**Vendor opacity (cross-reference to Hard rule 5 below).**
-This template does **not** name the scan vendor anywhere —
-"our scan vendor partner" / "the vendor relationship" / "the scan pipeline" are the canonical wordings.
-Do not write "Mirko", "Alpha-Omega", "the Frontier Model Preparation pipeline" (when used to mean the vendor) or any similar attribution in the body.
-The Frontier Model Preparation *program name* is fine (it's already in the `[GLASSWING]` subject line);
-vendor attribution is internal-only.
+**Program-cost confidentiality (cross-reference to Hard rule 5 below).**
+This template does **not** disclose the program's cost mechanics anywhere —
+the $1M credit value, per-MTok credit pricing, and seat/provisioning mechanics stay out of the body.
+ASF Tooling (the runner), the Frontier Model Preparation *program name* (already in the `[GLASSWING]` subject line),
+Mythos / Mythos-5, and Anthropic are all fine to name; only the cost mechanics are internal-only.
 
 **To**: PMC primary contact.
 
@@ -534,18 +521,13 @@ days to a couple of weeks depending on queue position.
 
 A program-shape note for context.
 
-In parallel with the vendor-relay path above, the ASF Security,
-ASF Infrastructure, and ASF Tooling teams are jointly pursuing
-direct-access scanning of ASF projects without the third-party
-vendor relay. This is what we're currently working on at the
-ASF in parallel. Both paths feed the same internal queue; we
-work whichever lands fastest for any given PMC, to make the
-best use of the opportunities each party involved has made
-available. From the PMC's perspective the process is identical
-either way: pre-flight gate, scan, sanity-check, forward
-results to your named recipients. We mention it so you have
-the full picture of how the program is wired — nothing changes
-about what shows up in your inbox.
+The scans are run internally by the ASF — the ASF Security,
+ASF Infrastructure, and ASF Tooling teams jointly (ASF Tooling),
+on the Mythos-5 model. From the PMC's perspective the process
+is pre-flight gate, scan, sanity-check, and forward of results
+to your named recipients. We mention it so you have the full
+picture of how the program is wired — nothing changes about
+what shows up in your inbox.
 
 A separate offer for PMC members who'll be doing the
 triage work:
@@ -591,14 +573,14 @@ How the expedite ask works — **two steps, in order**:
   thread listing the @apache.org addresses that should
   be included in the expedite ask. We'll reference those
   addresses specifically when we ask on your behalf via
-  our vendor relationship.
+  the ASF Tooling relationship.
 
-  The expedite is **best-effort, not a promise** — our
-  vendor partner relays the ask to Anthropic, and
+  The expedite is **best-effort, not a promise** — ASF
+  Tooling relays the ask to Anthropic, and
   Anthropic's subscription team makes the call. That
   said, track record so far is that Anthropic has been
-  moving expedite requests through quickly when our
-  vendor flags them — so the practical expectation is
+  moving expedite requests through quickly when ASF
+  Tooling flags them — so the practical expectation is
   "fast, with no guarantee", not "slow and unlikely". The
   per-individual grant remains Anthropic's decision.
 
@@ -710,14 +692,11 @@ point at the eventual scan-result markdown —
 it includes the model identifier as a header field.
 Don't pin a specific model in the reply unless the user has explicitly told you to.
 
-**Note on the dual-path program shape.**
-Beyond the vendor-relay path that uses Frontier Model Preparation's currently-designated production model,
-the ASF Security, ASF Infrastructure, and ASF Tooling teams are jointly pursuing
-a parallel direct-access path that runs the scan without the third-party vendor relay (using ASF-side tooling).
-Both paths feed the same internal queue and produce the same shape of output for the PMC;
-the choice between them is an internal scheduling decision
-aimed at moving each PMC's scan through the queue as fast as possible.
-The PMC-facing process is identical either way.
+**Note on the program shape.**
+The scans are run internally by the ASF — the ASF Security, ASF Infrastructure,
+and ASF Tooling teams jointly (ASF Tooling) — on the Mythos-5 model.
+The PMC-facing process is the same regardless of internal scheduling:
+pre-flight gate, scan, sanity-check, and verbatim forward of results.
 
 ### "What threat-modeling framework do you expect — STRIDE / LINDDUN /
 PASTA / something else?"
@@ -806,8 +785,8 @@ reproducer sketch where feasible,
 and a severity hint.
 The Security team does a quick pre-forward sanity check on the report
 (right project, right model, no truncation, all submitted repos covered —
-catching catastrophically broken vendor output so PMCs aren't asked to read clearly broken reports)
-and forwards the vendor's findings to the PMC **verbatim** —
+catching catastrophically broken scan output so PMCs aren't asked to read clearly broken reports)
+and forwards ASF Tooling's findings to the PMC **verbatim** —
 no per-finding triage or filtering on our side.
 The PMC then triages through its normal process —
 the `private@<pmc>.apache.org` → `security@<project>.apache.org` → coordinated disclosure / CVE / release flow —

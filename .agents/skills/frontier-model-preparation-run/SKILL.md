@@ -3,7 +3,7 @@ name: frontier-model-preparation-run
 description: >-
   Umbrella orchestration SKILL for the Frontier Model Preparation scan pipeline —
   the periodic "run a full sweep across the program" entrypoint.
-  Performs a read-only sweep across all four input surfaces (Gmail [GLASSWING] threads, the Mythos tracker spreadsheet's PMCs sheet, GitHub PRs the Security team has opened on PMC repos, incoming Mirko/Alpha-Omega scan-result mail) and produces a single action list — per-PMC, classified by where each engagement sits in the pipeline (new request, awaiting PMC reply, model-verify pending, ready to submit, submitted to vendor, results back, forwarded, etc.).
+  Performs a read-only sweep across all four input surfaces (Gmail [GLASSWING] threads, the Mythos tracker spreadsheet's PMCs sheet, GitHub PRs the Security team has opened on PMC repos, ASF Tooling scan results landing in the `apache/tooling-agents-private` archive) and produces a single action list — per-PMC, classified by where each engagement sits in the pipeline (new request, awaiting PMC reply, model-verify pending, ready to submit, submitted to ASF Tooling, results back, forwarded, etc.).
   The user picks what to act on;
   this SKILL never writes —
   it hands off to frontier-model-preparation-response, frontier-model-preparation-model-verify, frontier-model-preparation-update, frontier-model-preparation-submit, frontier-model-preparation-forward, or frontier-model-preparation-status for actual work.
@@ -28,13 +28,13 @@ The pipeline this SKILL covers:
 
 ```
                                                                               +-------------------+
-                                                                              | Vendor pipeline   |
+                                                                              | ASF Tooling       |
                                                                               +---------+---------+
                                                                                         | scan results
                                                                                         v
 +--------+  +---------+  +---------+  +-----------+  +-----------+  +-----------+  +-----------+  +-----------+
 |[GLASS- |->|Pre-     |->|Pitch    |->|PMC reply  |->|Operator   |->|Submitted  |->|Sanity-    |->|Archived + |
-| WING]  |  |flight   |  |sent to  |  |(expedite  |  |gate       |  |to vendor  |  |checked    |  |Forwarded  |
+| WING]  |  |flight   |  |sent to  |  |(expedite  |  |gate       |  |ASF Tooling|  |checked    |  |Forwarded  |
 | request|  |(model + |  |PMC      |  | list /    |  |(explicit  |  |(Forms +   |  |(catastr.  |  |to PMC     |
 |        |  | discov.) |  |(scan-   |  | 'none')   |  | go-ahead) |  | PMC mail) |  | errors    |  |verbatim   |
 |        |  |         |  | response|  |           |  |           |  |           |  | only)     |  |(named     |
@@ -54,7 +54,7 @@ If it does, the flow is:
 +-----------+    +---------------+    +---------------+    +---------------+
 | Step 1:   |    | Step 2:       |    | We relay      |    | Anthropic     |
 | PMC mem-  |--->| Expedite list |--->| expedite via  |--->| grants subs.  |
-| bers reg- |    | written to    |    | vendor to     |    | Recorded in   |
+| bers reg- |    | written to    |    | ASF Tooling to|    | Recorded in   |
 | ister at  |    | "Expedite     |    | Anthropic     |    | "Claude OSS   |
 | claude.   |    |  Claude OSS   |    | (best-effort, |    |  Subscriptions|
 | com/      |    |  Requests"    |    |  no promise;  |    |  Submitted"   |
@@ -73,8 +73,8 @@ and the PMC reply step collects both decisions in one inbound response (which @a
 
 The `Archived` step is a synchronous part of `frontier-model-preparation-forward`:
 the SKILL sanity-checks Mirko's report (catching catastrophic generation errors — wrong project, wrong/stale model, truncation, missing repos),
-commits the vendor's markdown + `.json` raw + `.notes.md` sanity-check log to [`scans/<project>/<repo>/`](../../../scans/README.md),
-then drafts the forwarding email (vendor findings verbatim, no per-finding triage) citing the archive filename.
+commits ASF Tooling's markdown + `.json` raw + `.notes.md` sanity-check log to [`scans/<project>/<repo>/`](../../../scans/README.md),
+then drafts the forwarding email (ASF Tooling findings verbatim, no per-finding triage) citing the archive filename.
 The single user-approval gates both the commit and the email; see [`scans/README.md`](../../../scans/README.md) for the path / metadata / confidentiality spec.
 
 Each stage has its own SKILL responsible for the work that moves an engagement through it.
@@ -83,7 +83,7 @@ it just figures out which stage each engagement is *in* and surfaces what to do 
 
 ## Program timeline — Mythos 5 provisioned; hard 1–31 July 2026 window (read this)
 
-The timeline has flipped **back to time-boxed**. Earlier history: the program ran on a *"no rush"* footing through late May 2026 (open-ended third-party **vendor-relay path** — Alpha-Omega runs the scan off a Google-Form submission and emails the report back); a **27 May 2026 donation of $1M in Mythos credits** briefly added a **direct-internal path** under a 30 June cliff; that cliff was then **lifted** while the ASF sat in Anthropic's provisioning queue (Mythos Preview → Mythos 5 transition), with ordering by readiness + OSS Criticality Score.
+The timeline has flipped **back to time-boxed**. Earlier history: the program ran on a *"no rush"* footing through late May 2026 (an early **external-relay arrangement** — a third party ran the scan off a Google-Form submission and emailed the report back; since superseded by the internal ASF Tooling path); a **27 May 2026 donation of $1M in Mythos credits** briefly added a **direct-internal path** under a 30 June cliff; that cliff was then **lifted** while the ASF sat in Anthropic's provisioning queue (Mythos Preview → Mythos 5 transition), with ordering by readiness + OSS Criticality Score.
 
 **That provisioning pause is over.**
 Per Sally Khudairi's program updates: the ASF executed the **Claude Mythos 5** work order (2026-06-30) — same **$1M** value, a **30-day credit window of 1–31 July 2026** — and is **officially provisioned as of 2026-07-01**.
@@ -97,7 +97,7 @@ Ordering within that push is still **readiness + OSS Criticality Score**, drawn 
 The `Scan Queue` tab is the submission manifest, **one row per submitted repo × branch/tag** (the Repositories sheet's `Branches/tags to scan` cell is comma-split; blank = a single default-branch row), criticality-ranked. Each row carries auto-derived identity (`Report recipients`, `Branch/tag`, `Model discussion (ponymail)`, `When ready`) plus a per-scan tracking block — `When scanned` · `Model send thread (ponymail)` · `When report sent` · `Commit hash` — that **repeats as `Scan 1` … `Scan 5`** (alternating yellow blocks). Those per-scan columns have no automated source yet, so they stay blank, carried over across refreshes keyed by (Repo, Branch/tag) until their automation lands. Continuation branch-rows of a repo are greyed; **a row with any scan data is never dropped** (retained + flagged if it leaves the current spec).
 The signed-up PMCs keep their spot; the nudge is about landing prerequisites in time, not re-qualifying them.
 
-Internal only — keep OUT of PMC-facing text (Hard Rule 5 / the response SKILL): the $1M figure, the per-MTok credit pricing, the seat/provisioning mechanics, and the vendor identity.
+Internal only — keep OUT of PMC-facing text (Hard Rule 5 / the response SKILL): the program's cost mechanics — the $1M figure, the per-MTok credit pricing, and the seat/provisioning mechanics. (ASF Tooling as the runner is fine to name.)
 PMC-facing framing is "we're now provisioned on the scanning model and expect to run scans through July — finalizing / merging your threat model in the next week or two puts your scan in this cycle."
 A gentle-but-firm nudge canned response (topic `deadline`) exists for stalled PMCs, reframed around the live July window.
 
@@ -440,7 +440,7 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `pre-flight-passed-pitch-not-sent` | `Security model verified` set; `Expedite Claude OSS Requests` cell empty; no pre-flight-pass OSS-expedite pitch has gone out yet on the PMC thread. | Run `frontier-model-preparation-response`'s pre-flight-pass template (OSS-expedite pitch + ready-to-scan notification). Does **not** trigger `frontier-model-preparation-submit` directly — `submit` is now operator-gated. |
 | `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
 | `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X" (or to defer further). | Surface for operator decision. `frontier-model-preparation-submit` is operator-gated — never auto-fire on this state. |
-| `submitted-awaiting-vendor` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
+| `submitted-awaiting-asf-tooling` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
 | `results-back-awaiting-sanity-check` | A scan report has arrived from Mirko but the team hasn't sanity-checked + archived + forwarded it yet. Detection signal: a `mirko@alpha-omega.dev` email with the PMC's results, plus the PMC sheet's `Date scan received` still blank. | Run `frontier-model-preparation-forward` (covers pre-forward sanity check, archive commit to `scans/`, and the forwarding-email draft as a single approval gate). |
 | `archived-not-forwarded` | An archive commit exists under `scans/<project>/<repo>/` for this PMC but `Forwarded scan to PMC` is still blank. Process bug (the email should have been drafted at the same time). Detection signal: `git log --grep="^\[scan\] <project>/"` returns a commit newer than the sheet's `Forwarded scan to PMC` date. | Surface for manual intervention; re-run `frontier-model-preparation-forward` from step 7 (draft email) using the existing archive entry. |
 | `forwarded-closed` | `Forwarded scan to PMC` set **and** the corresponding archive commit exists in `scans/`. | Done. Move to "Completed" section of report. |
@@ -448,7 +448,7 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `blocked-on-gate-2` | Request came from non-`@apache.org` address and no `@apache.org` anchor stated. | Wait for PMC reply confirming Apache identity. |
 | `mirko-correspondence` | Reply from Mirko on a queued / submitted scan. | Read the message; possibly forward to the PMC; update sheet. |
 
-The "time-overdue" rule: any engagement in `awaiting-pmc-reply` or `submitted-awaiting-vendor` for more than 14 days gets flagged for a nudge.
+The "time-overdue" rule: any engagement in `awaiting-pmc-reply` or `submitted-awaiting-asf-tooling` for more than 14 days gets flagged for a nudge.
 **There is again a hard cliff — the 31 July 2026 Mythos 5 credit window (see "Program timeline" above) — so the nudge now carries real urgency: land the prerequisite in time for the scan to run before the window closes, not merely "eventually":**
 any PMC that still owes *us* something before it can be queued —
 `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, or `pmc-pitch-replied-awaiting-operator-decision` —
@@ -500,7 +500,7 @@ Output format:
   <N addresses / "none" / "empty">; awaiting operator
   decision on whether to submit. Next: operator
   says "submit X" → then frontier-model-preparation-submit
-  (form-per-repo submission via vendor's enrollment form
+  (form-per-repo submission via ASF Tooling's enrollment form
   + PMC notification email).
 
 ### blocked-on-discoverability (N)
@@ -527,7 +527,7 @@ Output format:
 - <PMC> — we replied <date>; <D days> ago.
 - (overdue >14d): <PMC> — overdue by <D days>; consider nudge.
 
-## Submitted, awaiting vendor (no action needed)
+## Submitted, awaiting ASF Tooling (no action needed)
 - <PMC> — submitted <date>; <D days> ago.
 - (overdue >14d): <PMC> — Mirko nudge candidate.
 
@@ -558,7 +558,7 @@ The PMCs sheet has two columns dedicated to **direct** lists-apache.org thread p
 
 - `PMC thread (ponymail)` — the `[GLASSWING]` request thread between the Security team and the PMC.
 - `Mirko thread (ponymail)` — historically the scan-submission
-  + scan-results delivery thread with the vendor.
+  + scan-results delivery thread (legacy external-relay era; pre-ASF-Tooling).
     As of
   2026-05-19, `frontier-model-preparation-submit` submits scan requests via a Google form rather than email,
   so this column stays blank for new submissions —

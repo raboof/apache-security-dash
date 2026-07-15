@@ -37,7 +37,7 @@ The helper (`sheets-writer` CLI in [`tools/sheets_writer/`](../../../tools/sheet
   empty means "not yet asked / not yet replied"; `none` means "asked + PMC declined".
 - Anthropic confirms a subscription grant for one of the expedite-asked addresses.
   Append the confirmed `@apache.org` address to the `Claude OSS Subscriptions Submitted` cell (preserve existing addresses; newline-separated).
-  This cell tracks addresses for which the OSS-subscription expedite has been **submitted to the vendor** — distinct from `Expedite Claude OSS Requests`, which tracks what the PMC asked us to expedite for.
+  This cell tracks addresses for which the OSS-subscription expedite has been **submitted to ASF Tooling** — distinct from `Expedite Claude OSS Requests`, which tracks what the PMC asked us to expedite for.
 
   **Auto-synced on every refresh.** You normally don't edit this cell by hand:
   `build-status-tab` appends each *submitted* PMC's `Expedite Claude OSS Requests` addresses into `Claude OSS Subscriptions Submitted` on every live refresh (append-only — never removes an address already there).

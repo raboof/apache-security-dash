@@ -79,8 +79,8 @@ while a per-thread, state-aware note reads as the status update each PMC actuall
    the operator sends from the mail client.
    Never call a send tool.
 
-6. **Vendor opacity (shared with `frontier-model-preparation-response` Hard Rule 5).** PMC-facing text must not name the scan-relay vendor (Alpha-Omega / its staff).
-   **Anthropic, Mythos / Mythos 5, Claude Fable 5, the Frontier Model Preparation program name, Claude-for-OSS are all fine to name** —
+6. **Program-cost confidentiality (shared with `frontier-model-preparation-response` Hard Rule 5).** PMC-facing text must not disclose the program's cost mechanics (the $1M credit value, per-MTok pricing, seat/provisioning).
+   **ASF Tooling (the runner), Anthropic, Mythos / Mythos 5, Claude Fable 5, the Frontier Model Preparation program name, Claude-for-OSS are all fine to name** —
    they are public (Anthropic's own announcement; Sally Khudairi's ai-discuss@ update).
    What's redacted is who runs the scan pipeline downstream of the Security team.
    Keep board-private detail (seat counts, credit mechanics, sponsor negotiations) out —
@@ -127,7 +127,7 @@ The live Scan Queue tab (criticality-sorted, rebuilt by `build-status-tab`) is: 
 Run (or reuse from a fresh `frontier-model-preparation-run` sweep) the per-PMC pipeline state for every `Scan Requested = Yes` PMC.
 Group into:
 
-- **Submitted / awaiting vendor** (`Date scan requested` set) — in the queue; nothing owed by them.
+- **Submitted / awaiting ASF Tooling** (`Date scan requested` set) — in the queue; nothing owed by them.
 - **Ready** (`Security model verified` set, not yet submitted) — cleared pre-flight; queued at criticality rank; nothing owed.
 - **Pre-flight / blocked** (model not verified, or discoverability / scope / gate items outstanding) —
   owes specific items before it can enter the queue.
@@ -181,7 +181,7 @@ Keep the program-status wording aligned with the `program-status` canned respons
 > Queue" tab in the tracker:
 > https://docs.google.com/spreadsheets/d/<tracker-id>/edit#gid=<scan-queue-gid>
 
-### Group A — Submitted (awaiting vendor)
+### Group A — Submitted (awaiting ASF Tooling)
 
 > **Where you stand:** apache/<repo(s)> is submitted and sits in that
 > queue at its criticality rank — you're done on the prep side. Nothing
@@ -243,5 +243,5 @@ keep the two in sync.)
   open there, not with the model mechanics.
 - **No false urgency.** With the window extended, do not imply a cliff.
   The lever is readiness + criticality rank, not a clock.
-- **Never the vendor.** Anthropic / Mythos / Frontier Model Preparation yes;
-  the scan relay vendor never (Hard Rule 6).
+- **Never the cost mechanics.** Anthropic / Mythos / Frontier Model Preparation / ASF Tooling yes;
+  the $1M / credit / seat cost mechanics never (Hard Rule 6).
