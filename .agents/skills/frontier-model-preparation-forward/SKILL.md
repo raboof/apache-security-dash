@@ -47,7 +47,7 @@ Skip when:
 
 4. **Recipients — designated PMC recipients + Security + Tooling + Marketing/Publicity, all `@apache.org`-rooted.**
    - **To:** the PMC's designated scan-result recipients — the `@apache.org` addresses from the original `[GLASSWING]` request ("send results to …"), i.e. the people who were supposed to be informed.
-   - **Cc:** `security@apache.org`, `private@tooling.apache.org`, `private@<pmc>.apache.org`, `security@<pmc>.apache.org` (if the alias exists), and the primary + backup PMC contacts. **Do NOT Cc `markpub@apache.org`** — Marketing & Publicity is named in the body as a consultation contact for the PMC, but is not a recipient of the pre-disclosure findings.
+   - **Cc:** `security@apache.org` and `private@tooling.apache.org` — **only these two.** Do **not** Cc `private@<pmc>.apache.org`, the `security@<pmc>` alias, the primary/backup contacts, or `markpub@apache.org`. The designated scan-result recipients on **To** are the PMC-side audience; the Cc is just the Security + Tooling audit trail. Widening to the whole `private@<pmc>` list would broaden the pre-disclosure scope beyond the named recipients; Marketing & Publicity is a body consultation contact, not a recipient of the findings.
 
    **Every** To/Cc address must end in `@apache.org` or `@<pmc>.apache.org`. Scan results are pre-disclosure vulnerability candidates; `@apache.org` rooting is the cheapest verification the recipient is still an ASF member entitled to see them. If the request's stated destination contains a non-`@apache.org` address, surface the conflict — do not silently substitute; a committer can forward their `@apache.org` address to a personal inbox on their side.
 
@@ -74,9 +74,8 @@ Skip when:
 | Scan bundle | `apache/tooling-agents-private/scans/mythos/<project>/<scan-id>/` (zip the scan-id directory for the attachment) |
 | Assessment `.md` + sanity verdict | `apache/tooling-agents-private/pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (+ its `metadata.yml` `sanity_check`) |
 | PMC slug / repo / branch / scan date | The scan bundle's `metadata.yml` (`project`, `repo`, `head_sha`, `scan_date`) |
-| Designated scan-result recipients | The original `[GLASSWING]` request thread ("send results to …") — the To: list |
-| Primary + backup PMC contacts | The PMC sheet's `Contact Person` + `Backup contact` |
-| `security@<pmc>` alias (if any) | <https://security.apache.org/projects/> |
+| Designated scan-result recipients (the To: list) | The PMC row's `Report recipients` cell (falls back to the original `[GLASSWING]` request's "send results to …" list) |
+| Primary + backup PMC contacts (for the `<NAMES HERE>` first-names in the body) | The PMC sheet's `Contact Person` + `Backup contact` |
 | `Date scan requested` (pre-condition) | The PMC sheet — must be filled; `Date scan received` / `Forwarded scan to PMC` blank |
 
 If the assessment is missing, its verdict is `RETURNED`, the recipient list is missing, or the scan `metadata.yml` is unreadable — stop and surface the gap.
@@ -95,7 +94,7 @@ If the assessment is missing, its verdict is `RETURNED`, the recipient list is m
 
 **To**: the PMC's designated scan-result recipients (the `@apache.org` addresses from the request).
 
-**Cc**: `security@apache.org`, `private@tooling.apache.org`, `private@<pmc>.apache.org`, [`security@<pmc>.apache.org` if it exists], primary + backup PMC contacts. (Not `markpub@apache.org` — it's a body consultation contact, not a Cc.)
+**Cc**: `security@apache.org`, `private@tooling.apache.org` — **only these two.** (Not `private@<pmc>`, the `security@<pmc>` alias, the primary/backup contacts, or `markpub@apache.org`.)
 
 **Attachments**: `<scan-id>.zip` (the scan bundle) and `<scan-id>-assessment.md` (the assessment).
 
@@ -158,7 +157,7 @@ Plain text; no marketing flourish; links verbatim (no tracking). The findings an
 
 5. **Pull the PMC's row** from the Mythos tracker (via the `frontier-model-preparation-status` flow or a direct Sheets read). Confirm `Scan Requested = Yes`, `Repositories submitted` non-empty, `Date scan requested` filled, `Date scan received` + `Forwarded scan to PMC` blank. Refuse on any wrong pre-condition.
 
-6. **Assemble recipients** (hard rule 4). To: the designated scan-result recipients from the `[GLASSWING]` request. Cc: `security@apache.org`, `private@tooling.apache.org`, `private@<pmc>.apache.org`, the `security@<pmc>` alias if it exists, primary + backup contacts — **not** `markpub@apache.org`. Verify every address is `@apache.org`-rooted; surface any that isn't.
+6. **Assemble recipients** (hard rule 4). To: the designated scan-result recipients (the PMC row's `Report recipients` / the `[GLASSWING]` request). Cc: `security@apache.org` + `private@tooling.apache.org` **only** (not `private@<pmc>`, the alias, contacts, or `markpub`). Verify every address is `@apache.org`-rooted; surface any that isn't.
 
 7. **Prepare the attachments** (see "Attachment preparation"): zip the scan bundle and copy the assessment `.md` into `$TMPDIR`.
 
@@ -189,7 +188,7 @@ Plain text; no marketing flourish; links verbatim (no tracking). The findings an
 - Forwarding a scan whose assessment verdict is `RETURNED` — that's a broken scan; escalate to ASF Tooling.
 - Pasting the findings / dispositions into the email body instead of attaching them.
 - Using `mcp__claude_ai_Gmail__create_draft` — it can't attach files and adds tracking. Use `forward-draft`.
-- Dropping `security@apache.org` or `private@tooling.apache.org` from the Cc, or **Cc'ing `markpub@apache.org`** (it's a body consultation contact, not a recipient of the findings), or using a non-`@apache.org` recipient.
+- Dropping `security@apache.org` or `private@tooling.apache.org` from the Cc, or **Cc'ing anything else** — `private@<pmc>` / the whole PMC list / the `security@<pmc>` alias / `markpub@apache.org` / the contacts (widens the pre-disclosure scope past the named To recipients), or using a non-`@apache.org` recipient.
 - Setting `Forwarded scan to PMC` before the operator has actually clicked Send.
 - Naming the program's cost mechanics ($1M value, per-MTok pricing, seat/provisioning) in the body.
 
