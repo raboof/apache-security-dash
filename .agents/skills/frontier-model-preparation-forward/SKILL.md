@@ -63,6 +63,8 @@ Skip when:
 
    This SKILL does not write to the spreadsheet directly.
 
+   **Then refresh the derived tabs — MANDATORY, not optional.** After the row cells are set, run `sheets-writer build-status-tab` so the PMC shows Delivered/forwarded-closed across the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist. A forward is **not complete** until this refresh has run. Do it after **every** forward (i.e. after all reports in a batch are sent), every time.
+
 8. **Ponymail must be authenticated to resolve the permalink.** Before the post-send permalink lookup, run `mcp__ponymail__auth_status`; if it reports "Not authenticated", `mcp__ponymail__login` first (the private `tooling` list is not readable anonymously). If ponymail can't be authenticated, don't block the forward — record the permalink as pending and surface a one-line note so a later sweep can fill it. (Note: the ponymail MCP blocks `security@apache.org` entirely, so resolve via the `private@tooling.apache.org` list, not the Security list.)
 
 9. **Program-cost confidentiality + publicity guidance live in the template body.** The email must not disclose the program's cost mechanics (the $1M credit value, per-MTok pricing, seat/provisioning). ASF Tooling, the program name, Mythos / Mythos 5, Anthropic, and Claude are all nameable. The template also carries the **attribution + publicity** guidance (don't describe the program's capabilities/models/methods in advisories; the attribution wording; consult Marketing & Publicity) — keep those paragraphs verbatim.
@@ -172,6 +174,8 @@ Plain text; no marketing flourish; links verbatim (no tracking). The findings an
 12. **Resolve the tooling-list ponymail permalink** (after the operator confirms they've sent). Ensure ponymail is authenticated (`mcp__ponymail__auth_status`; `mcp__ponymail__login` if not). Then `mcp__ponymail__search_list` with `list=private`, `domain=tooling.apache.org`, and the forward's subject (`[GLASSWING] ASVS Tooling security scan results …`), matching the message the operator just sent (the newest thread whose subject matches, from the operator's `@apache.org` address). Take its `tid` and build `https://lists.apache.org/thread/<tid>`. The archive may take a minute or two to index the message — if it isn't there yet, note the permalink as pending rather than blocking. Do this via the `private@tooling.apache.org` list (the Cc'd Tooling list), never `security@apache.org` (ponymail blocks it).
 
 13. **Hand off to `frontier-model-preparation-update`** (hard rules 7 + 8) once the operator confirms they've sent: set `Date scan received` (archive commit date) + `Forwarded scan to PMC` (today) + the tooling-list ponymail permalink (from step 12) + the draft id / scan-id in `Notes`. Do not set `Forwarded scan to PMC` before the operator has actually sent.
+
+14. **Refresh the derived tabs — MANDATORY closing step (hard rule 7).** After the cells are written, run `sheets-writer build-status-tab` so the PMC shows Delivered/forwarded-closed across the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist. The forward is not complete until this has run — do it after every forward (after all reports in a batch are sent), every time. This is not optional.
 
 ## Style notes
 
