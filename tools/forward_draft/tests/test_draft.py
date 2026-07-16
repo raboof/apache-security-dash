@@ -86,6 +86,14 @@ def test_build_mime_multipart_mixed_with_attachments(tmp_path) -> None:
     assert md_part.get_content_disposition() == "attachment"
     assert "VALID: 16" in md_part.get_content()
 
+    # Each attachment must also carry the legacy Content-Type `name` param
+    # (mirroring its filename) so Apple Mail distinguishes them; the body
+    # part must not (it isn't an attachment). Without a per-part `name`,
+    # Apple Mail collapses different attachments to the same fallback name.
+    assert zip_part.get_param("name") == "apisix-2026-07-15-611487c.zip"
+    assert md_part.get_param("name") == "assessment.md"
+    assert body.get_param("name") is None
+
 
 def test_build_mime_no_inline_html_and_no_cc_header(tmp_path) -> None:
     scan, assess = _mk(tmp_path)
