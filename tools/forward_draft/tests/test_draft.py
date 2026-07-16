@@ -25,6 +25,7 @@ from forward_draft.draft import (
     assert_no_inline_html,
     build_mime,
     guess_attachment_type,
+    headers_from_thread,
 )
 
 
@@ -122,6 +123,59 @@ def test_build_mime_missing_attachment_raises(tmp_path) -> None:
             body="b",
             attachments=[tmp_path / "does-not-exist.zip"],
         )
+
+
+def test_headers_from_thread() -> None:
+    thread = {
+        "messages": [
+            {"payload": {"headers": [{"name": "Message-ID", "value": "<a@x>"}]}},
+            {
+                "payload": {
+                    "headers": [
+                        {"name": "Message-ID", "value": "<b@x>"},
+                        {"name": "References", "value": "<a@x>"},
+                    ]
+                }
+            },
+        ]
+    }
+    # In-Reply-To = last message's id; References = existing chain + that id.
+    assert headers_from_thread(thread) == ("<b@x>", "<a@x> <b@x>")
+    # Last message with no prior References -> References == the id alone.
+    one = {"messages": [{"payload": {"headers": [{"name": "Message-ID", "value": "<z@x>"}]}}]}
+    assert headers_from_thread(one) == ("<z@x>", "<z@x>")
+    # Empty thread / missing Message-ID -> (None, None).
+    assert headers_from_thread({"messages": []}) == (None, None)
+    assert headers_from_thread({"messages": [{"payload": {"headers": []}}]}) == (None, None)
+
+
+def test_build_mime_reply_headers(tmp_path) -> None:
+    scan, assess = _mk(tmp_path)
+    raw = build_mime(
+        from_addr="jarek@apache.org",
+        to=["dave@apache.org"],
+        cc=[],
+        subject="Re: results",
+        body="threaded reply",
+        attachments=[scan, assess],
+        in_reply_to="<msg@thread>",
+        references="<root@thread> <msg@thread>",
+    )
+    msg = _parse(raw)
+    assert msg["In-Reply-To"] == "<msg@thread>"
+    assert msg["References"] == "<root@thread> <msg@thread>"
+    # Omitted by default (a fresh, non-reply draft).
+    plain = build_mime(
+        from_addr="jarek@apache.org",
+        to=["dave@apache.org"],
+        cc=[],
+        subject="new",
+        body="b",
+        attachments=[scan],
+    )
+    pmsg = _parse(plain)
+    assert pmsg["In-Reply-To"] is None
+    assert pmsg["References"] is None
 
 
 def test_assert_no_inline_html_blocks_inline_but_allows_attachment() -> None:

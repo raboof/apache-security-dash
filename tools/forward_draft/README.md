@@ -40,7 +40,6 @@ uv run --project tools/forward_draft forward-draft create \
     --to alice@apache.org --to bob@apache.org \
     --cc security@apache.org \
     --cc private@tooling.apache.org \
-    --cc markpub@apache.org \
     --subject "[GLASSWING] ASVS Tooling security scan results Apache APISIX apisix-ingress-controller/main 2026-07-15" \
     --body-file /tmp/claude/forward-body.txt \
     --attach /tmp/claude/apisix-ingress-controller-2026-07-15-611487c.zip \
@@ -51,6 +50,11 @@ uv run --project tools/forward_draft forward-draft create \
 no inline HTML) and prints the plan **without** any network call. The
 live path creates the draft `UNSENT` and prints its Gmail URL; the
 operator reviews and sends from Gmail.
+
+To reply **in an existing thread** — attaching the draft to it and setting
+`In-Reply-To` / `References` from the thread's last message so it threads on
+every client — pass `--thread-id <gmail-threadId>`. Omit it to start a new
+thread.
 
 ### Attachment content types
 
