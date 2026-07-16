@@ -88,7 +88,7 @@ If the assessment is missing, its verdict is `RETURNED`, the recipient list is m
 
 1. **Clone/refresh** `apache/tooling-agents-private` (clean tree; reaching the private repo over `gh`/git needs the keychain — bypass the sandbox with the loud banner per the user's rule).
 2. **Zip the scan bundle**: `zip -r -j <scan-id>.zip scans/mythos/<project>/<scan-id>/` (or keep the directory structure with `-r` without `-j` — operator preference; default to a flat zip of the bundle files). Name the zip `<scan-id>.zip`. Write it under `$TMPDIR` (not the job tmp dir — Bash can't write there).
-3. **Copy the assessment** `pre-forward-results/mythos/<project>/<scan-id>/assessment.md` to `$TMPDIR/<scan-id>-assessment.md` (a descriptive filename so the PMC can tell the two attachments apart).
+3. **Copy the assessment** `pre-forward-results/mythos/<project>/<scan-id>/assessment.md` to `$TMPDIR/pre-forward-assessment-<scan-id>.md` (the `pre-forward-assessment-` prefix names it clearly for the PMC and distinguishes it from the scan `.zip`).
 4. Both files become `--attach` arguments to `forward-draft create`.
 
 ## Email template
@@ -100,7 +100,7 @@ If the assessment is missing, its verdict is `RETURNED`, the recipient list is m
 
 **Cc**: `security@apache.org`, `private@tooling.apache.org` — **only these two.** (Not `private@<pmc>`, the `security@<pmc>` alias, the primary/backup contacts, or `markpub@apache.org`.)
 
-**Attachments**: `<scan-id>.zip` (the scan bundle) and `<scan-id>-assessment.md` (the assessment).
+**Attachments**: `<scan-id>.zip` (the scan bundle) and `pre-forward-assessment-<scan-id>.md` (the assessment).
 
 **Body** (plain text — `<NAMES HERE>` are the To: recipients' first names; adjust the sign-off if a different operator sends):
 
