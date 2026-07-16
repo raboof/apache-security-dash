@@ -95,11 +95,16 @@ def build_mime(
     subject: str,
     body: str,
     attachments: list[str | pathlib.Path],
+    in_reply_to: str | None = None,
+    references: str | None = None,
 ) -> bytes:
     """Build the raw RFC822 bytes of a plain-text draft with attachments.
 
     Body is a single ``text/plain`` part; each attachment becomes its own
     part (text/* attachments carried as text, everything else as binary).
+    When ``in_reply_to`` / ``references`` are given, the corresponding MIME
+    headers are set so the draft threads as a reply on every client (pair
+    with ``create_draft(..., thread_id=...)`` for the sender side).
     Raises ``FileNotFoundError`` for a missing attachment and ``ValueError``
     via :func:`assert_no_inline_html` if an inline html body ever appears.
     """
@@ -111,6 +116,10 @@ def build_mime(
     msg["Subject"] = subject
     msg["Date"] = email.utils.formatdate(localtime=True)
     msg["Message-ID"] = email.utils.make_msgid()
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+    if references:
+        msg["References"] = references
     # Plain-text body only — never add_alternative / text/html here.
     msg.set_content(body)
 
@@ -157,7 +166,56 @@ def api_post(access_token: str, path: str, payload: dict) -> dict:
         ) from e
 
 
-def create_draft(access_token: str, raw_bytes: bytes) -> dict:
-    """POST the raw MIME to Gmail ``drafts.create``. Leaves the draft UNSENT."""
+def create_draft(access_token: str, raw_bytes: bytes, thread_id: str | None = None) -> dict:
+    """POST the raw MIME to Gmail ``drafts.create``. Leaves the draft UNSENT.
+
+    When ``thread_id`` is given, the draft is attached to that Gmail thread
+    (the sender-side threading); pair with ``build_mime(..., in_reply_to=,
+    references=)`` for the recipient-side headers.
+    """
     raw_b64url = base64.urlsafe_b64encode(raw_bytes).decode().rstrip("=")
-    return api_post(access_token, "/drafts", {"message": {"raw": raw_b64url}})
+    message: dict = {"raw": raw_b64url}
+    if thread_id:
+        message["threadId"] = thread_id
+    return api_post(access_token, "/drafts", {"message": message})
+
+
+def api_get(access_token: str, path: str) -> dict:
+    req = urllib.request.Request(
+        f"{GMAIL_API}{path}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310 — fixed Google endpoint
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise SystemExit(
+            f"Gmail API {path} failed ({e.code}): {e.read().decode(errors='replace')}"
+        ) from e
+
+
+def headers_from_thread(thread: dict) -> tuple[str | None, str | None]:
+    """Pure: ``(in_reply_to, references)`` from a Gmail ``threads.get`` response.
+
+    Uses the thread's last message's ``Message-ID`` (as ``In-Reply-To``) and
+    appends it to any existing ``References`` chain. Returns ``(None, None)``
+    for an empty thread or a last message with no ``Message-ID``.
+    """
+    messages = thread.get("messages") or []
+    if not messages:
+        return (None, None)
+    headers = {
+        h["name"].lower(): h["value"] for h in messages[-1].get("payload", {}).get("headers", [])
+    }
+    msg_id = headers.get("message-id")
+    if not msg_id:
+        return (None, None)
+    existing = headers.get("references", "")
+    references = f"{existing} {msg_id}".strip() if existing else msg_id
+    return (msg_id, references)
+
+
+def latest_reply_headers(access_token: str, thread_id: str) -> tuple[str | None, str | None]:
+    """Resolve ``(in_reply_to, references)`` for the last message in ``thread_id``."""
+    thread = api_get(access_token, f"/threads/{thread_id}?format=metadata")
+    return headers_from_thread(thread)

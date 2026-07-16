@@ -35,7 +35,12 @@ import pathlib
 import sys
 
 from forward_draft.credentials import Credentials, locate_credentials, refresh_access_token
-from forward_draft.draft import build_mime, create_draft, guess_attachment_type
+from forward_draft.draft import (
+    build_mime,
+    create_draft,
+    guess_attachment_type,
+    latest_reply_headers,
+)
 
 
 def _human_size(n: int) -> str:
@@ -71,6 +76,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--credentials", help="OAuth credentials JSON (default: apache-magpie gmail-oauth.json)"
     )
     c.add_argument(
+        "--thread-id",
+        help=(
+            "Gmail threadId to attach the draft to as a reply. Sets threadId on the "
+            "draft and resolves In-Reply-To / References from the thread's last message "
+            "so it threads on every client. Omit to start a new thread."
+        ),
+    )
+    c.add_argument(
         "--dry-run", action="store_true", help="Validate + print the plan; do not create the draft"
     )
     return p.parse_args(argv)
@@ -91,6 +104,7 @@ def cmd_create(args: argparse.Namespace) -> int:
         f"  To:      {', '.join(args.to)}",
         f"  Cc:      {', '.join(args.cc) or '(none)'}",
         f"  Subject: {args.subject}",
+        f"  Thread:  {'reply in thread ' + args.thread_id if args.thread_id else '(new thread)'}",
         f"  Body:    {len(body)} chars ({len(body.splitlines())} lines), text/plain",
         f"  Attachments ({len(args.attachments)}):",
     ]
@@ -125,6 +139,10 @@ def cmd_create(args: argparse.Namespace) -> int:
 
     creds = Credentials.load(locate_credentials(args.credentials))
     access_token = refresh_access_token(creds)
+    # Resolve reply headers from the thread's last message when threading.
+    in_reply_to, references = (None, None)
+    if args.thread_id:
+        in_reply_to, references = latest_reply_headers(access_token, args.thread_id)
     # Rebuild with the real From: now that we have the credentials.
     raw = build_mime(
         from_addr=creds.from_address,
@@ -133,8 +151,10 @@ def cmd_create(args: argparse.Namespace) -> int:
         subject=args.subject,
         body=body,
         attachments=args.attachments,
+        in_reply_to=in_reply_to,
+        references=references,
     )
-    result = create_draft(access_token, raw)
+    result = create_draft(access_token, raw, thread_id=args.thread_id)
     draft_id = result.get("id", "?")
     msg_id = result.get("message", {}).get("id", "?")
     print(f"\nDraft created (UNSENT). From: {creds.from_address}")
