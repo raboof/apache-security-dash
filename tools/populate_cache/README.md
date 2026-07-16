@@ -70,9 +70,10 @@ scan the tool deletes such bundles (and their index entry, plus the now-empty
 `<pmc>` directory) rather than keeping a tombstone: the message is gone from the
 inbox, so a later scan will not re-download it.
 
-The delete sweep only runs on a full scan (default `--label INBOX`, no
-`--query`), where the scanned set is the complete current inbox; a narrowed scan
-would wrongly "handle" everything outside its window, so it is skipped there.
+The delete sweep only runs on a full scan (the default, i.e. no `--query`),
+where the scanned set is the complete current inbox;
+a narrowed scan would wrongly "handle" everything outside its window,
+so it is skipped there.
 Pass `--no-delete` to turn it off entirely, or `--dry-run` to see what would be
 deleted.
 
@@ -139,7 +140,6 @@ uv run --project tools/populate_cache populate-cache --query newer_than:30d  # n
 | Flag | Default | Meaning |
 |---|---|---|
 | `--cache-dir` | repo `report-cache/` | cache root to write into |
-| `--label` | `INBOX` | Gmail label to sweep |
 | `--query` | none | Gmail search to narrow the scan (e.g. `newer_than:30d`) |
 | `--limit` | `0` (no limit) | max new reports to download |
 | `--dry-run` | off | select + report, write nothing |

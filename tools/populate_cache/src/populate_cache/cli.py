@@ -214,11 +214,10 @@ def build_args(argv):
         default=DEFAULT_CACHE,
         help=f"Cache root (default: {DEFAULT_CACHE})",
     )
-    ap.add_argument("--label", default="INBOX", help="Gmail label to sweep (default: INBOX)")
     ap.add_argument(
         "--query",
         default=None,
-        help="Optional Gmail search to narrow the scan (e.g. 'newer_than:30d')",
+        help="Optional Gmail search to narrow the inbox scan (e.g. 'newer_than:30d')",
     )
     ap.add_argument(
         "--limit", type=int, default=0, help="Max new reports to download (0 = no limit)"
@@ -247,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
 
     service = gmail.connect()
     label_names = gmail.label_map(service)
-    messages = gmail.list_messages(service, args.label, args.query)
+    messages = gmail.list_messages(service, args.query)
     metadata: dict[str, gmail.MessageMeta] = gmail.fetch_metadata(
         service, [m["id"] for m in messages]
     )
@@ -315,12 +314,11 @@ def main(argv: list[str] | None = None) -> int:
     # Delete handled reports: a report stays in the inbox until handled,
     # so a cached bundle whose message is no longer in the inbox has been archived = handled.
     # Only safe on a full inbox scan, where inbox_ids is the complete current inbox;
-    # a narrowed scan would wrongly "handle" everything outside the window.
-    full_scan = args.label == "INBOX" and not args.query
+    # a --query-narrowed scan would wrongly "handle" everything outside the window.
     removed: list[str] = []
     if args.no_delete:
         pass
-    elif not full_scan:
+    elif args.query:
         print("(delete skipped: the handled-report sweep needs a full INBOX scan, no --query)")
     else:
         removed = delete_handled(cache, idx, inbox_message_ids(metadata), args.dry_run)
@@ -329,10 +327,7 @@ def main(argv: list[str] | None = None) -> int:
         index.write(cache, idx)
 
     verb = "Would download" if args.dry_run else "Downloaded"
-    print(
-        f"Swept {args.label}: {len(messages)} scanned, {len(heads)} thread heads, "
-        f"{len(survivors)} new."
-    )
+    print(f"Swept INBOX: {len(messages)} scanned, {len(heads)} thread heads, {len(survivors)} new.")
     print("  funnel: " + ", ".join(f"{k}={v}" for k, v in sorted(funnel.items())))
     print(f"{verb} {len(rows)} report(s)" + ("" if args.dry_run else f" to {cache}") + ".")
     if removed:

@@ -92,15 +92,15 @@ def connect():
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
-def list_messages(service, label: str = "INBOX", query: str | None = None) -> list[dict]:
-    """All messages in ``label`` (most-recent first) as ``{id, threadId}`` dicts.
+def list_messages(service, query: str | None = None) -> list[dict]:
+    """All INBOX messages (most-recent first) as ``{id, threadId}`` dicts.
 
     ``query`` is an optional Gmail search expression (e.g. ``newer_than:30d``)
     to narrow the scan.
     """
     out: list[dict] = []
     messages = service.users().messages()
-    request = messages.list(userId=_ME, labelIds=[label], q=query, maxResults=_PAGE)
+    request = messages.list(userId=_ME, labelIds=["INBOX"], q=query, maxResults=_PAGE)
     while request is not None:
         response = request.execute()
         out.extend(response.get("messages", []))
