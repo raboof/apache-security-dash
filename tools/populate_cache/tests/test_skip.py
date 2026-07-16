@@ -15,11 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from populate_cache.gmail import MessageMeta
 from populate_cache.skip import skip_reason
 
 
 def info(subject="", sender="", received=None):
-    return {"subject": subject, "from": sender, "received": received or []}
+    return MessageMeta(subject=subject, sender=sender, received=received or [])
 
 
 def test_cve_process_received_host():

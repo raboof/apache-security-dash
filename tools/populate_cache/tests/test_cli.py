@@ -22,6 +22,7 @@ from report_cache import index
 from report_cache.report_md import Header, read_meta
 
 from populate_cache import cli
+from populate_cache.gmail import MessageMeta
 
 
 def make_msg(
@@ -163,10 +164,10 @@ def test_reporter_name_resolves_via_security_rewrite():
 
 def test_inbox_message_ids_skips_failed_fetches():
     metadata = {
-        "a": {"message_id": "<a@x>"},
-        "b": {"message_id": ""},
-        "c": {},
-        "d": {"message_id": "<d@x>"},
+        "a": MessageMeta(message_id="<a@x>"),
+        "b": MessageMeta(message_id=""),
+        "c": MessageMeta(),  # a failed fetch -> no id
+        "d": MessageMeta(message_id="<d@x>"),
     }
     assert cli.inbox_message_ids(metadata) == {"<a@x>", "<d@x>"}
 

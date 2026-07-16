@@ -111,7 +111,7 @@ def unique_dir(parent: Path, slug: str) -> Path:
     return candidate
 
 
-def inbox_message_ids(metadata: dict[str, dict]) -> set[str]:
+def inbox_message_ids(metadata: dict[str, gmail.MessageMeta]) -> set[str]:
     """The RFC Message-IDs currently in the scanned inbox, from the metadata pass.
 
     A message whose metadata fetch failed contributes nothing (it has no Message-ID),
@@ -119,7 +119,7 @@ def inbox_message_ids(metadata: dict[str, dict]) -> set[str]:
     """
     ids: set[str] = set()
     for info in metadata.values():
-        mid = _clean_header(info.get("message_id"))
+        mid = _clean_header(info.message_id)
         if mid:
             ids.add(mid)
     return ids
@@ -248,7 +248,9 @@ def main(argv: list[str] | None = None) -> int:
     service = gmail.connect()
     label_names = gmail.label_map(service)
     messages = gmail.list_messages(service, args.label, args.query)
-    metadata = gmail.fetch_metadata(service, [m["id"] for m in messages])
+    metadata: dict[str, gmail.MessageMeta] = gmail.fetch_metadata(
+        service, [m["id"] for m in messages]
+    )
     # Only thread heads become reports;
     # replies belong to an already-ingested thread and are tracked by their shared label,
     # not as separate bundles.
@@ -263,12 +265,12 @@ def main(argv: list[str] | None = None) -> int:
     funnel: dict[str, int] = {"reply": len(messages) - len(heads)}
     survivors: list[str] = []
     for gmail_id in heads:
-        info = metadata.get(gmail_id, {})
-        reason = skip.skip_reason(info)
+        message_meta = metadata.get(gmail_id, gmail.MessageMeta())
+        reason = skip.skip_reason(message_meta)
         if reason:
             funnel[reason] = funnel.get(reason, 0) + 1
             continue
-        message_id = _clean_header(info.get("message_id"))
+        message_id = _clean_header(message_meta.message_id)
         if message_id and message_id in seen:
             funnel["already-seen"] = funnel.get("already-seen", 0) + 1
             continue
@@ -283,7 +285,8 @@ def main(argv: list[str] | None = None) -> int:
     for gmail_id in survivors:
         raw = gmail.raw_bytes(service, gmail_id)
         original = email.message_from_bytes(raw, policy=default)
-        labels = gmail.resolve_labels(metadata.get(gmail_id, {}).get("label_ids", []), label_names)
+        message_meta = metadata.get(gmail_id, gmail.MessageMeta())
+        labels = gmail.resolve_labels(message_meta.label_ids, label_names)
         header = Header.from_message(original)
         header.gmail_id = gmail_id
         header.labels = labels

@@ -27,6 +27,8 @@ this mailbox.
 
 from __future__ import annotations
 
+from populate_cache.gmail import MessageMeta
+
 # Mail injected by the ASF CVE-process system (cveprocess.apache.org) carries
 # this host in its Received chain; a CVE reservation/notification is never an
 # inbound report.
@@ -35,16 +37,16 @@ _AUTOMATION_HOSTS = ("security-vm-he-fi.apache.org",)
 _VINCE_FROM = "cert+donotreply@cert.org"
 
 
-def skip_reason(info: dict) -> str | None:
+def skip_reason(info: MessageMeta) -> str | None:
     """Why a thread head can be skipped from its headers alone, else None.
 
-    ``info`` is a header bundle as returned by ``gmail.fetch_metadata`` (keys
-    ``subject``, ``from``, ``received``). The return value is a short tag used
-    for the run funnel.
+    ``info`` is a metadata record from ``gmail.fetch_metadata``
+    (its ``subject``, ``sender`` and ``received`` fields).
+    The return value is a short tag used for the run funnel.
     """
-    subject = info.get("subject") or ""
-    sender = (info.get("from") or "").lower()
-    received = " ".join(info.get("received") or []).lower()
+    subject = info.subject
+    sender = info.sender.lower()
+    received = " ".join(info.received).lower()
 
     if any(host in received for host in _AUTOMATION_HOSTS):
         return "cve-process"
