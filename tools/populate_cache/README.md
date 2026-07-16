@@ -71,7 +71,7 @@ uv run --project tools/populate_cache populate-cache --query newer_than:30d  # n
 
 | Flag          | Default              | Meaning                                                       |
 |---------------|----------------------|---------------------------------------------------------------|
-| `--cache-dir` | repo `report-cache/` | cache root to write into                                      |
+| `--cache-dir` | `$REPORT_CACHE_DIR`, else the repo's `report-cache/` | cache root to write into      |
 | `--query`     | none                 | Gmail search to narrow the inbox scan (e.g. `newer_than:30d`) |
 | `--limit`     | `0` (no limit)       | max new reports to download                                   |
 | `--dry-run`   | off                  | select + report, write nothing                                |
