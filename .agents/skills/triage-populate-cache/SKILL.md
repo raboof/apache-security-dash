@@ -6,10 +6,10 @@ description: >-
   a deterministic download tool (`populate-cache`, in `tools/populate_cache/`) reads the inbox through the read-only Gmail API, selects thread heads on objective header facts only (thread head, not an automated CVE-process / VINCE / svn notification), and records each new one at `status: downloaded`.
   Then the agent (as part of THIS skill, with a lightweight-model subagent doing the read) sorts every downloaded message into a category and records it through the `report-cache` CLI:
   a genuine report is classified with its PMC + keywords (`report-cache classify <id> --pmc <pmc> --keywords "..."`), plus `--track-only` when it already reached the PMC's own security team (nothing for us to send);
-  a "Currently open security reports" digest gets `set --disposition track` plus one `--add-label` per report it lists;
-  a known non-issue class gets its standing `zzz-non-issue/<pmc>/<label>` label via `set --add-label`;
+  a "Currently open security reports" digest gets `set --status assessed --disposition track` plus one `--add-label` per report it lists;
+  a standing non-issue we never answer (a hacked phone, licence confusion) gets its `zzz-non-issue/...` label the same way;
   a mirror of a report that arrived by another path gets that report's label;
-  a non-report (spam / phishing / marketing / bounce) gets `set --disposition skip`.
+  everything else - spam, and the dependency inquiries the team answers by hand - gets `set --status assessed --disposition skip`.
   Dedup keys on the RFC `Message-ID`, so a triaged message is never re-downloaded;
   once the team archives a report out of the inbox, the next run deletes its bundle and its triage record.
   The keywords are short single words ordered where-then-what-then-which (subproject or component, vulnerability class, then whatever makes the tag unique), with the hyphen-joined slug capped at 60 chars.
@@ -131,13 +131,17 @@ For each one the listing shows at `status: downloaded`:
 These are the kinds of message the inbox actually delivers.
 They are an open set - we extend it as new cases appear:
 
-| Category      | What it is                                                       | What it needs               |
-|---------------|------------------------------------------------------------------|-----------------------------|
-| **report**    | a genuine vulnerability report for a project                     | keywords + reporter name    |
-| **digest**    | the team's own `Currently open security reports for <pmc>` mail  | the covered reports' labels |
-| **non-issue** | a known standing class, e.g. a CVE-in-a-dependency inquiry       | the standing label          |
-| **mirror**    | a notification duplicating a report that arrived by another path | the original's label        |
-| **other**     | phishing, marketing, a "thank you", a bounce, a vendor blast     | nothing                     |
+| Category      | What it is                                                          | What it needs               |
+|---------------|---------------------------------------------------------------------|-----------------------------|
+| **report**    | a genuine vulnerability report for a project                        | keywords + reporter name    |
+| **digest**    | the team's own `Currently open security reports for <pmc>` mail     | the covered reports' labels |
+| **non-issue** | a standing class we never answer: a hacked phone, licence confusion | the standing label          |
+| **mirror**    | a notification duplicating a report that arrived by another path    | the original's label        |
+| **other**     | everything else: spam, and anything the team answers by hand        | a label, if it has a class  |
+
+Every category but **report** is recorded with `set`, and every one of them passes `--status assessed`:
+`set` only advances the status when told to, so a message given a disposition but left at
+`downloaded` comes back in the queue on the next run, forever.
 
 - **report**: even a weak, duplicate, or ultimately-invalid one is still a real report the team answers,
   so it is a report here; whether it has merit is decided downstream, not now.
@@ -153,36 +157,54 @@ They are an open set - we extend it as new cases appear:
   Label it with **every one of those reports' labels** ([below](#the-open-reports-digest)) and record that we owe nothing:
 
   ```bash
-  report-cache set <id> --disposition track --add-label "<label>" --add-label "<label>"
+  report-cache set <id> --status assessed --disposition track \
+      --add-label "<label>" --add-label "<label>"
   ```
 
-- **non-issue**: most often a request about a CVE in a project the sender merely **depends on**
-  (a fix/release-info inquiry, or a transitive-CVE report).
-  Not a vulnerability we assess: give it the standing label **verbatim**,
-  spelled as in `email-classification/<pmc>/` (the standing `aaa-*` labels are hyphenated),
-  so it joins the existing class instead of minting a near-duplicate:
+- **non-issue**: a standing class we never answer -
+  a hacked phone, or one of the recurring confusions between the Apache licence and the ASF.
+  There is no project and no reply: label it and record that we owe nothing.
 
   ```bash
-  report-cache set <id> --add-label "zzz-non-issue/<pmc>/aaa-dependencies"
+  report-cache set <id> --status assessed --disposition track \
+      --add-label "zzz-non-issue/aaa-hack or license confusion"
   ```
 
-  A report we dismiss case-by-case is **not** this: that is a **report**, classified normally with
-  `--waiting-for non-issue-feedback`, replied to, and moved to the `zzz-non-issue` collection downstream.
+  The label is passed **verbatim**: it carries spaces and has no `<pmc>` segment
+  (no Apache project is involved), so it cannot be composed from `--collection` / `--keywords`.
 
 - **mirror**: a copy of a report that also arrived by the normal path ([below](#special-recipients)).
   Do not classify it as a new report: give it the original's label verbatim, and record that we owe nothing:
 
   ```bash
-  report-cache set <id> --disposition track --add-label "<the original's label>"
+  report-cache set <id> --status assessed --disposition track \
+      --add-label "<the original's label>"
   ```
 
-- **other**: nothing for the pipeline to do:
+- **other**: not a report the pipeline acts on itself.
+  `skip` says exactly that - out of the skill's scope - so it never means "ignore":
 
   ```bash
-  report-cache set <id> --disposition skip
+  report-cache set <id> --status assessed --disposition skip
   ```
 
-  The bundle stays where it is, out of the skill's scope, until the team archives the message.
+  Two shapes turn up:
+
+  - **a non-report** - phishing, marketing, a "thank you", a bounce, a vendor blast.
+    Nothing more to do; the bundle waits until the team archives the message.
+  - **a dependency inquiry** - a question about a CVE in a project the sender merely **depends on**
+    (a fix/release-info request, or a transitive-CVE report).
+    **The team answers it by hand**, so the pipeline only records the class:
+
+    ```bash
+    report-cache set <id> --status assessed --disposition skip \
+        --add-label "zzz-non-issue/<pmc>/aaa-dependencies"
+    ```
+
+    The `<pmc>` is the project the **body** names, not the list it was sent to.
+
+  A report we dismiss case-by-case is **neither** of these: that is a **report**, classified normally
+  with `--waiting-for non-issue-feedback`, replied to, and moved to the `zzz-non-issue` collection downstream.
 
 Note the two vocabularies do not line up, and should not be confused:
 a **category** is what kind of message arrived (above),
@@ -210,15 +232,17 @@ uv run --project tools/report_cache report-cache classify <id> --pmc <pmc> --key
 # Classify a report that is already in its PMC's hands: status assessed + disposition track
 uv run --project tools/report_cache report-cache classify <id> --pmc <pmc> --keywords "<kw>" --track-only
 
-# Record a disposition without moving the bundle (skip = not a report; track = nothing to send)
-uv run --project tools/report_cache report-cache set <id> --disposition skip
+# Record a category without moving the bundle (skip = not ours to act on; track = nothing to send).
+# Always advance --status too: set leaves it alone otherwise, and the message stays in the queue.
+uv run --project tools/report_cache report-cache set <id> --status assessed --disposition skip
 
 # Add labels verbatim (repeat --add-label; used for a digest's covered reports)
-uv run --project tools/report_cache report-cache set <id> --add-label "<label1>" --add-label "<label2>"
+uv run --project tools/report_cache report-cache set <id> --status assessed --disposition track \
+    --add-label "<label1>" --add-label "<label2>"
 
 # Label a standing non-issue class (a label, not a directory) - spelled as in the archive
-uv run --project tools/report_cache report-cache set <id> \
-    --add-label "zzz-non-issue/<pmc>/aaa-dependencies"
+uv run --project tools/report_cache report-cache set <id> --status assessed --disposition track \
+    --add-label "zzz-non-issue/aaa-hack or license confusion"
 ```
 
 Labels are recorded exactly as passed, so a standing `aaa-*` label goes through `--add-label` verbatim.
@@ -253,7 +277,7 @@ Then label the digest, passing each tag with a repeated `--add-label` (prefix it
 and record that there is nothing for us to send:
 
    ```bash
-   uv run --project tools/report_cache report-cache set <id> --disposition track \
+   uv run --project tools/report_cache report-cache set <id> --status assessed --disposition track \
        --add-label "tomcat/2026-06-08 webxml tostring" \
        --add-label "tomcat/CVE-2026-50229 examples xss"
    ```
@@ -317,7 +341,7 @@ Known special recipients:
   Read `security_contact` off the record, then compare it with the report's `To`/`Cc` (from `show`):
 
   1. If `private@<pmc>.apache.org` is among the recipients, then it was delivered to the PMC.
-     Classify it --track-only.
+     Classify it `--track-only`.
   2. If `security@<pmc>.apache.org` is among the recipients, there are two possibilities:
      1. The project's security contact is `security@<pmc>.apache.org`:
         the PMC's own security team already has the report.
@@ -426,25 +450,25 @@ Give it the message's `<id>` and tell it to:
 
 ```json
 {
-  "category": "report",                 // report | digest | non-issue | mirror | non-report
+  "category": "report",                 // report | digest | non-issue | mirror | other
   "pmc": "spark",                       // slug, from the CONTENT (see below); null if none is named
   "reached_pmc": false,                 // did it also reach the PMC's own security team?
   "keywords": ["rest", "ssrf", "api"],  // report only: where, then what, then which; [a-z0-9_], <=3
   "reporter_name": "Jane",              // report only: how to greet them, from the signature
-  "labels": [],                         // digest / non-issue / mirror: labels to add, verbatim
-  "reason": "SSRF in the REST API admin proxy"  // one line; for non-report, why it is not one
+  "labels": [],                         // digest / non-issue / mirror / a dependency inquiry: verbatim
+  "reason": "SSRF in the REST API admin proxy"  // one line; for other, what it is instead
 }
 ```
 
 Which fields carry the answer depends on the category:
 
-| Category       | `pmc`               | `reached_pmc` | `keywords` + `reporter_name` | `labels`                    |
-|----------------|---------------------|---------------|------------------------------|-----------------------------|
-| **report**     | yes                 | yes           | yes                          | -                           |
-| **digest**     | the PMC it is *for* | -             | -                            | every listed report's label |
-| **non-issue**  | yes                 | -             | -                            | the standing label          |
-| **mirror**     | yes                 | -             | -                            | the original's label        |
-| **non-report** | null                | -             | -                            | -                           |
+| Category      | `pmc`               | `reached_pmc` | `keywords` + `reporter_name` | `labels`                          |
+|---------------|---------------------|---------------|------------------------------|-----------------------------------|
+| **report**    | yes                 | yes           | yes                          | -                                 |
+| **digest**    | the PMC it is *for* | -             | -                            | every listed report's label       |
+| **non-issue** | null (no project)   | -             | -                            | the standing `zzz-non-issue/...`  |
+| **mirror**    | yes                 | -             | -                            | the original's label              |
+| **other**     | the body's project, for a dependency inquiry; else null | - | -   | `zzz-non-issue/<pmc>/aaa-dependencies` for a dependency inquiry; else none |
 
 Two fields need care, because the obvious answer is the wrong one:
 
@@ -488,10 +512,10 @@ After `inbox_manager` archives a message, the next full `populate-cache` run del
 
 After a download and label pass, nothing is left at `--status downloaded`:
 real reports are `classified` under `<pmc>/<date>-<keywords>/`,
-reports that already reached their PMC - and digests and mirrors - are `assessed` + `--disposition track`
-(nothing for us to send),
-standing non-issues carry a `zzz-non-issue/<pmc>/<label>` label,
-and non-reports carry `disposition: skip`.
+reports that already reached their PMC - and digests, mirrors and standing non-issues -
+are `assessed` + `disposition: track` (nothing for us to send),
+and everything else is `assessed` + `disposition: skip`
+(spam, and the dependency inquiries the team answers by hand).
 The **drafting SKILL** then assesses each classified report against the PMC's threat model
 and attaches the model's fragments (`summary.md` / `reason.md`) with `report-cache put-artifact`,
 skipping anything already `track`ed (a digest, or a report in a specialized PMC's hands).
