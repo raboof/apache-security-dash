@@ -125,6 +125,14 @@ def build_mime(
             msg.add_attachment(p.read_text(encoding="utf-8"), subtype=subtype, filename=p.name)
         else:
             msg.add_attachment(p.read_bytes(), maintype=maintype, subtype=subtype, filename=p.name)
+        # Also set the LEGACY Content-Type ``name`` parameter, mirroring the
+        # modern Content-Disposition ``filename``. Apple Mail keys attachment
+        # identity/display on ``Content-Type; name=`` first and falls back to a
+        # generic name when it's absent — so multiple attachments with no
+        # ``name`` collapse to the same fallback and render as one/identical
+        # files. Setting it makes each attachment distinct in every client.
+        # (``EmailMessage.add_attachment`` deliberately omits this legacy param.)
+        msg.get_payload()[-1].set_param("name", p.name, header="Content-Type")
 
     assert_no_inline_html(msg)
     return bytes(msg)
