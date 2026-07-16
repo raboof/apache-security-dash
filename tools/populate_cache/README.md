@@ -87,6 +87,12 @@ A message is a head when:
 * it is the Gmail thread root (`id == threadId`),
 * or when it carries no `References` header.
 
+The root test is Gmail's own threading, so it errs towards keeping:
+a reply Gmail could not thread (a parent in Spam, a rewritten subject)
+looks like a root and is downloaded too.
+That is deliberate: a missed report costs more than a re-read follow-up,
+and the SKILL recognizes it from the body.
+
 Heads that are automated notifications, not fresh reports, are skipped
 (a header-only decision):
 

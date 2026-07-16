@@ -130,16 +130,18 @@ def thread_heads(messages: list[dict], metadata: dict[str, MessageMeta]) -> list
 
     A message is a head when either:
 
-    * it is the Gmail thread root (``id == threadId``) - this keeps a standalone
-      reply whose parent is not in this mailbox, which forms its own thread; or
-    * it has no ``References`` header - a fresh message that Gmail nonetheless
-      merged into an existing thread by subject (so ``id != threadId``), e.g. a
-      recurring ``Currently open security reports for <pmc>`` mail.
+    * it is the Gmail thread root (``id == threadId``):
+      this keeps a standalone reply whose parent is not in this mailbox,
+    * or it has no ``References`` header:
+      a fresh message that Gmail nonetheless merged into an existing thread by subject.
 
-    Genuine replies and forwards (``id != threadId`` *and* a ``References``
-    header) are dropped. ``References`` is used rather than ``In-Reply-To``
+    Genuine replies and forwards (``id != threadId`` *and* a ``References`` header) are dropped.
+    ``References`` is used rather than ``In-Reply-To``
     because forwards carry ``References`` but often omit ``In-Reply-To``.
-    ``metadata`` is the mapping returned by :func:`fetch_metadata`.
+
+    The root test is Gmail's own threading heuristic, and it deliberately over-keeps:
+    a reply Gmail could not thread (a parent in Spam or a rewritten subject)
+    becomes a root of its own.
     """
     out: list[str] = []
     for message in messages:
