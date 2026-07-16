@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import io
+
 import pytest
 
 from report_cache import cli, index
@@ -258,6 +260,132 @@ def _ns(**over):
         "track_only": False,
         "add_label": [],
         "remove_label": [],
+        "name": None,
+        "from_file": None,
     }
     defaults.update(over)
     return type("Args", (), defaults)()
+
+
+def bundle_dir_of(cache, mid):
+    return cache / index.load(cache)[mid].path
+
+
+# --- list -------------------------------------------------------------------
+
+
+def test_list_filters_by_status(tmp_path, capsys):
+    make_bundle(tmp_path, mid="<a@h>", slug="downloaded-a")
+    make_bundle(tmp_path, mid="<b@h>", slug="downloaded-b")
+    cli.cmd_classify(tmp_path, _ns(id="<a@h>", pmc="spark", keywords="xxe"))  # leaves 'downloaded'
+    capsys.readouterr()  # drop the classify move message
+
+    cli.cmd_list(tmp_path, _ns(status="downloaded"))
+    out = capsys.readouterr().out
+    assert "downloaded-b" in out
+    assert "downloaded-a" not in out  # now classified, filtered out
+    assert "2026-05-24-xxe" not in out
+
+
+def test_list_empty_is_reported(tmp_path, capsys):
+    cli.cmd_list(tmp_path, _ns(status=None))
+    assert "no matching bundles" in capsys.readouterr().out
+
+
+# --- show -------------------------------------------------------------------
+
+
+def test_show_renders_metadata_and_body(tmp_path, capsys):
+    make_bundle(tmp_path, mid="<s@h>", slug="showme")
+    cli.cmd_show(tmp_path, _ns(id="showme"))
+    out = capsys.readouterr().out
+    assert "Message-ID: <s@h>" in out
+    assert "Subject:    XXE in the REST API" in out
+    assert "pmc:         spark" in out
+    assert "status:      downloaded" in out
+    assert "artifacts:   (none)" in out
+    assert "The report body." in out
+
+
+def test_show_lists_attachments_and_artifacts(tmp_path, capsys):
+    make_bundle(
+        tmp_path,
+        mid="<s2@h>",
+        slug="s2",
+        attachments=[{"filename": "poc.html", "content_type": "text/html", "size": 20}],
+    )
+    bundle = bundle_dir_of(tmp_path, "<s2@h>")
+    (bundle / "attachments" / "poc.html").write_text("<p>x</p>")
+    (bundle / "summary.md").write_text("summary")
+
+    cli.cmd_show(tmp_path, _ns(id="s2"))
+    out = capsys.readouterr().out
+    assert "poc.html (text/html, 20 B)" in out
+    assert "artifacts:   summary.md" in out
+
+
+# --- get-attachment ---------------------------------------------------------
+
+
+def test_get_attachment_renders_html(tmp_path, capsys):
+    make_bundle(
+        tmp_path,
+        mid="<g@h>",
+        slug="g",
+        attachments=[{"filename": "poc.html", "content_type": "text/html", "size": 11}],
+    )
+    (bundle_dir_of(tmp_path, "<g@h>") / "attachments" / "poc.html").write_text("<h1>Hi</h1>")
+    cli.cmd_get_attachment(tmp_path, _ns(id="g", name="poc.html"))
+    assert "Hi" in capsys.readouterr().out
+
+
+def test_get_attachment_unsupported_prints_notice(tmp_path, capsys):
+    make_bundle(
+        tmp_path,
+        mid="<u@h>",
+        slug="u",
+        attachments=[
+            {"filename": "blob.bin", "content_type": "application/octet-stream", "size": 3}
+        ],
+    )
+    (bundle_dir_of(tmp_path, "<u@h>") / "attachments" / "blob.bin").write_bytes(b"\x00\x01\x02")
+    cli.cmd_get_attachment(tmp_path, _ns(id="u", name="blob.bin"))
+    assert "unsupported attachment type application/octet-stream" in capsys.readouterr().out
+
+
+def test_get_attachment_missing_raises(tmp_path):
+    make_bundle(tmp_path, mid="<m@h>", slug="m")
+    with pytest.raises(SystemExit, match="no attachment"):
+        cli.cmd_get_attachment(tmp_path, _ns(id="m", name="nope.txt"))
+
+
+# --- get / put artifact -----------------------------------------------------
+
+
+def test_put_and_get_artifact_roundtrip(tmp_path, capsys, monkeypatch):
+    make_bundle(tmp_path, mid="<p@h>", slug="p")
+    monkeypatch.setattr("sys.stdin", io.StringIO("the summary\n"))
+    cli.cmd_put_artifact(tmp_path, _ns(id="p", name="summary.md"))
+    capsys.readouterr()
+    cli.cmd_get_artifact(tmp_path, _ns(id="p", name="summary.md"))
+    assert capsys.readouterr().out == "the summary\n"
+
+
+def test_put_artifact_from_file(tmp_path):
+    make_bundle(tmp_path, mid="<pf@h>", slug="pf")
+    src = tmp_path / "src.md"
+    src.write_text("from file")
+    cli.cmd_put_artifact(tmp_path, _ns(id="pf", name="reason.md", from_file=str(src)))
+    assert (bundle_dir_of(tmp_path, "<pf@h>") / "reason.md").read_text() == "from file"
+
+
+def test_put_artifact_rejects_reserved_name(tmp_path):
+    make_bundle(tmp_path, mid="<r@h>", slug="r")
+    with pytest.raises(SystemExit, match="reserved"):
+        cli.cmd_put_artifact(tmp_path, _ns(id="r", name="report.md"))
+
+
+def test_artifact_name_rejects_traversal(tmp_path):
+    make_bundle(tmp_path, mid="<t@h>", slug="t")
+    with pytest.raises(SystemExit, match="unsafe name"):
+        cli.cmd_get_artifact(tmp_path, _ns(id="t", name="../escape"))

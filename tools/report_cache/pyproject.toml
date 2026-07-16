@@ -46,6 +46,10 @@ dependencies = [
     "attrs",
     # Address-only PMC guessing from To/Cc headers (index.py).
     "whimsy-lookup",
+    # Attachment rendering for the agent CLI (render.py):
+    # HTML -> Markdown, and PDF -> text.
+    "markdownify",
+    "pypdf",
 ]
 
 [project.optional-dependencies]
