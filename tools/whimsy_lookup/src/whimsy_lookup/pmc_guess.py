@@ -40,11 +40,13 @@ go through the CLI/helper rather than WebFetch on the raw JSON.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from whimsy_lookup.committee import mail_list_of
 
-_ADDR_HOST = re.compile(r"@([a-z0-9][a-z0-9-]*)\.apache\.org", re.IGNORECASE)
+# Free-text extraction: the ``<host>.apache.org`` domain of an email address.
+_ADDR_DOMAIN = re.compile(r"@([a-z0-9][a-z0-9-]*\.apache\.org)", re.IGNORECASE)
 _EMAIL = re.compile(r"\S+@\S+")
 _TOKEN = re.compile(r"[a-z0-9][a-z0-9-]*")
 
@@ -116,20 +118,45 @@ _NAME_ALIASES = {
 }
 
 
-def slugs_from_addresses(text: str, known_slugs) -> list[str]:
-    """apache.org subdomain hosts in ``text`` that are real committee slugs.
+def slugs_from_domains(domains: Iterable[str], committees: dict) -> list[str]:
+    """Committee slugs for the ``<host>.apache.org`` mailing-list domains in ``domains``.
 
-    Order-preserving and de-duplicated. Restricting to ``known_slugs`` (the
-    committee-info slug set) is what filters out infrastructure subdomains
-    like ``lists`` / ``whimsy`` / ``selfserve`` — they simply aren't PMCs.
+    The host is usually the committee slug, but not always:
+    HttpComponents takes mail at ``hc.apache.org``,
+    so ``hc`` maps to ``httpcomponents``.
+    Non-apache.org and unknown hosts are skipped.
+    The result preserves input order and is deduplicated.
+
+    The domain form of :func:`slugs_from_addresses`,
+    for callers that already hold parsed addresses
+    (``email.headerregistry.Address.domain``).
     """
-    known = set(known_slugs)
+    by_host: dict[str, str] = {}
+    for slug, entry in committees.items():
+        host = mail_list_of(entry)
+        if host:
+            by_host.setdefault(host.lower() + ".apache.org", slug)
     out: list[str] = []
-    for m in _ADDR_HOST.finditer(text or ""):
-        slug = m.group(1).lower()
-        if slug in known and slug not in out:
+    for domain in domains:
+        # Domains are case-insensitive;
+        # the committee-info hosts are lower-cased.
+        slug = by_host.get((domain or "").lower())
+        if slug and slug not in out:
             out.append(slug)
     return out
+
+
+def slugs_from_addresses(text: str, committees: dict) -> list[str]:
+    """Committee slugs for the apache.org mailing-list hosts appearing in free ``text``.
+
+    A thin wrapper over :func:`slugs_from_domains`
+    for callers holding raw header or prose text rather than parsed addresses
+    (an inbound email blob).
+    Email addresses in arbitrary text have no reliable grammar,
+    so the hosts are extracted with a regex rather than an address parser.
+    """
+    domains = (m.group(1) for m in _ADDR_DOMAIN.finditer(text or ""))
+    return slugs_from_domains(domains, committees)
 
 
 def guess_pmcs(text: str, committees: dict, coordinates: dict) -> list[Pmc]:
@@ -144,7 +171,7 @@ def guess_pmcs(text: str, committees: dict, coordinates: dict) -> list[Pmc]:
     known = set(committees)
     ranked: list[str] = []
 
-    for slug in slugs_from_addresses(text, known):
+    for slug in slugs_from_addresses(text, committees):
         if slug not in ranked:
             ranked.append(slug)
 

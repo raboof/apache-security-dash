@@ -23,6 +23,7 @@ from whimsy_lookup.pmc_guess import (
     pmc_for,
     security_link,
     slugs_from_addresses,
+    slugs_from_domains,
 )
 
 # committee-info mapping: most mail_lists equal the slug; httpcomponents is the
@@ -65,9 +66,48 @@ def _slugs(pmcs):
     return [p.id for p in pmcs]
 
 
+def test_slugs_from_domains_uses_parsed_domains():
+    # The domain form callers use when they already hold parsed addresses
+    # (e.g. Address.domain); external and non-committee hosts drop.
+    domains = ["tomcat.apache.org", "example.com", "hc.apache.org"]
+    assert slugs_from_domains(domains, KNOWN) == ["tomcat", "httpcomponents"]
+
+
+def test_slugs_from_domains_excludes_full_address_and_unknown_hosts():
+    # brand has a full-address mail_list (no host); 'lists' is a real host but
+    # not a committee slug.
+    assert slugs_from_domains(["brand.apache.org", "lists.apache.org"], KNOWN) == []
+
+
+def test_slugs_from_domains_dedupes_preserving_order():
+    domains = ["tomcat.apache.org", "kafka.apache.org", "tomcat.apache.org"]
+    assert slugs_from_domains(domains, KNOWN) == ["tomcat", "kafka"]
+
+
+def test_slugs_from_domains_is_case_insensitive():
+    # Email domains are case-insensitive; a mixed-case host still resolves.
+    assert slugs_from_domains(["Kafka.Apache.Org", "HC.apache.org"], KNOWN) == [
+        "kafka",
+        "httpcomponents",
+    ]
+
+
 def test_slugs_from_addresses_extracts_subdomain():
     text = "To: security@tomcat.apache.org, Cc: dev@kafka.apache.org"
     assert slugs_from_addresses(text, KNOWN) == ["tomcat", "kafka"]
+
+
+def test_slugs_from_addresses_maps_mail_list_to_slug():
+    # httpcomponents receives mail at hc.apache.org; the host resolves to the slug.
+    assert slugs_from_addresses("To: security@hc.apache.org", KNOWN) == ["httpcomponents"]
+    # ...and the committee key 'httpcomponents' is NOT itself a mailing-list host.
+    assert slugs_from_addresses("x@httpcomponents.apache.org", KNOWN) == []
+
+
+def test_slugs_from_addresses_excludes_full_address_mail_list_committees():
+    # brand's mail_list is a full address (trademarks@apache.org), so it has no
+    # <host>.apache.org mailing host and is never a routing target.
+    assert slugs_from_addresses("x@brand.apache.org", KNOWN) == []
 
 
 def test_slugs_from_addresses_drops_non_committee_hosts():
