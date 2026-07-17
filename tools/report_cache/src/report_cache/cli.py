@@ -60,6 +60,7 @@ bundle without knowing the storage format:
 
   get-artifact / put-artifact:  read or write a triage artifact file in the
         bundle (e.g. ``summary.md``, ``reason.md``), for triage-assess.
+        In-process callers can use ``report_cache.artifacts`` directly instead of the CLI.
 
 Operates only on the local cache; never talks to a mailbox, never sends.
 ``<id>`` matches an index entry by RFC Message-ID (a unique prefix works) or by
@@ -83,7 +84,7 @@ import sys
 from enum import StrEnum
 from pathlib import Path
 
-from report_cache import index
+from report_cache import artifacts, index
 from report_cache.index import Disposition, Entry, Status
 from report_cache.render import UnsupportedAttachment, format_size, render_attachment, render_report
 from report_cache.report_md import BUNDLE_FILE, Header
@@ -92,7 +93,6 @@ from report_cache.report_md import read as read_report
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CACHE = REPO_ROOT / "report-cache"
 UNSORTED = "_unsorted"
-RAW_FILE = "raw.eml"  # verbatim message saved beside report.md by populate-cache
 ATTACHMENTS_DIR = "attachments"
 
 
@@ -199,17 +199,11 @@ def report_date(header: Header) -> str:
 
 
 def _safe_name(name: str) -> str:
-    """A single filename confined to the bundle: no separators, no traversal."""
-    name = (name or "").strip()
-    if not name or name in {".", ".."} or Path(name).name != name:
-        raise SystemExit(f"unsafe name {name!r}: pass a plain filename, no path.")
-    return name
-
-
-def bundle_artifacts(bundle_dir: Path) -> list[str]:
-    """The bundle's triage artifacts - every file except the reserved report.md / raw.eml."""
-    reserved = {BUNDLE_FILE, RAW_FILE}
-    return sorted(p.name for p in bundle_dir.iterdir() if p.is_file() and p.name not in reserved)
+    """``artifacts.safe_name``, but reporting a CLI error rather than a ``ValueError``."""
+    try:
+        return artifacts.safe_name(name)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def _report_day(cache: Path, entry: Entry) -> str | None:
@@ -415,7 +409,7 @@ def cmd_show(cache: Path, args: argparse.Namespace) -> int:
     _mid, entry = find_entry(idx, args.id)
     bundle_dir = cache / entry.path
     header, body = read_report(bundle_dir / BUNDLE_FILE)
-    print(render_report(header, body, entry, bundle_artifacts(bundle_dir)))
+    print(render_report(header, body, entry, artifacts.list_artifacts(bundle_dir)))
     return 0
 
 
@@ -445,24 +439,25 @@ def cmd_get_artifact(cache: Path, args: argparse.Namespace) -> int:
     idx = index.load(cache)
     _mid, entry = find_entry(idx, args.id)
     name = _safe_name(args.name)
-    path = cache / entry.path / name
-    if not path.is_file():
+    text = artifacts.read_artifact(cache / entry.path, name)
+    if text is None:
         raise SystemExit(f"no artifact {name!r} in {entry.path}/")
-    print(path.read_text(encoding="utf-8"), end="")
+    print(text, end="")
     return 0
 
 
 def cmd_put_artifact(cache: Path, args: argparse.Namespace) -> int:
     idx = index.load(cache)
     _mid, entry = find_entry(idx, args.id)
+    # Validate the name before consuming stdin, so a bad name is not read into.
     name = _safe_name(args.name)
-    if name in {BUNDLE_FILE, RAW_FILE}:
+    if name in artifacts.RESERVED:
         raise SystemExit(f"{name!r} is a reserved bundle file; choose another name.")
     content = (
         Path(args.from_file).read_text(encoding="utf-8") if args.from_file else sys.stdin.read()
     )
-    (cache / entry.path / name).write_text(content, encoding="utf-8")
-    print(f"wrote {entry.path}/{name} ({len(content)} chars)")
+    path = artifacts.write_artifact(cache / entry.path, name, content)
+    print(f"wrote {path.relative_to(cache)} ({len(content)} chars)")
     return 0
 
 
