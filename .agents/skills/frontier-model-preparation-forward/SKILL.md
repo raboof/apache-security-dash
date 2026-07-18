@@ -39,7 +39,7 @@ Skip when:
 
 ## Hard rules (do not skip)
 
-1. **Both artefacts come from the archive, and both are ATTACHED.** Retrieve the scan bundle from `scans/mythos/<project>/<scan-id>/` and the assessment from `pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (against a clean local clone of `apache/tooling-agents-private`). Attach the scan as a single `.zip` (zip the scan-id directory) and the assessment as its `.md`. Do **not** paste findings into the email body — the full content rides in the attachments.
+1. **Both artefacts come from the archive, and both are ATTACHED.** Retrieve the scan bundle from `scans/mythos/<project>/<scan-id>/` and the assessment from `pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (against a clean local clone of `apache/tooling-agents-private`). Attach the scan as a single `.zip` (zip the scan-id directory) and the assessment as its `.md`. Do **not** paste findings into the email body — the full content rides in the attachments. **One exception:** the assessment's `MODEL-GAP` findings (dispositions that need a ruling only the PMC can make) are surfaced in the body as an explicit *decision ask* — the decision needed only, not the finding's exploit detail (see "Items needing a PMC decision").
 
 2. **Forward only on a passing assessment.** Read the assessment's `metadata.yml` `sanity_check` field (produced by `asvs-scan-assess`). Forward only when it is `PASS` or `PASS-with-notes`. If it is `RETURNED` (or the assessment is missing), stop: surface to the operator and escalate to ASF Tooling — do not forward a broken scan. The assessment IS the sanity gate; this SKILL does not re-run the full checklist, it confirms the recorded verdict.
 
@@ -130,6 +130,8 @@ The VALID issues are the ones you should pay special attention to - but we
 encourage you to take a look at all - even hardening opportunities - if you
 have time.
 
+<DECISION SECTION — include ONLY when the assessment records ≥1 MODEL-GAP; omit entirely otherwise. See "Items needing a PMC decision" below.>
+
 Since this is the first time ASF runs such scans, we need your help - please
 provide feedback on the results received.
 
@@ -157,6 +159,15 @@ Marketing and Publicity: markpub@apache.org
 
 Plain text; no marketing flourish; links verbatim (no tracking). The findings and dispositions are in the attachments — do not inline them in the body.
 
+### Items needing a PMC decision (the `<DECISION SECTION>` placeholder)
+
+The one deliberate exception to "don't inline findings" (hard rule 1): when the assessment records **`MODEL-GAP`** findings — dispositions that hinge on a trust boundary the project's model doesn't state, so only the PMC/model-owner can rule — surface them in the body as an explicit decision ask, because a ruling buried in the attachment is easy to miss and it blocks a clean disposition. Inline only the **decision needed**, never the finding's exploit details (those stay in the attachment).
+
+- **Source:** the assessment's `dispositions.yml` entries with `disposition: MODEL-GAP` (equivalently the `MODEL-GAP` rows in `assessment.md` and its Headline's "ruling needed" note). The count is in the assessment `metadata.yml` `model_gaps`.
+- **When `model_gaps: 0`** — omit the `<DECISION SECTION>` line entirely; no paragraph, no "none needed" filler.
+- **When `model_gaps: ≥1`** — replace the placeholder with a short paragraph: "One thing needs a decision from your side" (singular) / "A few things need decisions from your side" (plural), then for each MODEL-GAP name the finding id(s), the specific ruling required, and the model clauses in tension (spell out section numbers/properties in plain words, not just "§4.8#9"). Point to the `MODEL-GAP` rows in the attached assessment. Keep it to a few sentences per gap — it's a decision ask, not a re-statement of the finding.
+- Do **not** promote VALID / VALID-HARDENING findings into the body — those are the PMC's normal triage, already covered by the "VALID issues" paragraph. Only genuine `MODEL-GAP`s (a needed model ruling) go in the decision section.
+
 ## Procedure
 
 1. **Identify the scan.** From Jarek's instruction (a project name) or a new bundle in `scans/mythos/`. Resolve to the `<project>/<scan-id>` directory. If ambiguous, list candidates and ask.
@@ -173,7 +184,7 @@ Plain text; no marketing flourish; links verbatim (no tracking). The findings an
 
 7. **Prepare the attachments** (see "Attachment preparation"): zip the scan bundle and copy the assessment `.md` into `$TMPDIR`.
 
-8. **Write the body** from the template (fill `<NAMES HERE>`, `<project>`; keep the attribution + publicity paragraphs verbatim) to a plain-text file in `$TMPDIR`.
+8. **Write the body** from the template (fill `<NAMES HERE>`, `<project>`; keep the attribution + publicity paragraphs verbatim) to a plain-text file in `$TMPDIR`. **Resolve the `<DECISION SECTION>` placeholder** from the assessment's `MODEL-GAP` findings (see "Items needing a PMC decision"): the assessment `metadata.yml` `model_gaps` count and the `dispositions.yml` `MODEL-GAP` entries. If `model_gaps: 0`, delete the placeholder line entirely; if `≥1`, replace it with the per-gap decision paragraph (finding id(s) + ruling needed + the model clauses in tension, in plain words), pointing at the `MODEL-GAP` rows in the attached assessment.
 
 9. **Render the plan + dry-run.** Show To / Cc / Subject / body / the two attachment paths + sizes / the assessment headline (VALID count + sanity verdict). Run `forward-draft create … --dry-run` to validate (attachments exist, no inline HTML, sizes). Show the operator.
 
