@@ -1,53 +1,60 @@
 ---
 name: triage-assess
 description: >-
-  Assess filed security reports against the project's threat model and source,
-  then draft the right response.
-  For each filed report in report-cache, look up the PMC from the `pmc` front matter key:
-  - If the PMC has a specialized `security_contact` (as determined by `whimsy-lookup`) and the contact is in the `To` or `Cc` fields,
-    the Security team only TRACKS it (no drafts),
-  - Otherwise assess whether the report is a valid, in-scope vulnerability.
+  Assess classified security reports against the project's threat model and source,
+  then draft the right response through the `report-cache` CLI.
+  Works the reports `triage-populate-cache` left at `status: classified` (reports the PMC
+  already received are `assessed` + `disposition: track` upstream, and are skipped here).
+  For each classified report: assess whether it is a valid, in-scope vulnerability against
+  the PMC's threat model and real source.
   If it is a high-confidence false positive or hardening suggestion,
-  draft a non-assertive note to the reporter (they may take it to the public tracker).
+  draft a non-assertive note to the reporter (they may take it to the public tracker) and
+  record `disposition: decline`.
   If it is plausible,
-  draft a forward to the PMC (templates/forward.md) plus a receipt to the reporter (templates/receipt.md or template/receipt-specialized.md).
+  write a concise PMC summary (`templates/forward.md`) plus an optional reporter note
+  (`templates/receipt.md`) and record `disposition: forward`.
   Before drafting, look up prior reports for the same PMC in the local `email-classification/` archive
   (a worktree of the `email-classification` branch, created automatically by `archive_lookup.py` on first use)
   so duplicates and repeat reporters are surfaced and Ponymail context can be passed to the PMC.
   The final non-issue / hardening / CVE call always belongs to the PMC,
   so drafts never use assertive language and the skill never sends.
-  A deterministic helper (draft.py) writes the model's summary / reason / note fragments and stamps the bundle's report.md front-matter;
-  the model supplies the judgement, summary, and reply text, and inbox_manager applies the templates at send time.
+  The model supplies the judgement, summary, and reply text as bundle artifacts
+  (`report-cache put-artifact`) and sets the disposition (`report-cache set`);
+  `inbox_manager` applies the templates at send time.
   Use whenever the team says "assess the cached reports", "triage report X against its threat model", "draft the forwards/replies",
-  or after filing to work through report-cache.
+  or after a populate pass to work through report-cache.
   Project source is read from a --workspace dir (default workspace/<pmc>).
 ---
 
 # triage-assess SKILL
 
 The **assessment + drafting** phase of the report-triage pipeline.
-After `triage-populate-cache` sweeps, filters, and files reports under `report-cache/<date>/<pmc>/<keywords>/`,
-this SKILL works through them:
-- decides whether they are addressed to the Security Team or just copies from specialized Security teams/project private mailing lists,
-- assess plausibility against the project's threat model,
-- and draft the response for a human to review and send.
+After `triage-populate-cache` sweeps and classifies reports,
+this SKILL works through the ones it left at a `classified` status:
 
-See `triage-populate-cache/SKILL.md` for the cache layout + the `report.md` front-matter schema.
-This SKILL writes the model's response fragments into the bundle and advances the front-matter `status`;
-it renders no email (inbox_manager applies the templates at send time), leaves the provenance block alone, and **never sends**.
+- summarizes the report,
+- assesses it against the PMC's threat model,
+- deduplicates similar reports,
+- writes the report's disposition (decline or forward) to the triage index,
+- and drafts the response for a human to review and send.
+
+This skill doesn't access reports directly,
+it uses the `report-cache` tool to read and write the report's state.
+Triaging artifacts are stored using `report-cache put-artifact` and `report-cache get-artifact`.
 
 ## Running this SKILL
 
-For one or a few reports, the main agent runs the Workflow below directly.
+For one or a few reports, the main agent runs the workflow below directly.
 
 For a batch, fan out **one sub-agent per PMC** (not per report).
 
 Each assessor:
-- loads its PMC's threat model (`pmc-security-info` + WebFetch),
+
+- loads its PMC's threat model (the `model:` URL that `report-cache show <id>` prints, WebFetched),
 - locates the source checkout under `--workspace` once,
-- reuses that context across all of that PMC's filed reports,
-- runs `draft.py` to write the response fragments and stamp the status,
-- and returns a compact per-bundle disposition;
+- reuses that context across all of that PMC's classified reports,
+- writes the response fragments and sets the disposition through `report-cache`,
+- and returns a compact per-bundle disposition.
 
 The main agent collects those and presents them.
 Per-report fan-out re-fetches the same threat model N times, and a large batch inline in the main agent bloats its context - so per-PMC is the sweet spot.
@@ -59,45 +66,51 @@ Sub-agents do prompt the user for tool approval, but the per-PMC assessors run c
 so their prompts collide - while you are answering one, another can pop up and override it, and approvals get lost.
 So **every tool this SKILL uses must be preapproved** (see Tools below) to avoid that crossfire.
 
-Before spawning accessors:
+Before spawning assessors:
 
+- list the work with `report-cache list --status classified` and group it by `pmc`,
+- determine the threat model for each PMC
+  (`whimsy-lookup pmc-security-info` returns its `security_model_source` and `security_model_link`),
+  and record it on each of that PMC's reports with
+  `report-cache set <id> --security-model-source <url> --security-model-link <url>`,
+  so it shows on the report's `model:` line and `inbox_manager` can cite it at send time.
 - check for the presence of the source code under the `--workspace` dir (default `workspace`),
-  so the sub-agents don't need to stop waiting for code.
-- check if the source code is up-to-date fetching from the origin (`origin` or `apache`).
+  if the code is absent, stop and ask the user to check it out.
+- check the source is up-to-date, fetching from its remote (`origin` or `apache`),
 - check the authentication status with Ponymail (`mcp__ponymail__auth_status`),
-  so the sub-agents can query the archives.
+  if it is not, ask the user to log in.
 
 ## Hard rules
 
-1. **The PMC owns the verdict.** Whether something is a non-issue, hardening, or a CVE is the PMC's decision,
-   never ours.
-   Drafts to the reporter use tentative, non-assertive language ("this appears to be...", "the PMC may consider..."),
+1. **The PMC owns the verdict.**
+   Whether something is a non-issue, hardening, or a CVE is the PMC's decision, never ours.
+   The PMC intent is expressed through:
+   - the published threat model,
+   - the public documentation,
+   - previous verdicts in the case of duplicate reports.
+   Prefer public sources over private ones.
+   Drafts to the reporter without hard public arguments, use tentative, non-assertive language ("this appears to be...", "the PMC may consider..."),
    never "this is not a vulnerability".
-2. **Track only when the PMC's own list was the addressee.**
-   A report is the PMC's to handle (no triage) **only if it was sent (To or Cc) to the `security_contact` returned by `pmc-security-info` or the `private@<pmc>` list.
-   A report that reached only the central `security@apache.org` list needs triage and a forward **even if the PMC runs its own security team** -
-   the central list is where we add value.
-   This is a recipient test (the bundle's `to` and `cc` header).
-   `draft.py track` enforces it and refuses a central-addressed report.
-3. **Bias to forwarding.** Only draft a decline reply when the report is a false positive or pure hardening **with high confidence**.
+2. **Bias to forwarding.** Only draft a decline reply when the report is a false positive or pure hardening **with high confidence**.
    Anything plausible, or where confidence is not high, gets forwarded to the PMC (they decide).
    When in doubt, forward.
-4. **Drafts only.** Output is Markdown in the bundle for a human to review and send;
+3. **Drafts only.** Output is Markdown in the bundle for a human to review and send;
    the SKILL never emails anyone.
 
 ## Inputs
 
 - **PMC security coordinates** via the `whimsy-lookup pmc-security-info <slug>` tool:
-  the `security_contact` (the PMC's own `security@<pmc>` when registered, else the foundation-wide `security@apache.org` fallback)
-  and the project's security model as two URLs: `security_model_source` (the raw `SECURITY.md`) to read/WebFetch when verifying, and `security_model_link` (the human security page) to cite in a draft to the PMC or reporter.
-  A PMC counts as *specialized* (runs its own security team) when its `security_contact` is its own address rather than the fallback.
+  the project's security model as two URLs: `security_model_source` (the raw `SECURITY.md`) to read/WebFetch when verifying, and `security_model_link` (the human security page) to cite in a draft to the PMC or reporter.
 - **Project source** under `--workspace` (default `workspace`):
   the SKILL reads `<workspace>/<pmc>` to check the report against real code.
   If that checkout is absent,
   stop and ask the user to check out the code.
 - **Templates** (repo root): `templates/forward.md`, `forward-duplicate.md`, `receipt.md`, `receipt-specialized.md`, `reject.md`.
   This SKILL never touches them: `inbox_manager` is the sole renderer and applies them at send time.
-  See `templates/README.md` for the marker contract: `draft.py` supplies the content values (the `summary.md` / `reason.md` / `note.md` fragments plus the `model` / `duplicate_of` front-matter); `inbox_manager` fills those plus the identity / PMC / infra markers and drops any line whose marker stays empty.
+  See `templates/README.md` for the marker contract:
+  this SKILL supplies the content values
+  (the `summary.md` / `reason.md` / `note.md` / `model.md` artifacts plus the `duplicate_ponymail_link` index field);
+  `inbox_manager` fills those plus the identity / PMC / infra markers and drops any line whose marker stays empty.
 - **`email-classification/` archive** (a worktree of the `email-classification` branch, created automatically by `archive_lookup.py` if missing):
   per-PMC archive of every previously triaged report's tag, one `.json` per report under `<pmc>/`, `zzz-non-issue/<pmc>/`, `zzz-resolved/<pmc>/`, or `archive/.../<pmc>/`.
   The filename is the tag (space-separated keywords, often prefixed by a CVE id or date);
@@ -109,39 +122,49 @@ Before spawning accessors:
 
 ## Workflow
 
-For each filed bundle (`status: filed`) under `report-cache/`:
+Work one classified bundle at a time.
+`<id>` is the report's Message-ID;
+`report-cache list --status classified` prints ids you can pass straight back.
 
-### Step 1: determine extent of work
-
-Determine the kind of work required based on the recipients of the report (the bundle's `to` and `cc` headers) and the `security_contact` of the PMC:
+### Step 1: read the report
 
 ```bash
-uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <pmc>
+uv run --project tools/report_cache report-cache show <id>
 ```
 
-If the `security_contact` or `private@<pmc>` is among the recipients,
-the message is not addressed to the security team.
-Return a disposition `tracked` and stop.
-
-Otherwise, continue with step 2.
+`show` prints the merged view:
+the Gmail provenance (From / To / Cc / Subject),
+the triage state (`pmc`, `delivered`, `status`, `labels`),
+the body,
+and the attachment / artifact listing.
+Read any attachment worth reading with `report-cache get-attachment <id> <name>`.
+Confirm the `pmc` (settled during classification) before assessing;
+the threat model you assess against is that PMC's.
 
 ### Step 2: find prior similar reports
 
-Run `archive_lookup.py --pmc <pmc> --keywords "<tag-keywords>"` to surface archived reports for this PMC whose tag keywords overlap with the current one.
+Run `archive_lookup.py --pmc <pmc> --keywords "<tag-keywords>"` to surface archived reports for this PMC
+whose tag keywords overlap with the current one.
 
 For each similar report, retrieve it using Ponymail and **compare it with the current report**.
 Do not judge similarity based **only** on tags.
-The content of the reports (affected component, class, and method, plus the vulnerability class (CWE)), should also be similar.
+The content of the reports (affected component, class, and method, plus the vulnerability class (CWE))
+should also be similar.
 
-If you spot a duplicate, the behavior depends on the previous disposition:
+If you spot a duplicate, set its label and ponymail link in the triaging metadata, using:
 
-- Reports in `zzz-non-issue` were rejected.
-  Draft a reply using `templates/reject.md` and use the previous reason given by the PMC as `--reason` parameter to `draft.py`.
-  The status of the report is `drafted-reply`, its tag is prepended with `zzz-non-issue` and stop.
+  ```bash
+  report-cache set <id> --duplicate-label "<the original's label>" \
+      --duplicate-ponymail-link "<original's ponymail thread url>"
+  ```
+
+Duplicates also influence the disposition:
+
+- Reports in `zzz-non-issue` were rejected by the PMC.
+  Draft a decline reusing the PMC's prior reason (see Step 4, decline).
 
 - Reports in the current (open) collection are still being evaluated by the PMC.
-  Forward with `draft.py forward <id> --summary-file <f> --model "<model>" --duplicate-of <url>`,
-  where `<url>` is the original report's Ponymail thread link; this uses `templates/forward-duplicate.md`.
+  Forward as a duplicate: write the summary (Step 4, forward).
 
 ### Step 3: assess the report
 
@@ -162,60 +185,91 @@ The assessment of the report needs to:
    Otherwise it is out of model, and it might be a candidate for a public hardening.
 4. Reporters often try to bring **trusted** inputs into scope by positing an attack chain.
    For example:
-   - They argue that another vulnerability (SQL injection, attacker access to environment properties) can be chained to exploit the reported issue.
-     The chained precondition is hypothetical: ask the reporter whether they are aware of such a vulnerability.
+   - They argue that another vulnerability (SQL injection, attacker access to environment properties)
+     can be chained to exploit the reported issue.
+     The chained precondition is hypothetical: ask the reporter whether they are aware of such a
+     vulnerability.
    - They report problems of the "Secure-by-default" kind.
      Insecure defaults are not necessarily vulnerabilities.
-     Check the PMCs threat model to see if the project can be deployed as-is or additional steps are required.
-     For example a project might require operators to keep it in a secure network or configure authentication otherwise.
+     Check the PMC's threat model to see if the project can be deployed as-is or additional steps are
+     required. For example a project might require operators to keep it in a secure network or configure
+     authentication otherwise.
 
 ### Step 4: draft
 
-**High-confidence false positive or hardening** -> write your non-assertive note to a temp file and run `draft.py reply <id> --body-file <file> [--kind false-positive|hardening]`.
-Write only the message body:
-- tentatively, why it looks out of scope or like hardening (cite the specific code path / call when you can),
-  the app-side mitigation if relevant,
+All fragments are written as bundle artifacts with `report-cache put-artifact <id> <name>` (reading the
+content from a temp file with `--from <file>`, or from stdin). Every path ends by advancing the report to
+`status: assessed` with its `--disposition`; leaving a report at `classified` sends it back through the
+queue on the next run.
+
+**High-confidence false positive or hardening** -> write your non-assertive note to a temp file, then:
+
+```bash
+report-cache put-artifact <id> reason.md --from reason.md
+report-cache set <id> --status assessed --disposition decline \
+    --collection zzz-non-issue --pmc <pmc> --keywords "<same keywords>" \
+    --remove-label "<pmc>/<the active label from classify>"
+```
+
+`inbox_manager` renders `reason.md` through `templates/reject.md` at send time. The `zzz-non-issue/`
+collection label is the classification that sorts the report out of the active queue (it carries no
+`wf` marker); `--remove-label` drops the plain classify label so the declined report no longer shows as
+active. Write only the message body:
+
+- tentatively, why it looks out of scope or like hardening (cite the specific code path / call when you
+  can), the app-side mitigation if relevant,
 - if a duplicate non-issue was found, reuse the PMC argumentation, but don't **quote** the PMC.
   The answer to the original report is not necessarily public.
-- quote the public threat model whenever possible.
-- and an explicit invitation for the reporter's reasoning if they see it differently ("we are open to your arguments...") rather than asserting a final verdict.
+- quote the public threat model whenever possible,
+- and an explicit invitation for the reporter's reasoning if they see it differently
+  ("we are open to your arguments...") rather than asserting a final verdict.
 
-Do not restate that the issue is off-topic for this channel or invite the reporter to the public contribution channels:
-the `reject.md` template's closing paragraph already says this, so repeating it in `<reason>` is redundant.
+Do not restate that the issue is off-topic for this channel or invite the reporter to the public
+contribution channels: the `reject.md` template's closing paragraph already says this.
 
-**Plausible (or not high-confidence)** -> write a concise PMC summary to a temp file (what was reported, affected component, why it is plausible, any caveats) and run `draft.py forward <id> --summary-file <file>`.
+**Plausible (or not high-confidence)** -> write a concise PMC summary to a temp file, then:
 
-The summary for the PMC should be **concise**:
-duplicating the security report serves no purpose.
-A long summary is worse than no summary.
+```bash
+report-cache put-artifact <id> summary.md --from <file>
+echo <assessor model> | report-cache put-artifact <id> model.md   # the assessor's model id
+report-cache set <id> --status assessed --disposition forward
+```
 
-The summary should contain:
+`model.md` holds the id of the model that wrote the summary; `inbox_manager` renders it into the AI
+disclaimer line (`<model>` marker). Add an optional extra paragraph for the reporter's receipt with
+`report-cache put-artifact <id> note.md --from note.md`.
 
-- **Finding**.
-  A sentence or short paragraph explaining the alleged vulnerability,
-- **Code verification**.
-  Whether or not the vulnerability was confirmed in code.
-  Provide the branch and commit used for the verification.
-- **Scope assessment**.
-  Give the link to the threat model used for verification.
-  If the report is a false positive, but without high-confidence,
-  cite the gap in the threat model that the PMC should clarify.
-  If the project does not have a threat model ask if we missed one,
-  provide https://cwiki.apache.org/confluence/display/SECURITY/Documenting+your+security+model as documentation on what a model is.
-  If the report is plausible, name the adversary actor required (from the model's adversary model) and the security property it violates.
+The summary for the PMC should be **concise**: duplicating the security report serves no purpose.
+A long summary is worse than no summary. It should contain:
+
+- **Finding**. A sentence or short paragraph explaining the alleged vulnerability.
+- **Code verification**. Whether or not the vulnerability was confirmed in code. Provide the branch and
+  commit used for the verification.
+- **Scope assessment**. Give the link to the threat model used for verification.
+  If the report is a false positive, but without high-confidence, cite the gap in the threat model that
+  the PMC should clarify.
+  If the project does not have a threat model ask if we missed one, provide
+  https://cwiki.apache.org/confluence/display/SECURITY/Documenting+your+security+model as documentation
+  on what a model is.
+  If the report is plausible, name the adversary actor required (from the model's adversary model) and
+  the security property it violates.
 
 ## Tools (preapproved)
 
-The whole workflow runs on these tools, allowlisted in `.claude/settings.json` so it needs no approval requests
-(the per-PMC assessors run concurrently, so an un-preapproved tool would fire overlapping prompts that clobber each other):
+The whole workflow runs on these tools, allowlisted in `.claude/settings.json` so it needs no approval
+requests (the per-PMC assessors run concurrently, so an un-preapproved tool would fire overlapping
+prompts that clobber each other):
 
-- `Bash(.agents/skills/triage-assess/draft.py *)` - write the drafts / set the bundle status.
-- `Bash(.agents/skills/triage-assess/archive_lookup.py *)` - prior-report lookup (also creates the `email-classification` worktree on first use, via git, under the allowlisted script).
+- `Bash(uv run --project tools/report_cache report-cache *)` - read the bundle (`show` / `get-attachment`
+  / `get-artifact`), write the drafts (`put-artifact`), and set the disposition (`set`).
+- `Bash(.agents/skills/triage-assess/archive_lookup.py *)` - prior-report lookup (also creates the
+  `email-classification` worktree on first use, via git, under the allowlisted script).
 - `Bash(uv run --project tools/whimsy_lookup whimsy-lookup *)` - PMC security coordinates.
-- `WebFetch(domain:*.apache.org)`, `WebFetch(domain:github.com)`, `WebFetch(domain:raw.githubusercontent.com)` - the project's threat-model page.
+- `WebFetch(domain:*.apache.org)`, `WebFetch(domain:github.com)`, `WebFetch(domain:raw.githubusercontent.com)` -
+  the project's threat-model page.
 - `mcp__ponymail__*` - read a prior message in the Ponymail archive.
-- `Read` / `Grep` / `Glob` over `report-cache/` and `workspace/<pmc>` - inspect the bundle and the real code.
-  Inspect source with these tools, never by shelling out to `bash grep` / `cat` (that path is not allowlisted and would prompt).
+- `Read` / `Grep` / `Glob` over `workspace/<pmc>` - inspect the real code.
+  Read the bundle through `report-cache show` / `get-attachment`, never by opening the cache files.
 
 Nothing else: this SKILL drafts only - it never sends mail, writes git, or calls other hosts.
 
@@ -223,40 +277,48 @@ Nothing else: this SKILL drafts only - it never sends mail, writes git, or calls
 
 ```bash
 A=.github/skills/triage-assess
+RC="uv run --project tools/report_cache report-cache"
 # PMC security coordinates (security_contact to Cc / threat model):
 uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <pmc> [--json]
-$A/archive_lookup.py --pmc <pmc> --keywords "<words>"   # prior reports for this PMC
-$A/draft.py track   <id>
-$A/draft.py forward <id> --summary-file SUM.md --model "<model>" [--duplicate-of <url>] [--reporter-note NOTE.md] [--wf MARKER]
-$A/draft.py reply   <id> (--reason "..." | --body-file REPLY.md) [--kind false-positive|hardening]
+$A/archive_lookup.py --pmc <pmc> --keywords "<words>"        # prior reports for this PMC
+
+$RC list --status classified                                 # the work queue
+$RC show <id>                                                # read one report
+$RC put-artifact <id> summary.md --from summary.md          # forward: the PMC summary
+echo "<model>" | $RC put-artifact <id> model.md      # forward: the assessor's model id
+$RC put-artifact <id> note.md --from note.md                # optional reporter receipt note
+$RC set <id> --status assessed --disposition forward        # forward
+$RC put-artifact <id> reason.md --from reason.md            # decline: the reject reason
+$RC set <id> --status assessed --disposition decline \
+    --collection zzz-non-issue --pmc <pmc> --keywords "<kw>" \
+    --remove-label "<pmc>/<active label>"                    # decline (non-issue)
+$RC set <id> --duplicate-label "<label>" --duplicate-ponymail-link "<url>"  # a duplicate
 ```
 
 `archive_lookup.py` creates the `email-classification/` worktree on first run if missing,
-then ranks archived `.json` files (one per past report) under `<pmc>/`, `zzz-non-issue/<pmc>/`, `zzz-resolved/<pmc>/`, and `archive/.../<pmc>/` by keyword overlap with the query.
+then ranks archived `.json` files (one per past report) under `<pmc>/`, `zzz-non-issue/<pmc>/`,
+`zzz-resolved/<pmc>/`, and `archive/.../<pmc>/` by keyword overlap with the query.
 The output is for the triager and the PMC;
-the archive's `from`/`to`/`message_id` fields must not leak into reporter-facing drafts (see Inputs for the privacy rule).
+the archive's `from`/`to`/`message_id` fields must not leak into reporter-facing drafts
+(see Inputs for the privacy rule).
 
-`forward` writes `summary.md` (and `note.md` with `--reporter-note <file>`) and records `model` + `duplicate_of` in the front-matter; `inbox_manager` renders `templates/forward.md` (or `forward-duplicate.md` when `duplicate_of` is set) plus the reporter receipt at send time.
-`--wf` is one of `reporter`, `cve-allocation`, `non-issue-docs` and is appended to the tag.
-`reply` writes `reason.md` (rendered through `templates/reject.md` at send time), classifies the report `zzz-non-issue/` (no `wf` marker), and takes the reason inline (`--reason`) or from a file (`--body-file`) - e.g. the PMC's own prior reason for a known non-issue.
+## Status this SKILL sets
 
-`draft.py` only writes the model's content (the fragments + the `model` / `duplicate_of` scalars); `--model` is required on `forward` (it names the assessor's model for the AI disclaimer).
-The sender identity (`<Triager full name>`), the forward recipient, and every PMC / threat-model marker are resolved by `inbox_manager` at send time, not here (see `templates/README.md`).
-`<id>` is the bundle's Ponymail id or any unique prefix.
+Every report this SKILL touches ends at `status: assessed` with one of:
 
-## Status values this SKILL sets
+- `disposition: forward` - `summary.md` + `model.md` written (plus `note.md` when there is a reporter
+  note); `duplicate_ponymail_link` / `duplicate_label` recorded when it is a duplicate.
+- `disposition: decline` - `reason.md` written (false-positive / hardening), `zzz-non-issue/` collection
+  label added.
 
-- `tracked` - specialized PMC; the Security team only tracks it.
-- `drafted-forward` - `summary.md` written (plus `note.md` when there is a reporter note); `model` / `duplicate_of` recorded in the front-matter.
-- `drafted-reply` - `reason.md` written (false-positive / hardening).
-
-`handled` stays `false` until a human actually sends the drafted mail.
+`inbox_manager` sends the drafted mail and files the report; a report leaves the cache (reaches
+`status: filed` and is deleted) only once its message is archived out of the Gmail inbox.
 
 ## Scope
 
-- Reads `report-cache/`, templates, project source,
-  the PMC security coordinates (via `whimsy-lookup pmc-security-info`, from security-site),
+- Reads report state and bundle content through the `report-cache` CLI, the PMC security coordinates
+  (via `whimsy-lookup pmc-security-info`, from security-site), project source under `workspace/<pmc>`,
   and the `email-classification/` archive (which it may create as a worktree).
 - May WebFetch threat-model links on `*.apache.org` / `github.com`.
-- Writes only draft Markdown + `report.md` front-matter status inside the bundle.
-- Never sends, never edits the provenance block, never touches Ponymail.
+- Writes only draft artifacts + the triage index disposition, through the `report-cache` CLI.
+- Never sends, never edits the provenance block, never touches Ponymail beyond reading.

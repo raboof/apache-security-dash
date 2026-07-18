@@ -106,6 +106,7 @@ def test_render_report_merges_metadata_and_body():
         subject="SSRF",
         pmc="spark",
         delivered_pmcs=["spark"],
+        security_model_source="https://spark.apache.org/security.html",
         status=Status.DOWNLOADED,
         assessment_model="Claude Opus 4.7",
     )
@@ -117,6 +118,7 @@ def test_render_report_merges_metadata_and_body():
     assert "From:       Jane Reporter <jane@example.com>" in out
     assert "pmc:         spark" in out
     assert "delivered:   spark" in out
+    assert "model:       https://spark.apache.org/security.html" in out
     assert "status:      downloaded" in out
     assert "assessed by: Claude Opus 4.7" in out
     assert "attachments: poc.html (text/html, 2.0 KB)" in out
@@ -131,3 +133,4 @@ def test_render_report_shows_no_delivery_as_none():
     entry = Entry(path="_unsorted/2026-05-24-x", pmc="spark", status=Status.DOWNLOADED)
     out = render_report(header, "body", entry, [])
     assert "delivered:   (none)" in out
+    assert "model:       (none)" in out

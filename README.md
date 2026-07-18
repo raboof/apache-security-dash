@@ -300,8 +300,8 @@ flowchart TD
     REC -->|PMC's own<br/>security list| TRK([track only<br/>PMC already has it]):::done
     REC -->|central<br/>security list| AS{{triage-assess<br/>read threat model + code,<br/>check archive for duplicates}}:::skill
     AS --> J{In scope and<br/>plausible?}:::gate
-    J -->|false positive<br/>or hardening| RP([non-assertive reply<br/>to reporter<br/>draft.py reply]):::draft
-    J -->|plausible| FW([forward to PMC<br/>plus reporter receipt<br/>draft.py forward]):::draft
+    J -->|false positive<br/>or hardening| RP([non-assertive reply<br/>to reporter<br/>report-cache decline]):::draft
+    J -->|plausible| FW([forward to PMC<br/>plus reporter receipt<br/>report-cache forward]):::draft
     TRK --> H([human reviews + sends.<br/>PMC owns the final call]):::pmc
     RP --> H
     FW --> H
