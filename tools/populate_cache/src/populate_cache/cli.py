@@ -71,7 +71,7 @@ from pathlib import Path
 from report_cache import index
 from report_cache.report_md import BUNDLE_FILE, Attachment, Header
 from report_cache.report_md import write as write_report
-from whimsy_lookup.fetch import FetchError, fetch_committee_info
+from whimsy_lookup.fetch import FetchError, fetch_committee_info, fetch_security_coordinates
 
 from populate_cache import email_utils, gmail, skip
 
@@ -235,14 +235,17 @@ def main(argv: list[str] | None = None) -> int:
     args = build_args(argv)
     cache = args.cache_dir
 
-    # The committee-info mapping (slug -> entry) the guess resolves recipient hosts against.
-    # Empty when Whimsy is unreachable, so PMC routing degrades to _unsorted rather than guessing.
+    # Both sources are required for triage and must not degrade silently:
+    # committee-info resolves recipient hosts to PMC slugs (report routing),
+    # and project-coordinates.json tells a real security@ / private@ list from a bare alias.
+    # A fetch failure aborts the run rather than misrouting.
     try:
         committees = fetch_committee_info()
-    except FetchError:
-        committees = {}
-    if not committees:
-        print("(PMC routing degraded: committee-info unreachable, all -> _unsorted)")
+        coordinates = fetch_security_coordinates()
+    except FetchError as exc:
+        raise SystemExit(
+            f"Cannot reach Whimsy / security-site (triage data unavailable): {exc}"
+        ) from exc
 
     service = gmail.connect()
     label_names = gmail.label_map(service)
@@ -293,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         pmc_slug = guess[0] if len(guess) == 1 else None
         if not args.dry_run:
             bundle = write_bundle(cache, original, raw, header=header, pmc_slug=pmc_slug)
-            entry = index.Entry.from_report(cache, bundle, header, committees)
+            entry = index.Entry.from_report(cache, bundle, header, committees, coordinates)
             entry.reporter_name = reporter_name(original)
             if header.message_id:
                 idx[header.message_id] = entry

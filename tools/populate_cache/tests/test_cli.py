@@ -57,12 +57,22 @@ def header_for(msg, *, gmail_id="g1", labels=None):
     return header
 
 
-def download(cache, msg, raw, *, pmc_slug="tomcat", gmail_id="g1", labels=None, known=("tomcat",)):
+def download(
+    cache,
+    msg,
+    raw,
+    *,
+    pmc_slug="tomcat",
+    gmail_id="g1",
+    labels=None,
+    known=("tomcat",),
+    coordinates=None,
+):
     """Mimic main()'s per-message step: header -> bundle -> seeded Entry."""
     header = header_for(msg, gmail_id=gmail_id, labels=labels)
     bundle = cli.write_bundle(cache, msg, raw, header=header, pmc_slug=pmc_slug)
     committees = {slug: {"mail_list": slug} for slug in known}
-    entry = index.Entry.from_report(cache, bundle, header, committees)
+    entry = index.Entry.from_report(cache, bundle, header, committees, coordinates or {})
     entry.reporter_name = cli.reporter_name(msg)
     return bundle, header, entry
 
