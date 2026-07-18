@@ -70,6 +70,22 @@ Chosen by extension, then stdlib `mimetypes`, then
 | `.txt` / `.csv` | `text/plain` / `text/csv` |
 | `.pdf` | `application/pdf` |
 
+### Per-attachment `Content-ID` (Apple Mail — do not remove)
+
+`build_mime` gives **each** attachment its own `Content-ID`. This is
+load-bearing, not cosmetic: Gmail's web **Send** stamps an empty
+`Content-ID: <>` onto any attachment that lacks one, so a forward with two
+attachments (scan `.zip` + assessment `.md`) ends up with **both** parts
+sharing the identical empty id — and **Apple Mail then collapses them into a
+single rendered file** (the `.zip` shows as a second copy of the `.md`,
+hiding the scan). Setting a unique id per attachment makes Gmail keep ours,
+so each attachment keeps a distinct identity. Verified end-to-end through a
+real Gmail-web send.
+
+Do **not** "simplify" this away. Note also that the legacy `Content-Type;
+name=` parameter does *not* address it (Gmail sets `name=` itself on send);
+the per-attachment `Content-ID` is the actual fix.
+
 ## Credentials
 
 Reads `~/.config/apache-magpie/gmail-oauth.json` (or
