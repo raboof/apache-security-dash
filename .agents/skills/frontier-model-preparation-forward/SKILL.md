@@ -5,7 +5,7 @@ description: >-
   Retrieves the scan from the `apache/tooling-agents-private` archive (`scans/mythos/...`) and its assessment (`pre-forward-results/mythos/...`),
   extracts the PMC + repo + date from the scan's `metadata.yml`,
   confirms the assessment's recommended sanity verdict is PASS,
-  and drafts the forwarding email to the PMC's designated scan-result recipients (Cc Security + Tooling; Marketing & Publicity is named in the body as a consultation contact but is NOT Cc'd).
+  and drafts the forwarding email to the PMC's designated scan-result recipients (Cc Security + Tooling + the PMC's own security channel — its `security@<pmc>` team if it runs one, else its `private@<pmc>` list, resolved deterministically via `whimsy-lookup`; Marketing & Publicity is named in the body as a consultation contact but is NOT Cc'd).
   The draft is created via the `forward-draft` tool (OAuth Gmail, plain-text body + attachments, no tracking) and left UNSENT for human review.
   After the human sends, hand off to `frontier-model-preparation-update` to set `Date scan received` and `Forwarded scan to PMC`.
   Use when an ASF Tooling scan (and its assessment) is in the archive and Jarek says "forward the X scan", "the X scan is back", or "send the X results".
@@ -45,11 +45,18 @@ Skip when:
 
 3. **Extract identity from the scan, not from memory.** PMC slug, repo, branch, and scan date come from the scan bundle's `metadata.yml` (`project`, `repo`, `head_sha`, `scan_date`; branch defaults to the repo's default branch unless the scan pinned one). These drive the subject line and the tracker cells.
 
-4. **Recipients — designated PMC recipients + Security + Tooling + Marketing/Publicity, all `@apache.org`-rooted.**
+4. **Recipients — designated PMC recipients + the PMC's own security channel + Security + Tooling, all `@apache.org`-rooted.**
    - **To:** the PMC's designated scan-result recipients — the `@apache.org` addresses from the original `[GLASSWING]` request ("send results to …"), i.e. the people who were supposed to be informed.
-   - **Cc:** `security@apache.org` and `private@tooling.apache.org` — **only these two.** Do **not** Cc `private@<pmc>.apache.org`, the `security@<pmc>` alias, the primary/backup contacts, or `markpub@apache.org`. The designated scan-result recipients on **To** are the PMC-side audience; the Cc is just the Security + Tooling audit trail. Widening to the whole `private@<pmc>` list would broaden the pre-disclosure scope beyond the named recipients; Marketing & Publicity is a body consultation contact, not a recipient of the findings.
+   - **Cc:** exactly three:
+     1. `security@apache.org` — the Security-team audit trail.
+     2. `private@tooling.apache.org` — the ASF Tooling audit trail.
+     3. **the PMC's own security channel (the "PMC team Cc")** — the PMC's own `security@<pmc>.apache.org` team **if the PMC runs one**, else its `private@<pmc>.apache.org` list. This loops the PMC's own members in on their project's pre-disclosure findings so they can coordinate the fix on their own list — as was done for Apache APISIX (which has no `security@` team, so the forward Cc'd `private@apisix.apache.org`).
 
-   **Every** To/Cc address must end in `@apache.org` or `@<pmc>.apache.org`. Scan results are pre-disclosure vulnerability candidates; `@apache.org` rooting is the cheapest verification the recipient is still an ASF member entitled to see them. If the request's stated destination contains a non-`@apache.org` address, surface the conflict — do not silently substitute; a committer can forward their `@apache.org` address to a personal inbox on their side.
+     Determine the PMC team Cc **deterministically**, never by guessing: run `uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <slug>` and take its `team_cc` field (it reads security-site `project-coordinates.json`, the authoritative record of which PMCs have registered a `security@<pmc>` alias). The tracker's `PMC team Cc` column caches the same value (populated by `sheets-writer backfill-security-cc`); cross-check the two and if they disagree, the cache is stale — re-run the backfill and use the live `whimsy-lookup` value.
+
+     Still do **not** Cc the primary/backup contacts individually, or `markpub@apache.org` — Marketing & Publicity is a body consultation contact named in the template, not a recipient of the findings.
+
+   **Every** To/Cc address must end in `@apache.org` or `@<pmc>.apache.org` (the PMC team Cc is `security@<pmc>.apache.org` or `private@<pmc>.apache.org` — both satisfy this). Scan results are pre-disclosure vulnerability candidates; `@apache.org` rooting is the cheapest verification the recipient is still an ASF member entitled to see them. If the request's stated destination contains a non-`@apache.org` address, surface the conflict — do not silently substitute; a committer can forward their `@apache.org` address to a personal inbox on their side.
 
 5. **Draft via the `forward-draft` tool — never the claude.ai Gmail connector.** The email has attachments and is PMC-facing (in the operator's name), so it must be plain-text with real links and no tracking. Use [`tools/forward_draft/`](../../../tools/forward_draft/) (`forward-draft create …`), which builds a `multipart/mixed` draft (plain-text body + the two attachments) via the OAuth Gmail API and leaves it **UNSENT**. Do **not** use `mcp__claude_ai_Gmail__create_draft` (it rewrites links / adds tracking and can't attach files). The operator reviews the draft in Gmail and presses Send.
 
@@ -79,6 +86,7 @@ Skip when:
 | Assessment `.md` + sanity verdict | `apache/tooling-agents-private/pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (+ its `metadata.yml` `sanity_check`) |
 | PMC slug / repo / branch / scan date | The scan bundle's `metadata.yml` (`project`, `repo`, `head_sha`, `scan_date`) |
 | Designated scan-result recipients (the To: list) | The PMC row's `Report recipients` cell (falls back to the original `[GLASSWING]` request's "send results to …" list) |
+| PMC team Cc (the PMC's own security channel) | `whimsy-lookup pmc-security-info <slug>` → `team_cc` (authoritative), cross-checked against the tracker's `PMC team Cc` column cache |
 | Primary + backup PMC contacts (for the `<NAMES HERE>` first-names in the body) | The PMC sheet's `Contact Person` + `Backup contact` |
 | `Date scan requested` (pre-condition) | The PMC sheet — must be filled; `Date scan received` / `Forwarded scan to PMC` blank |
 
@@ -98,7 +106,7 @@ If the assessment is missing, its verdict is `RETURNED`, the recipient list is m
 
 **To**: the PMC's designated scan-result recipients (the `@apache.org` addresses from the request).
 
-**Cc**: `security@apache.org`, `private@tooling.apache.org` — **only these two.** (Not `private@<pmc>`, the `security@<pmc>` alias, the primary/backup contacts, or `markpub@apache.org`.)
+**Cc**: `security@apache.org`, `private@tooling.apache.org`, **and the PMC team Cc** (the PMC's own `security@<pmc>.apache.org` team if it runs one, else its `private@<pmc>.apache.org` list — from `whimsy-lookup pmc-security-info`'s `team_cc`). (Not the primary/backup contacts individually, and not `markpub@apache.org`.)
 
 **Attachments**: `<scan-id>.zip` (the scan bundle) and `pre-forward-assessment-<scan-id>.md` (the assessment).
 
@@ -161,7 +169,7 @@ Plain text; no marketing flourish; links verbatim (no tracking). The findings an
 
 5. **Pull the PMC's row** from the Mythos tracker (via the `frontier-model-preparation-status` flow or a direct Sheets read). Confirm `Scan Requested = Yes`, `Repositories submitted` non-empty, `Date scan requested` filled, `Date scan received` + `Forwarded scan to PMC` blank. Refuse on any wrong pre-condition.
 
-6. **Assemble recipients** (hard rule 4). To: the designated scan-result recipients (the PMC row's `Report recipients` / the `[GLASSWING]` request). Cc: `security@apache.org` + `private@tooling.apache.org` **only** (not `private@<pmc>`, the alias, contacts, or `markpub`). Verify every address is `@apache.org`-rooted; surface any that isn't.
+6. **Assemble recipients** (hard rule 4). To: the designated scan-result recipients (the PMC row's `Report recipients` / the `[GLASSWING]` request). Cc: `security@apache.org` + `private@tooling.apache.org` + **the PMC team Cc**. Resolve the PMC team Cc deterministically: run `uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <slug>` and take `team_cc` (`security@<pmc>` if the PMC runs a team, else `private@<pmc>`); cross-check it against the tracker's `PMC team Cc` column — if they differ, re-run `sheets-writer backfill-security-cc` and use the live value. Do not Cc the contacts individually or `markpub`. Verify every address is `@apache.org`/`@<pmc>.apache.org`-rooted; surface any that isn't.
 
 7. **Prepare the attachments** (see "Attachment preparation"): zip the scan bundle and copy the assessment `.md` into `$TMPDIR`.
 
@@ -210,7 +218,7 @@ Plain text; no marketing flourish; links verbatim (no tracking). The findings an
 - Forwarding a scan whose assessment verdict is `RETURNED` — that's a broken scan; escalate to ASF Tooling.
 - Pasting the findings / dispositions into the email body instead of attaching them.
 - Using `mcp__claude_ai_Gmail__create_draft` — it can't attach files and adds tracking. Use `forward-draft`.
-- Dropping `security@apache.org` or `private@tooling.apache.org` from the Cc, or **Cc'ing anything else** — `private@<pmc>` / the whole PMC list / the `security@<pmc>` alias / `markpub@apache.org` / the contacts (widens the pre-disclosure scope past the named To recipients), or using a non-`@apache.org` recipient.
+- Dropping any of the three required Cc addresses — `security@apache.org`, `private@tooling.apache.org`, or the **PMC team Cc** (the PMC's own `security@<pmc>`/`private@<pmc>`). Also wrong: Cc'ing `markpub@apache.org` or the primary/backup contacts individually, using a non-`@apache.org` recipient, or **guessing** the PMC team Cc instead of resolving it from `whimsy-lookup pmc-security-info` (e.g. assuming a `security@<pmc>` team exists when the PMC has none — for those you Cc `private@<pmc>`, as with APISIX).
 - Setting `Forwarded scan to PMC` before the operator has actually clicked Send.
 - Naming the program's cost mechanics ($1M value, per-MTok pricing, seat/provisioning) in the body.
 
@@ -221,3 +229,9 @@ Two shifts landed 2026-07-15 when the program moved in-house to ASF Tooling:
 (1) the scan and its assessment are retrieved from the `apache/tooling-agents-private` archive and delivered as **attachments** (scan `.zip` + assessment `.md`) rather than pasted verbatim into the email body;
 (2) the pre-forward **assessment is now shared** with the PMC as an advisory guide (previously internal-only) — the PMC still owns the authoritative disposition call.
 The forwarding email is drafted via the `forward-draft` OAuth helper (plain-text body + attachments, no tracking), never the claude.ai Gmail connector.
+
+A third shift landed 2026-07-18: the forward now **Cc's the PMC's own security channel** — its `security@<pmc>.apache.org` team when it runs one, else its `private@<pmc>.apache.org` list — in addition to the Security + Tooling audit trail. This reverses the earlier "Cc only these two" rule: the PMC's own list is the right place for the project to receive and coordinate its pre-disclosure findings (first done for Apache APISIX by Dave — APISIX has no `security@` team, so its forward Cc'd `private@apisix.apache.org`).
+
+Cc'ing the PMC's own list was **not** in the original design — the forward's `To:` was only the individuals who volunteered as scan-result contacts in the `[GLASSWING]` request. On reflection it is worth doing, because a meaningful amount of time can pass between when those people volunteered and when a scan result is finally delivered: individuals rotate off the PMC, change roles, or simply go stale as points of contact, and a message addressed only to them can miss the project's active security audience. Routing a copy to the PMC's durable `security@<pmc>` / `private@<pmc>` channel ensures the findings reach whoever is currently responsible, not just the names captured at sign-up. (Piotr hit exactly this on the APISIX forward — he had to re-forward to `private@apisix.apache.org` by hand because the original went only to the two named contacts and no PMC-accessible list.)
+
+The PMC team Cc is resolved **deterministically** from security-site `project-coordinates.json` via `whimsy-lookup pmc-security-info` (`team_cc`), and cached per-PMC in the tracker's `PMC team Cc` column (populated by `sheets-writer backfill-security-cc`) so it is visible without a live lookup.

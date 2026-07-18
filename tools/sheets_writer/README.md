@@ -70,6 +70,7 @@ payload without contacting the API.
 | `rename-column --spreadsheet-id ID --sheet S --old H --new NEW [--dry-run]` | Rename a single column header at row 1. |
 | `insert-column --spreadsheet-id ID --sheet S --after H --header NEW [--dry-run]` | Insert a new column directly after an anchor column. Idempotent. |
 | `add-columns --spreadsheet-id ID --sheet S --headers H... [--dry-run]` | Append column headers at the end of a sheet. Idempotent per header. |
+| `backfill-security-cc --spreadsheet-id ID [--dry-run]` | Deterministically write the `PMC team Cc` column on the `PMCs` sheet — each PMC's own `security@<pmc>.apache.org` when it runs a security team, else its `private@<pmc>.apache.org` list. Determination via `whimsy_lookup` reading security-site `project-coordinates.json` (no WebFetch). Creates the column after `Report recipients` if missing; re-runnable (refreshes every cell). |
 
 ## Apply — updates JSON shape
 

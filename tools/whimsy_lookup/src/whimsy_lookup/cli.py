@@ -94,6 +94,9 @@ def cmd_pmc_security_info(args: argparse.Namespace) -> int:
     the ``security_contact`` to CC
     (the PMC's own ``security@<slug>.apache.org`` when registered,
      else the foundation-wide ``security@apache.org`` fallback),
+    the ``has_own_security_team`` flag + the ``team_cc`` PMC-side channel to CC
+    on a pre-disclosure forward
+    (its own ``security@<slug>`` when it runs a team, else its ``private@<slug>`` list),
     the ``security_model_source`` to read/WebFetch the model,
     and the ``security_model_link`` human page to cite it to a person.
 
@@ -109,6 +112,8 @@ def cmd_pmc_security_info(args: argparse.Namespace) -> int:
         print(f"slug:                  {info['slug']}")
         print(f"name:                  {info['name'] or '(unknown — not in coordinates.json)'}")
         print(f"security_contact:      {info['security_contact']}")
+        print(f"has_own_security_team: {info['has_own_security_team']}")
+        print(f"team_cc:               {info['team_cc']}")
         print(f"security_model_source: {info['security_model_source'] or '(none on record)'}")
         print(f"security_model_link:   {info['security_model_link'] or '(none on record)'}")
 

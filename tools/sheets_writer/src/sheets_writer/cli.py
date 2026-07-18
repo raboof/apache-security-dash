@@ -30,6 +30,7 @@ from sheets_writer.dump import cmd_dump
 from sheets_writer.pmcs import cmd_append_pmc
 from sheets_writer.scan_queue import cmd_scan_queue_set
 from sheets_writer.schema import cmd_add_columns, cmd_insert_column, cmd_rename_column
+from sheets_writer.security_cc import cmd_backfill_security_cc
 from sheets_writer.status import cmd_build_status_tab
 
 
@@ -173,6 +174,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     addcol_p.add_argument("--dry-run", action="store_true")
 
+    bsc_p = sub.add_parser(
+        "backfill-security-cc",
+        help=(
+            "Deterministically write the 'PMC team Cc' column on the PMCs sheet: "
+            "each PMC's own security@<pmc> when it runs a security team, else its "
+            "private@<pmc> list. Creates the column if missing; re-runnable."
+        ),
+    )
+    bsc_p.add_argument("--spreadsheet-id", required=True)
+    bsc_p.add_argument("--dry-run", action="store_true")
+
     sq_p = sub.add_parser(
         "scan-queue-set",
         help="Set a repo's per-scan tracking cells (Scan N block) in the 'Scan Queue' tab.",
@@ -210,6 +222,7 @@ DISPATCH = {
     "rename-column": cmd_rename_column,
     "insert-column": cmd_insert_column,
     "add-columns": cmd_add_columns,
+    "backfill-security-cc": cmd_backfill_security_cc,
     "scan-queue-set": cmd_scan_queue_set,
 }
 

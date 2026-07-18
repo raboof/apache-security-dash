@@ -27,6 +27,8 @@ def test_pmc_security_info_own_contact(security_coordinates) -> None:
         "known": True,
         "name": "Apache Tomcat",
         "security_contact": "security@tomcat.apache.org",
+        "has_own_security_team": True,
+        "team_cc": "security@tomcat.apache.org",
         # source-first for reading, page-first for citing.
         "security_model_source": "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
         "security_model_link": "https://tomcat.apache.org/security.html",
@@ -82,6 +84,8 @@ def test_pmc_security_info_missing_slug(security_coordinates) -> None:
         "known": False,
         "name": None,
         "security_contact": "security@apache.org",
+        "has_own_security_team": False,
+        "team_cc": "private@cassandra.apache.org",
         "security_model_source": None,
         "security_model_link": None,
         "advisory_link": None,
@@ -93,3 +97,52 @@ def test_pmc_security_info_empty_coordinates() -> None:
     info = pmc_security_info({}, "tomcat")
     assert info["known"] is False
     assert info["security_contact"] == "security@apache.org"
+    # No coordinates -> no own team -> the PMC's own private@ list is the CC.
+    assert info["has_own_security_team"] is False
+    assert info["team_cc"] == "private@tomcat.apache.org"
+
+
+def test_team_cc_own_team_equals_security_contact(security_coordinates) -> None:
+    """A PMC with its own alias: team_cc is that alias (== security_contact)."""
+    info = pmc_security_info(security_coordinates, "tomcat")
+    assert info["has_own_security_team"] is True
+    assert info["team_cc"] == "security@tomcat.apache.org"
+    assert info["team_cc"] == info["security_contact"]
+
+
+def test_team_cc_fallback_uses_private_list(security_coordinates) -> None:
+    """No own team: team_cc is the PMC private@ list, NOT the foundation contact.
+
+    This is the whole reason team_cc exists — security_contact collapses to the
+    foundation-wide security@apache.org here, but the PMC-side channel to CC is
+    the project's own private@ list (as done for APISIX).
+    """
+    hop = pmc_security_info(security_coordinates, "hop")
+    assert hop["has_own_security_team"] is False
+    assert hop["security_contact"] == "security@apache.org"
+    assert hop["team_cc"] == "private@hop.apache.org"
+
+
+def test_team_cc_null_contact_uses_private_list(security_coordinates) -> None:
+    """A null/absent contact classifies as no-own-team -> private@ list."""
+    info = pmc_security_info(security_coordinates, "apisix")
+    assert info["has_own_security_team"] is False
+    assert info["team_cc"] == "private@apisix.apache.org"
+
+
+def test_team_cc_missing_slug_uses_private_list(security_coordinates) -> None:
+    """A slug absent from coordinates still gets a deliverable private@ CC."""
+    info = pmc_security_info(security_coordinates, "cassandra")
+    assert info["has_own_security_team"] is False
+    assert info["team_cc"] == "private@cassandra.apache.org"
+
+
+def test_team_cc_mixed_case_contact_detects_own_team(security_coordinates) -> None:
+    """A mixed-case registered alias still classifies as own-team, canonicalised.
+
+    kafka's fixture contact is ``Security@Kafka.Apache.Org``; detection is
+    case-insensitive and team_cc is emitted canonical lowercase.
+    """
+    info = pmc_security_info(security_coordinates, "kafka")
+    assert info["has_own_security_team"] is True
+    assert info["team_cc"] == "security@kafka.apache.org"

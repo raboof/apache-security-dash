@@ -42,10 +42,14 @@ dependencies = [
     "google-api-python-client>=2.0",
     "google-auth>=2.0",
     "google-auth-oauthlib>=1.0",
+    "whimsy-lookup",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
+
+[tool.uv.sources]
+whimsy-lookup = { path = "../whimsy_lookup", editable = true }
 
 [project.scripts]
 sheets-writer = "sheets_writer.cli:main"
