@@ -95,6 +95,21 @@ def test_build_mime_multipart_mixed_with_attachments(tmp_path) -> None:
     assert md_part.get_param("name") == "assessment.md"
     assert body.get_param("name") is None
 
+    # Each attachment must carry a DISTINCT, non-empty Content-ID (the body
+    # must not). This is the load-bearing Apple Mail fix: Gmail's web "Send"
+    # stamps an empty `Content-ID: <>` on any attachment lacking one, so two
+    # attachments collide on the identical empty id and Apple Mail collapses
+    # them into a single rendered file. A per-attachment id keeps Gmail from
+    # injecting the placeholder and preserves distinct identities.
+    zip_cid = zip_part["Content-ID"]
+    md_cid = md_part["Content-ID"]
+    assert zip_cid and zip_cid not in ("", "<>")
+    assert md_cid and md_cid not in ("", "<>")
+    assert zip_cid != md_cid
+    # Domain comes from the sender address, not the local hostname.
+    assert zip_cid.endswith("@apache.org>") and md_cid.endswith("@apache.org>")
+    assert body["Content-ID"] is None
+
 
 def test_build_mime_no_inline_html_and_no_cc_header(tmp_path) -> None:
     scan, assess = _mk(tmp_path)

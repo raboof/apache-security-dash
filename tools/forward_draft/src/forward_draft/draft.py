@@ -123,6 +123,11 @@ def build_mime(
     # Plain-text body only — never add_alternative / text/html here.
     msg.set_content(body)
 
+    # Content-ID domain: reuse the sender's domain rather than leak the local
+    # hostname that make_msgid() would otherwise embed.
+    _, _from_email = email.utils.parseaddr(from_addr)
+    cid_domain = _from_email.rsplit("@", 1)[-1] if "@" in _from_email else "localhost"
+
     for att in attachments:
         p = pathlib.Path(att).expanduser()
         if not p.is_file():
@@ -134,6 +139,7 @@ def build_mime(
             msg.add_attachment(p.read_text(encoding="utf-8"), subtype=subtype, filename=p.name)
         else:
             msg.add_attachment(p.read_bytes(), maintype=maintype, subtype=subtype, filename=p.name)
+        part = msg.get_payload()[-1]
         # Also set the LEGACY Content-Type ``name`` parameter, mirroring the
         # modern Content-Disposition ``filename``. Apple Mail keys attachment
         # identity/display on ``Content-Type; name=`` first and falls back to a
@@ -141,7 +147,18 @@ def build_mime(
         # ``name`` collapse to the same fallback and render as one/identical
         # files. Setting it makes each attachment distinct in every client.
         # (``EmailMessage.add_attachment`` deliberately omits this legacy param.)
-        msg.get_payload()[-1].set_param("name", p.name, header="Content-Type")
+        part.set_param("name", p.name, header="Content-Type")
+        # Give each attachment a distinct Content-ID. This is the load-bearing
+        # fix for Apple Mail rendering two attachments as one: Gmail's web
+        # "Send" stamps an empty ``Content-ID: <>`` onto every attachment that
+        # lacks one, so multiple attachments collide on the *identical* empty
+        # id and Apple Mail collapses them (rendering both as the last part and
+        # hiding the others). Gmail only injects that placeholder when the field
+        # is absent, so setting a unique Content-ID here makes Gmail keep ours
+        # and each attachment retains a distinct identity. (The ``name`` param
+        # above is set by Gmail regardless and does NOT address this — verified
+        # on the wire; the Content-ID is what matters.)
+        part["Content-ID"] = email.utils.make_msgid(domain=cid_domain)
 
     assert_no_inline_html(msg)
     return bytes(msg)
