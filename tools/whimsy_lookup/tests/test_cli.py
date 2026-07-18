@@ -131,6 +131,8 @@ def test_pmc_security_info_own_contact(mock_urlopen, security_coordinates, capsy
     out = capsys.readouterr().out
     assert rc == 0
     assert "security_contact:      security@tomcat.apache.org" in out
+    assert "has_own_security_team: True" in out
+    assert "team_cc:               security@tomcat.apache.org" in out
     assert (
         "security_model_source: https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md"
         in out
@@ -139,12 +141,17 @@ def test_pmc_security_info_own_contact(mock_urlopen, security_coordinates, capsy
 
 
 def test_pmc_security_info_fallback_contact(mock_urlopen, security_coordinates, capsys) -> None:
-    """No own alias (foundation-wide fallback): security_contact resolves to it."""
+    """No own alias (foundation-wide fallback): security_contact resolves to it.
+
+    team_cc is the PMC's own private@ list, not the foundation contact.
+    """
     mock_urlopen.return_value = urlopen_returning(security_coordinates)
     rc = main(["pmc-security-info", "hop"])
     out = capsys.readouterr().out
     assert rc == 0
     assert "security_contact:      security@apache.org" in out
+    assert "has_own_security_team: False" in out
+    assert "team_cc:               private@hop.apache.org" in out
 
 
 def test_pmc_security_info_missing(mock_urlopen, security_coordinates, capsys) -> None:
@@ -167,6 +174,8 @@ def test_pmc_security_info_json(mock_urlopen, security_coordinates, capsys) -> N
     rec = _json.loads(out)
     assert rec["slug"] == "tomcat"
     assert rec["security_contact"] == "security@tomcat.apache.org"
+    assert rec["has_own_security_team"] is True
+    assert rec["team_cc"] == "security@tomcat.apache.org"
     assert (
         rec["security_model_source"]
         == "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md"

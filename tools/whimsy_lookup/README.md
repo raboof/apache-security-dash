@@ -30,7 +30,9 @@ answers four structural questions deterministically:
 - `pmc-info <slug>` — chair + full roster of a PMC committee
 - `check-pmc-member <slug> <apache-id> [...]` — true/false per ID
 - `pmc-security-info <slug> [--json]` — a PMC's security coordinates:
-  the `security_contact` to Cc (its own `security@<slug>.apache.org` when registered, else `security@apache.org`), the `security_model_source` (raw `SECURITY.md`, to read/WebFetch the model) and the `security_model_link` (human security page, to cite the model to a person)
+  the `security_contact` to Cc (its own `security@<slug>.apache.org` when registered, else `security@apache.org`), the `has_own_security_team` flag + the `team_cc` PMC-side channel to Cc on a pre-disclosure forward (its own `security@<slug>` when it runs a team, else its `private@<slug>` list — never the foundation-wide `security@apache.org`), the `security_model_source` (raw `SECURITY.md`, to read/WebFetch the model) and the `security_model_link` (human security page, to cite the model to a person)
+
+  `team_cc` differs from `security_contact` only in the no-own-team case: `security_contact` there is the foundation-wide `security@apache.org`, whereas `team_cc` is the PMC's own `private@<slug>.apache.org` list. This is the address a scan-result forward Cc's to reach the PMC's own security audience (as done for Apache APISIX, which has no `security@` team, so its `team_cc` is `private@apisix.apache.org`).
 
 **Use this from SKILL prompts instead of WebFetch on the JSON URLs.**
 WebFetch on these endpoints is unreliable and should be treated as
