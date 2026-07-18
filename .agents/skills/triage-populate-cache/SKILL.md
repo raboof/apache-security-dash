@@ -155,11 +155,20 @@ All of them pass `--status assessed`:
 
 - **report**: even a weak, duplicate, or ultimately-invalid one is still a real report the team answers,
   so it is a report here; whether it has merit is decided downstream, not now.
-  Classify it with its PMC and keywords, and add `--track-only` when it already reached the PMC
-  (see [Deciding PMC, track-only and keywords](#deciding-pmc-track-only-and-keywords)).
+  Classify it with its PMC, keywords and reporter name:
 
   ```bash
   report-cache classify <id> --pmc <pmc> --keywords "<kw>" --reporter-name "<name>"
+  ```
+
+  Add `--track-only` when the report was already delivered where we would otherwise forward it,
+  so there is nothing for us to send and we only track it.
+  The rule is:
+  if the settled PMC is in the report's `delivered:` list, add `--track-only`.
+  To access the delivered list you can use:
+
+  ```bash
+  report-cache show <id> | grep ^delivered:
   ```
 
 - **digest**: label it with **every one of the reports it lists** ([below](#the-open-reports-digest)),
@@ -326,33 +335,11 @@ Known special recipients:
   Labels are stored as given, so an active tag and a `zzz-non-issue/...` one are both just passed through.
   If you cannot find the original (the mirror may have arrived first, or the report went elsewhere), flag it rather than invent a tag.
 
-### Deciding PMC, track-only and keywords
+### Deciding PMC and keywords
 
 - **PMC**: confirm the PMC the report is for, based on the report content.
-  The PMC guessed in the download phase and showed by `show` is the starting point,
+  The PMC guessed in the download phase and shown by `show` is the starting point,
   but is not always correct.
-- **Track-only?**: once the PMC is settled, decide whether the report already reached *its* security team.
-  That is the whole question behind `--track-only`:
-  if the report was delivered where we would otherwise forward it, there is nothing for us to send, and we only track it.
-
-  Ask whimsy-lookup for the PMC's security contact:
-
-  ```bash
-  uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <pmc> --json
-  ```
-
-  Read `security_contact` off the record, then compare it with the report's `To`/`Cc` (from `show`):
-
-  1. If `private@<pmc>.apache.org` is among the recipients, then it was delivered to the PMC.
-     Classify it `--track-only`.
-  2. If `security@<pmc>.apache.org` is among the recipients, there are two possibilities:
-     1. The project's security contact is `security@<pmc>.apache.org`:
-        the PMC's own security team already has the report.
-        Classify it with `--track-only`.
-     2. The project's security contact is `security@apache.org`:
-        the PMC does not have a security team.
-        Classify it normally: it still needs forwarding, so it is not track-only.
-
 - **Keywords**: short, lowercase, single-word terms capturing the issue.
   Each keyword must match `[a-z0-9_]+`: no `-` inside a keyword (use `_` if you must join two parts, e.g. `file_read`, not `file-read`).
   `report-cache` enforces the character set and caps the hyphen-joined slug at 60 chars
@@ -423,7 +410,7 @@ The file has these sections:
 - `per_pmc.<pmc>` - subprojects / components specific to a PMC (e.g. commons `compress`, `jexl`, `fileupload`; airflow `dag`, `operator`; tomcat `tribes`, `hpack`; logging `log4j`, `log4j2`).
 
 Which section a keyword comes from does **not** set its position:
-the order is fixed in [Deciding PMC, track-only and keywords](#deciding-pmc-track-only-and-keywords) -
+the order is fixed in [Deciding PMC and keywords](#deciding-pmc-and-keywords) -
 subproject or component first, the class second, the rest after.
 These sections say what a keyword *is*, not where it goes.
 
@@ -448,14 +435,12 @@ Give it the message's `<id>` and tell it to:
 - read the message with `report-cache show <id>`,
   and any attachment worth reading with `report-cache get-attachment <id> <name>`;
 - consult [`tag-vocabulary.yaml`](tag-vocabulary.yaml) before inventing a keyword;
-- look the PMC up with `whimsy-lookup pmc-security-info <pmc> --json` to settle `reached_pmc`;
 - return **only** this JSON:
 
 ```json
 {
   "category": "report",                 // one of [The categories](#the-categories)
   "pmc": "spark",                       // slug, from the CONTENT (see below); null if none is named
-  "reached_pmc": false,                 // did it also reach the PMC's own security team?
   "keywords": ["rest", "ssrf", "api"],  // report only: where, then what, then which; [a-z0-9_], <=3
   "reporter_name": "Jane",              // report only: how to greet them, from the signature
   "labels": [],                         // the labels that category needs, verbatim
@@ -466,35 +451,25 @@ Give it the message's `<id>` and tell it to:
 The categories are defined in [The categories](#the-categories) - that table is the whole brief.
 Which fields carry the answer depends on which one it is:
 
-| Category               | `pmc`                | `reached_pmc` | `keywords` + `reporter_name` | `labels`                         |
-|------------------------|----------------------|---------------|------------------------------|----------------------------------|
-| **report**             | yes                  | yes           | yes                          | -                                |
-| **digest**             | the PMC it is *for*  | -             | -                            | every listed report's label      |
-| **license-confusion**  | null (no project)    | -             | -                            | -                                |
-| **mirror**             | yes                  | -             | -                            | the original's label             |
-| **spam**               | null                 | -             | -                            | -                                |
-| **dependency-inquiry** | the project its body names | -       | -                            | -                                |
-| **other**              | if its body names one | -            | -                            | -                                |
+| Category               | `pmc`                      | `keywords` + `reporter_name` | `labels`                    |
+|------------------------|----------------------------|------------------------------|-----------------------------|
+| **report**             | yes                        | yes                          | -                           |
+| **digest**             | the PMC it is *for*        | -                            | every listed report's label |
+| **license-confusion**  | null (no project)          | -                            | -                           |
+| **mirror**             | yes                        | -                            | the original's label        |
+| **spam**               | null                       | -                            | -                           |
+| **dependency-inquiry** | the project its body names | -                            | -                           |
+| **other**              | if its body names one      | -                            | -                           |
 
 The subagent does not compose labels it cannot know:
 a **digest**'s and a **mirror**'s come from the `email-classification/` archive,
 and the standing `zzz-non-issue/...` ones are fixed strings the main agent applies.
 Where `labels` is `-`, leave it empty.
 
-Two fields need care, because the obvious answer is the wrong one:
-
-- **`pmc` comes from the content, not the headers.**
-  Which list a message was sent to says where it landed, not what it is about:
-  a dependency inquiry arrives on `security@apache.org` but concerns whichever project the body names.
-  Read the subject and body for the project, and treat the `pmc` that `show` reports
-  (the download's guess from `To`/`Cc`) as a hint to confirm, not an answer to echo.
-- **`reached_pmc` is about delivery, not capability.**
-  It is true only when the PMC's registered `security_contact` is itself in the message's `To`/`Cc` -
-  that is, the report is already with the people who would receive our forward.
-  A project *having* its own security team does not make it true
-  (see [Deciding PMC + keywords](#deciding-pmc-track-only-and-keywords)).
-  It is what drives `--track-only`, and it only applies to a **report**:
-  a digest or a mirror needs nothing from us whatever the PMC does.
+**`pmc` comes from the content, not the headers.**
+Which list a message was sent to says where it landed, not what it is about.
+Read the subject and body for the project, and treat the `pmc` that `show` reports
+(the download's guess from `To`/`Cc`) as a hint to confirm, not an answer to echo.
 
 The subagent decides nothing irreversible;
 the main agent presents the proposals, gets the user's confirmation, and runs the `report-cache` CLI.
