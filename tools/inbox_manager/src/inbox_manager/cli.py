@@ -30,6 +30,7 @@ from os import getenv
 from urllib.request import urlopen
 
 from dotenv import load_dotenv
+from report_cache import artifacts
 from report_cache import index as report_index
 from report_cache.index import Disposition, Entry, Status
 from report_cache.paths import cache_dir
@@ -285,14 +286,27 @@ def send_reply(inbox, original, uid, pmc, body_md, entry):
         return False
 
 
+def draft_artifact(entry: Entry | None, name: str) -> str:
+    """The text of a triage-assess draft artifact for ``entry``, or ``""`` when absent.
+
+    triage-assess writes ``summary.md`` / ``model.md`` / ``note.md`` / ``reason.md`` into
+    the bundle through ``report-cache put-artifact``; here they pre-fill the forward /
+    receipt / reject the operator previews. A missing artifact (an interactive report with
+    no draft) reads as ``""`` so the template keeps its empty-marker behaviour and the
+    operator writes it at the preview.
+    """
+    if entry is None or not entry.path:
+        return ""
+    return artifacts.read_artifact(cache_dir() / entry.path, name) or ""
+
+
 def accept_message(inbox, original, uid, pmc, entry, committees, coordinates):
     """Forward to the PMC + reporter receipt.
 
     Prompts for the PMC when it could not be guessed.
-    The forward carries no pre-written summary:
-    drafting one is triage-assess's job,
-    and it does not record its drafts through report-cache yet,
-    so the operator writes the note in $EDITOR at the preview.
+    The forward pre-fills triage-assess's drafted ``summary.md`` / ``model.md`` (and the
+    receipt's ``note.md``), or the forward-duplicate template when the entry records a
+    ``duplicate_ponymail_link``; the operator reviews and can edit at the preview.
     Returns True if sent.
     """
     if pmc is None:
@@ -304,8 +318,13 @@ def accept_message(inbox, original, uid, pmc, entry, committees, coordinates):
     if not to_addr:
         print("not forwarded - no recipient\n")
         return False
-    forward_md = email_utils.fill_forward_template(pmc, original, "", "", TRIAGER_NAME)
-    note = ""
+    summary = draft_artifact(entry, "summary.md")
+    model = draft_artifact(entry, "model.md")
+    duplicate_of = str(entry.duplicate_ponymail_link or "") if entry else ""
+    forward_md = email_utils.fill_forward_template(
+        pmc, original, summary, model, TRIAGER_NAME, duplicate_of=duplicate_of
+    )
+    note = draft_artifact(entry, "note.md")
     receipt_md = email_utils.fill_receipt_template(pmc, original, note, TRIAGER_NAME)
     return send_forward_and_receipt(
         inbox, original, uid, pmc, to_addr, forward_md, receipt_md, entry
@@ -315,31 +334,36 @@ def accept_message(inbox, original, uid, pmc, entry, committees, coordinates):
 def reject_message(inbox, original, uid, pmc, entry):
     """reply that the report is out of scope.
 
-    Built from templates/reject.md and opened in $EDITOR
-    so the operator can fill in the project-specific reasoning,
-    with the report quoted inline for reference.
+    Built from templates/reject.md, pre-filled with triage-assess's drafted ``reason.md``,
+    with the report quoted inline for reference. When there is no drafted reason (an
+    interactive report), it opens in $EDITOR so the operator can write it.
     Files under 'zzz-non-issue/<pmc>/...'. Returns True if sent.
     """
-    body_md = email_utils.fill_reject_template(pmc, original, "", TRIAGER_NAME)
-    print("editing reject reply...")
-    body_md = email_utils.edit_markdown_in_editor(body_md)
+    reason = draft_artifact(entry, "reason.md")
+    body_md = email_utils.fill_reject_template(pmc, original, reason, TRIAGER_NAME)
+    if not reason:
+        print("editing reject reply...")
+        body_md = email_utils.edit_markdown_in_editor(body_md)
     return send_reply(inbox, original, uid, pmc, body_md, entry)
 
 
 def suggested_action(entry: Entry | None) -> str | None:
     """The menu key the cache's triage state implies, or None to let the operator decide.
 
-    Only an assessed report has a disposition worth acting on,
-    and only ``track`` maps to something this tool can do unattended:
-    the PMC has the report already (or there is nothing to send, as for a digest),
-    so it is filed under the labels the skill recorded.
-    ``forward`` and ``decline`` need drafts that triage-assess does not record yet,
-    and ``skip`` means the message is out of the skill's scope,
-    so all three fall through to interactive triage.
+    Only an assessed report carries a disposition worth acting on, and each maps to the
+    action that consumes what the skills recorded:
+    ``track`` -> [f]ile under the recorded labels (the PMC has it, or nothing to send),
+    ``forward`` -> [a]ccept (forward triage-assess's drafted summary + receipt),
+    ``decline`` -> [r]eject (send its drafted reply).
+    ``skip`` is out of the skill's scope, so it stays interactive.
     """
     if entry is None or entry.status is not Status.ASSESSED:
         return None
-    return "f" if entry.disposition is Disposition.TRACK else None
+    return {
+        Disposition.TRACK: "f",
+        Disposition.FORWARD: "a",
+        Disposition.DECLINE: "r",
+    }.get(entry.disposition)
 
 
 CVE_RESERVED_RE = re.compile(
@@ -535,6 +559,10 @@ def handle_message(inbox, uid, committees, coordinates, index):
     if suggested == "f":
         labels = ", ".join(entry.labels or []) or "(no label recorded)"
         print(f"Suggested action: [f]ile under {labels}")
+    elif suggested == "a":
+        print("Suggested action: [a]ccept (forward the drafted summary + receipt)")
+    elif suggested == "r":
+        print("Suggested action: [r]eject (send the drafted reply)")
     prompt = "Action? [a]ccept / [r]eject / [s]kip / [j]unk / [f]ile under / [q]uit / [d]isplay / [c]onfused: "
     if suggested:
         # Mark the key Enter runs, so the default is visible in the menu itself.

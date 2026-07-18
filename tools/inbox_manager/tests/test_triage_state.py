@@ -82,12 +82,18 @@ def test_assessed_track_suggests_file():
     assert cli.suggested_action(entry()) == "f"
 
 
-@pytest.mark.parametrize(
-    "disposition", [Disposition.FORWARD, Disposition.DECLINE, Disposition.SKIP, None]
-)
-def test_other_dispositions_stay_interactive(disposition):
-    # forward/decline need drafts that triage-assess does not record yet, and
-    # skip is out of the skill's scope: the operator decides.
+def test_assessed_forward_suggests_accept():
+    assert cli.suggested_action(entry(disposition=Disposition.FORWARD)) == "a"
+
+
+def test_assessed_decline_suggests_reject():
+    assert cli.suggested_action(entry(disposition=Disposition.DECLINE)) == "r"
+
+
+@pytest.mark.parametrize("disposition", [Disposition.SKIP, None])
+def test_out_of_scope_dispositions_stay_interactive(disposition):
+    # skip is out of the skill's scope and a report with no disposition is
+    # undecided: the operator decides.
     assert cli.suggested_action(entry(disposition=disposition)) is None
 
 
@@ -99,6 +105,33 @@ def test_unassessed_track_is_not_suggested(status):
 
 def test_no_entry_no_suggestion():
     assert cli.suggested_action(None) is None
+
+
+# draft_artifact: the triage-assess fragments that pre-fill the forward / receipt / reject.
+
+
+def _bundle(tmp_path, monkeypatch, e):
+    """Make the entry's bundle dir under a REPORT_CACHE_DIR-overridden cache."""
+    monkeypatch.setenv("REPORT_CACHE_DIR", str(tmp_path))
+    d = tmp_path / e.path
+    d.mkdir(parents=True)
+    return d
+
+
+def test_draft_artifact_reads_a_written_fragment(tmp_path, monkeypatch):
+    e = entry()
+    (_bundle(tmp_path, monkeypatch, e) / "summary.md").write_text("the summary\n")
+    assert cli.draft_artifact(e, "summary.md") == "the summary\n"
+
+
+def test_draft_artifact_absent_is_empty_string(tmp_path, monkeypatch):
+    e = entry()
+    _bundle(tmp_path, monkeypatch, e)
+    assert cli.draft_artifact(e, "reason.md") == ""
+
+
+def test_draft_artifact_no_entry_is_empty_string():
+    assert cli.draft_artifact(None, "summary.md") == ""
 
 
 # file_message: the labels come from the cache, and split by whether they exist.
