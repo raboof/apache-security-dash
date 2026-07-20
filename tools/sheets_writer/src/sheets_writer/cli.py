@@ -29,6 +29,7 @@ from sheets_writer.canned import cmd_append_canned, cmd_init_canned
 from sheets_writer.dump import cmd_dump
 from sheets_writer.pmcs import cmd_append_pmc
 from sheets_writer.scan_queue import cmd_scan_queue_set
+from sheets_writer.scan_results import cmd_build_scan_results_tab, cmd_scan_results_set
 from sheets_writer.schema import cmd_add_columns, cmd_insert_column, cmd_rename_column
 from sheets_writer.security_cc import cmd_backfill_security_cc
 from sheets_writer.status import cmd_build_status_tab
@@ -208,6 +209,43 @@ def build_parser() -> argparse.ArgumentParser:
     sq_p.add_argument("--commit", help="'Commit hash' — the scanned head SHA (short or full).")
     sq_p.add_argument("--dry-run", action="store_true")
 
+    bsr_p = sub.add_parser(
+        "build-scan-results-tab",
+        help=(
+            "Rebuild the 'Scan Results' tab from the tooling-agents-private archive: "
+            "one row per scans/mythos bundle with findings, pre-forward dispositions "
+            "(counts + percentages), sanity verdict and forwarded date. The four "
+            "feedback columns are carried over, keyed by Scan ID."
+        ),
+    )
+    bsr_p.add_argument("--spreadsheet-id", required=True)
+    bsr_p.add_argument(
+        "--archive-root",
+        required=True,
+        help="Path to an apache/tooling-agents-private clone (contains scans/mythos/).",
+    )
+    bsr_p.add_argument("--today", default="", help="Date stamp for the tab header (YYYY-MM-DD).")
+    bsr_p.add_argument("--dry-run", action="store_true")
+
+    sr_p = sub.add_parser(
+        "scan-results-set",
+        help="Set the carried feedback cells for one scan in the 'Scan Results' tab.",
+    )
+    sr_p.add_argument("--spreadsheet-id", required=True)
+    sr_p.add_argument(
+        "--scan-id", required=True, help="Scan bundle id, e.g. shiro-2026-07-17-cde5990."
+    )
+    sr_p.add_argument("--feedback-received", help="Date the PMC replied (YYYY-MM-DD).")
+    sr_p.add_argument(
+        "--sentiment",
+        help="Sentiment read of the PMC's reply (e.g. Positive / Neutral / Critical / Mixed).",
+    )
+    sr_p.add_argument("--summary", help="One-or-two-sentence summary of the PMC's feedback.")
+    sr_p.add_argument(
+        "--improvements", help="Programme improvements the feedback points at, if any."
+    )
+    sr_p.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -224,6 +262,8 @@ DISPATCH = {
     "add-columns": cmd_add_columns,
     "backfill-security-cc": cmd_backfill_security_cc,
     "scan-queue-set": cmd_scan_queue_set,
+    "build-scan-results-tab": cmd_build_scan_results_tab,
+    "scan-results-set": cmd_scan_results_set,
 }
 
 

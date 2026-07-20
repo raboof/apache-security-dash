@@ -196,6 +196,20 @@ The one deliberate exception to "don't inline findings" (hard rule 1): when the 
 
 13. **Hand off to `frontier-model-preparation-update`** (hard rules 7 + 8) once the operator confirms they've sent: set `Date scan received` (archive commit date) + `Forwarded scan to PMC` (today) + the tooling-list ponymail permalink (from step 12) + the draft id / scan-id in `Notes`. Do not set `Forwarded scan to PMC` before the operator has actually sent.
 
+13a. **Refresh the `Scan Results` tab** so the delivered scan's numbers land in the programme's outcome view:
+
+```bash
+uv run --project tools/sheets_writer sheets-writer build-scan-results-tab \
+    --spreadsheet-id "<id>" --archive-root ~/code/tooling-agents-private \
+    --today <YYYY-MM-DD>
+```
+
+This picks up the scan's findings total and the assessment's disposition counts + percentages automatically. It leaves the four feedback columns blank — that is correct at forward time, since the PMC has not replied yet.
+
+**When the PMC does reply, record it** with `sheets-writer scan-results-set --scan-id <the same scan id>` (`Feedback received` / `Sentiment` / `Feedback summary` / `Improvements suggested`). See [`frontier-model-preparation-run`](../frontier-model-preparation-run/SKILL.md) Step 6 for how to write those cells — in particular: read the whole reply rather than the snippet, quote the load-bearing phrase verbatim, and judge sentiment on the report rather than the politeness of the message. A courteous reply saying the findings were not worth the triage effort is `Negative`.
+
+This closes the loop the programme most needs: the scan asks PMCs for feedback explicitly ("since this is the first time ASF runs such scans, we need your help"), so the reply is the only evidence of whether the scans are worth what they cost the PMC to triage.
+
 14. **Record the per-scan status in the Scan Queue tab** (hard rule 7). Run `sheets-writer scan-queue-set` for the scanned repo and its `Scan N` block (Scan 1 for a first scan):
 
     ```bash
