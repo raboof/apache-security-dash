@@ -634,12 +634,45 @@ The columns are blank-tolerant.
 Never substitute a list-view URL or a search URL for a direct thread permalink —
 the columns commit to direct permalinks specifically so a click lands on the thread itself.
 
-### Step 6 — Refresh the Status sheet
+### Step 6 — Refresh the Status sheet + the Scan Results tab
 
 Invoke `frontier-model-preparation-update`'s `build-status-tab` subcommand at the end of the sweep.
 This produces a durable view of the same classification for anyone else on the team to read.
 The classification logic in this SKILL and the state machine in `build-status-tab` should be kept in sync —
 if you find them diverging, that's a bug to fix.
+
+**Then refresh the `Scan Results` tab** — the per-scan outcome view (findings, pre-forward dispositions with counts + percentages, sanity verdict, and the PMC's feedback). It reads the archive clone, so it is a separate command from `build-status-tab`:
+
+```bash
+uv run --project tools/sheets_writer sheets-writer build-scan-results-tab \
+    --spreadsheet-id "<id from memory>" \
+    --archive-root ~/code/tooling-agents-private \
+    --today <YYYY-MM-DD>
+```
+
+Run it whenever Step 2.5 found archive movement (a new scan, a new assessment) or Step 1 surfaced PMC feedback on a delivered scan.
+The auto columns are rebuilt from the archive every time; the four feedback columns are **carried over keyed by Scan ID** and are never clobbered by a rebuild.
+
+**Recording PMC feedback (this is the part only the sweep can do).**
+`Feedback received` / `Sentiment` / `Feedback summary` / `Improvements suggested` have no automated source — they are the sweep's read of what the PMC actually said on the `[GLASSWING]` results thread.
+When a delivered scan gets a substantive reply, write it with:
+
+```bash
+uv run --project tools/sheets_writer sheets-writer scan-results-set \
+    --spreadsheet-id "<id>" --scan-id <project>-<YYYY-MM-DD>-<sha> \
+    --feedback-received <YYYY-MM-DD> \
+    --sentiment "<Positive / Neutral / Mixed / Negative — <one-clause why>>" \
+    --summary "<what they said, quoting the load-bearing phrase verbatim>" \
+    --improvements "<what the programme should change, or 'None raised'>"
+```
+
+Three rules for those cells, because they are the programme's only feedback record:
+
+1. **Read the full message, never the search snippet.** The 2026-07-20 APISIX reply opened "no major issues found" and the snippet stopped there; the body went on to "to say I was disappointed would be an understatement", called the descriptions unreadable, and called 150+ findings "a DDoS in itself". A snippet-based summary would have recorded that delivery as mildly positive when it was the programme's sharpest criticism to date.
+2. **Quote the load-bearing phrase verbatim** in the summary. Paraphrase drifts toward the comfortable reading.
+3. **Sentiment is about the report, not the tone.** A polite, friendly message that says the findings were not worth the triage effort is `Negative`. Courtesy is not approval.
+
+Feedback that explicitly covers more than one scan (APISIX's did) gets recorded on **each** affected scan's row, noting the extension — otherwise a per-scan reader sees a blank and assumes silence.
 
 ### Step 6.5 — Final pass: unresolved PMC asks (always the last analytical step)
 

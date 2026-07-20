@@ -90,6 +90,13 @@ SCAN_QUEUE_SHEET = "Scan Queue"
 # One row per Scan-Requested PMC, alphabetical. Fully derived from the PMCs
 # sheet on every build-status-tab refresh.
 MODEL_STATUS_SHEET = "Model Status"
+# Per-scan outcome view: one row per archived scan bundle under
+# scans/mythos/. Auto columns (identity, findings, pre-forward dispositions +
+# percentages, sanity verdict, forwarded date) are rebuilt from the
+# tooling-agents-private archive clone by build-scan-results-tab; the four
+# feedback columns have no automated source and are carried over on rebuild,
+# keyed by Scan ID, written by scan-results-set.
+SCAN_RESULTS_SHEET = "Scan Results"
 # Hand-written overview tab; build-status-tab only appends/refreshes a legend
 # block at the bottom (sentinel-managed), never clearing the rest.
 README_SHEET = "README"
