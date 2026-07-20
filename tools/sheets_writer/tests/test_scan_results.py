@@ -19,9 +19,12 @@
 from __future__ import annotations
 
 from sheets_writer.scan_results import (
+    COL_WIDTHS,
     DISPOSITIONS,
+    PROSE_COLS,
     SCAN_RESULTS_AUTO,
     SCAN_RESULTS_CARRIED,
+    SCAN_RESULTS_CARRIED_COLS,
     SCAN_RESULTS_HEADER,
     as_int,
     build_scan_row,
@@ -295,3 +298,23 @@ class TestPmcCell:
 
     def test_short_row_is_blank_not_indexerror(self):
         assert pmc_cell(["shiro"], self.IDX, "Forwarded scan to PMC") == ""
+
+
+class TestProseFormatting:
+    def test_prose_cols_are_the_free_text_ones(self):
+        names = [SCAN_RESULTS_HEADER[i] for i in PROSE_COLS]
+        assert names == ["Sentiment", "Feedback summary", "Improvements suggested"]
+
+    def test_prose_cols_are_in_the_carried_block(self):
+        """Wrapping must target the agent-authored columns, not an auto one."""
+        for i in PROSE_COLS:
+            assert i in SCAN_RESULTS_CARRIED_COLS
+
+    def test_every_prose_col_has_a_width(self):
+        """A wrapped column with no width just makes very tall rows."""
+        for i in PROSE_COLS:
+            assert COL_WIDTHS.get(i, 0) > 0
+
+    def test_widths_are_valid_column_indices(self):
+        for i in COL_WIDTHS:
+            assert 0 <= i < len(SCAN_RESULTS_HEADER)

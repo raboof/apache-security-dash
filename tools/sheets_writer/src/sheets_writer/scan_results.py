@@ -94,6 +94,24 @@ SCAN_RESULTS_CARRIED_COLS = [len(SCAN_RESULTS_AUTO) + i for i in range(len(SCAN_
 
 SCAN_ID_COL = SCAN_RESULTS_AUTO.index("Scan ID")
 
+#: Free-prose columns. These hold multi-sentence PMC feedback, so they are
+#: wrapped and widened — unwrapped they clip at the neighbouring cell and the
+#: feedback silently reads as a fragment, which is the opposite of the point.
+PROSE_COLS = [
+    SCAN_RESULTS_HEADER.index("Sentiment"),
+    SCAN_RESULTS_HEADER.index("Feedback summary"),
+    SCAN_RESULTS_HEADER.index("Improvements suggested"),
+]
+
+#: Pixel widths for the prose columns. Wrapping a narrow column just yields a
+#: very tall row, so width and wrap are set together.
+COL_WIDTHS = {
+    SCAN_RESULTS_HEADER.index("Scan ID"): 260,
+    SCAN_RESULTS_HEADER.index("Sentiment"): 180,
+    SCAN_RESULTS_HEADER.index("Feedback summary"): 460,
+    SCAN_RESULTS_HEADER.index("Improvements suggested"): 460,
+}
+
 
 def parse_flat_yaml(text: str) -> dict:
     """Pure: parse the archive's flat ``metadata.yml`` dialect into a dict.
@@ -540,7 +558,16 @@ def cmd_build_scan_results_tab(args: argparse.Namespace) -> int:
             print(f"  ANOMALY: {a}")
         return 0
 
-    _write_tab(service, args.spreadsheet_id, SCAN_RESULTS_SHEET, sheet_id, tab, frozen=(4, 0))
+    _write_tab(
+        service,
+        args.spreadsheet_id,
+        SCAN_RESULTS_SHEET,
+        sheet_id,
+        tab,
+        frozen=(4, 0),
+        wrap_col=PROSE_COLS,
+        col_widths=COL_WIDTHS,
+    )
     carried_kept = sum(1 for r in rows if any(scan_results_carried(carried.get(r[SCAN_ID_COL]))))
     print(
         f"Refreshed: {SCAN_RESULTS_SHEET!r} ({len(rows)} scans, "

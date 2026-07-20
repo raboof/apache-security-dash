@@ -370,8 +370,16 @@ def _write_tab(
     col_offset=0,
     frozen=(0, 0),
     existing_charts=(),
+    col_widths=None,
 ) -> None:
     """Clear ``title``, write the tab's values, and apply formatting.
+
+    ``wrap_col`` accepts a single 0-based column index or an iterable of them —
+    those columns get ``wrapStrategy: WRAP`` so long prose stays readable
+    instead of clipping at the neighbour. ``col_widths`` is an optional
+    ``{column index: pixel width}`` map applied alongside it; wrapping a column
+    that is still narrow just makes very tall rows, so the two normally travel
+    together.
 
     Header rows are bold + given a distinct fill; bold-only rows (section
     totals) are bold without the fill. ``col_offset`` inserts that many empty
@@ -530,16 +538,33 @@ def _write_tab(
             }
         )
     if wrap_col is not None:
+        wrap_cols = [wrap_col] if isinstance(wrap_col, int) else list(wrap_col)
+        for wc in wrap_cols:
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startColumnIndex": wc + col_offset,
+                            "endColumnIndex": wc + col_offset + 1,
+                        },
+                        "cell": {"userEnteredFormat": {"wrapStrategy": "WRAP"}},
+                        "fields": "userEnteredFormat.wrapStrategy",
+                    }
+                }
+            )
+    for col, width in (col_widths or {}).items():
         requests.append(
             {
-                "repeatCell": {
+                "updateDimensionProperties": {
                     "range": {
                         "sheetId": sheet_id,
-                        "startColumnIndex": wrap_col + col_offset,
-                        "endColumnIndex": wrap_col + col_offset + 1,
+                        "dimension": "COLUMNS",
+                        "startIndex": col + col_offset,
+                        "endIndex": col + col_offset + 1,
                     },
-                    "cell": {"userEnteredFormat": {"wrapStrategy": "WRAP"}},
-                    "fields": "userEnteredFormat.wrapStrategy",
+                    "properties": {"pixelSize": width},
+                    "fields": "pixelSize",
                 }
             }
         )
