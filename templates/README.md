@@ -43,7 +43,7 @@ render literally if something goes wrong; the renderer matches `\<marker>` and
 | --- | --- | --- | --- |
 | `<PMC name>` | forward, forward-duplicate, receipt, receipt-specialized | project display name (e.g. "Apache Tomcat") | required |
 | `<PMC security address>` | receipt-specialized | the PMC's own `security@<pmc>.apache.org` | required (this template only) |
-| `<Reporter name>` | receipt, receipt-specialized, reject | the reporter's display name (from the live message) | required |
+| `<Reporter name>` | receipt, receipt-specialized, reject | the bundle's curated `reporter_name` (how to address the reporter), falling back to the live message's `From` display name | required |
 | `<Triager full name>` | all | the sender / operator name | required |
 | `<link>` | forward, forward-duplicate, receipt, receipt-specialized | the project's human security page (the PMC's `security_model_link`, not the raw `security_model_source` that feeds the assessors) | line dropped |
 | `<model link>` | reject | the project's human security page (the PMC's `security_model_link`; kept a distinct marker from `<link>`) | line dropped |

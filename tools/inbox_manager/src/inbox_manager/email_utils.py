@@ -286,7 +286,7 @@ def _apply(text, mapping):
     return text
 
 
-def fill_markers(text, pmc, original, triager_name):
+def fill_markers(text, pmc, original, triager_name, reporter_name=None):
     """Fill the identity / PMC / infra markers in a template, then drop any line
     whose marker stayed empty.
 
@@ -295,10 +295,15 @@ def fill_markers(text, pmc, original, triager_name):
     rest from the PMC coordinates, the live message, and the operator identity,
     then removes any line still carrying an unfilled marker (a PMC with no
     threat-model link, an empty receipt note, ...).
+
+    ``reporter_name`` is the curated greeting name from the triage bundle
+    (how the reporter asked to be addressed);
+    it wins over the live ``From`` display name,
+    which stays as the fallback for interactive reports with no cached name.
     """
     name, addr = parseaddr(reporter_from(original) or "")
     values = {
-        "Reporter name": name or addr or "there",
+        "Reporter name": reporter_name or name or "there",
         "Triager full name": triager_name or "the Apache Security Team",
     }
     if pmc:
@@ -351,22 +356,22 @@ def fill_forward_template(pmc, original, summary, model, triager_name, duplicate
     return fill_markers(text, pmc, original, triager_name)
 
 
-def fill_receipt_template(pmc, original, note, triager_name):
+def fill_receipt_template(pmc, original, note, triager_name, reporter_name=None):
     """Render the reporter receipt: receipt-specialized.md for a specialized PMC,
     else receipt.md. The content (note) is filled here, the rest via
     fill_markers; an empty note drops its line."""
     name = "receipt-specialized.md" if (pmc and pmc.specialized) else "receipt.md"
     content = {"note": note} if note else {}
     text = _apply((TEMPLATE_DIR / name).read_text(encoding="utf-8"), content)
-    return fill_markers(text, pmc, original, triager_name)
+    return fill_markers(text, pmc, original, triager_name, reporter_name)
 
 
-def fill_reject_template(pmc, original, reason, triager_name):
+def fill_reject_template(pmc, original, reason, triager_name, reporter_name=None):
     """Render the reporter push-back from reject.md: the reason is filled here,
     the rest via fill_markers; an empty reason drops its line."""
     content = {"reason": reason} if reason else {}
     text = _apply((TEMPLATE_DIR / "reject.md").read_text(encoding="utf-8"), content)
-    return fill_markers(text, pmc, original, triager_name)
+    return fill_markers(text, pmc, original, triager_name, reporter_name)
 
 
 def quote_original(original):

@@ -325,7 +325,10 @@ def accept_message(inbox, original, uid, pmc, entry, committees, coordinates):
         pmc, original, summary, model, TRIAGER_NAME, duplicate_of=duplicate_of
     )
     note = draft_artifact(entry, "note.md")
-    receipt_md = email_utils.fill_receipt_template(pmc, original, note, TRIAGER_NAME)
+    reporter_name = entry.reporter_name if entry else None
+    receipt_md = email_utils.fill_receipt_template(
+        pmc, original, note, TRIAGER_NAME, reporter_name
+    )
     return send_forward_and_receipt(
         inbox, original, uid, pmc, to_addr, forward_md, receipt_md, entry
     )
@@ -340,7 +343,10 @@ def reject_message(inbox, original, uid, pmc, entry):
     Files under 'zzz-non-issue/<pmc>/...'. Returns True if sent.
     """
     reason = draft_artifact(entry, "reason.md")
-    body_md = email_utils.fill_reject_template(pmc, original, reason, TRIAGER_NAME)
+    reporter_name = entry.reporter_name if entry else None
+    body_md = email_utils.fill_reject_template(
+        pmc, original, reason, TRIAGER_NAME, reporter_name
+    )
     if not reason:
         print("editing reject reply...")
         body_md = email_utils.edit_markdown_in_editor(body_md)
