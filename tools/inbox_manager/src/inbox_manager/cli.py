@@ -103,7 +103,7 @@ def print_pmc(pmc):
         print(f"PMC: {pmc.id} ({pmc.internal_security_contact})")
     else:
         print(
-            f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_model_source}"
+            f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_model_link}"
         )
 
 
