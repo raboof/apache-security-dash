@@ -737,6 +737,24 @@ def _normalize_addr(s: str) -> str:
     return m.group(0) if m else (s or "").strip()
 
 
+def _addr_or_none(s: str) -> str | None:
+    """Bare email from a possibly-annotated entry, or ``None`` if it has none.
+
+    The address cells also carry deliberate **non-address sentinels** — most
+    notably the literal ``none``, which the response SKILL writes when a PMC
+    explicitly declines the OSS-subscription offer, so the absence is recorded
+    rather than left blank-and-ambiguous. Free-text notes land there too.
+
+    Those are not people. Treating them as addresses put a phantom row (empty
+    name, email ``none``) into the OSS-subscriptions registry and, worse,
+    copied ``none`` into ``Claude OSS Subscriptions Submitted`` — a column that
+    is supposed to mean "a subscription was actually granted". Anything without
+    a parseable address is skipped by both paths.
+    """
+    m = _ADDR_RE.search(s or "")
+    return m.group(0) if m else None
+
+
 def compute_subscription_syncs(
     grid: list[list[str]], col_idx: dict
 ) -> list[tuple[int, list[str], list[str]]]:
@@ -762,7 +780,10 @@ def compute_subscription_syncs(
     for r, row in enumerate(grid[1:], start=2):  # sheet row number (header is row 1)
         if dsr_i >= 0 and not _cell(row, dsr_i):
             continue  # not yet submitted — expedite not relayed to ASF Tooling
-        expedite = _parse_addrs(_cell(row, exp_i))
+        # Skip entries that carry no address — the ``none`` opt-out sentinel
+        # above all. Copying those into the Subscriptions cell would assert a
+        # granted subscription that does not exist.
+        expedite = [a for a in _parse_addrs(_cell(row, exp_i)) if _addr_or_none(a)]
         if not expedite:
             continue
         current = _parse_addrs(_cell(row, sub_i))
@@ -810,8 +831,10 @@ def subscription_email_rows(grid: list[list[str]], col_idx: dict) -> list[tuple[
     seen: set[str] = set()
     out: list[tuple[str, str, str]] = []
     for row in grid[1:]:
-        current = [_normalize_addr(a) for a in _parse_addrs(_cell(row, sub_i))]
-        expedited = [_normalize_addr(a) for a in _parse_addrs(_cell(row, exp_i))]
+        # ``_addr_or_none`` drops non-address entries (the ``none`` opt-out
+        # sentinel, stray notes) so they never become registry people.
+        current = [a for a in map(_addr_or_none, _parse_addrs(_cell(row, sub_i))) if a]
+        expedited = [a for a in map(_addr_or_none, _parse_addrs(_cell(row, exp_i))) if a]
         emails = current + [a for a in expedited if a not in current]
         slug = _cell(row, slug_i)
         date = _cell(row, req_i)
