@@ -82,18 +82,25 @@ repos:
   #   - `tools/` (small Python projects with their own pyproject.toml;
   #     jira_writer is the first one)
   # Run via `uvx ruff` so we don't need a separate ruff install.
+  #
+  # The version is PINNED. Bare `uvx ruff` resolves to whatever the newest
+  # release is at run time, so a ruff release turns every PR and the next
+  # push to main red at once, on code nobody touched — 0.16.0 did exactly
+  # that, flagging 31 pre-existing errors (UP031, I001, PLW1510, DTZ…) that
+  # 0.15.21 does not. Bump this deliberately, in its own PR, together with
+  # whatever fixes the new rules require.
   - repo: local
     hooks:
       - id: ruff-check-py
         name: ruff check (skill helpers + tools)
         language: system
-        entry: uvx ruff check
+        entry: uvx ruff@0.15.21 check
         files: ^(\.github/(skills|scripts)|tools)/.*\.py$
         pass_filenames: true
       - id: ruff-format-py
         name: ruff format (skill helpers + tools)
         language: system
-        entry: uvx ruff format --check
+        entry: uvx ruff@0.15.21 format --check
         files: ^(\.github/(skills|scripts)|tools)/.*\.py$
         pass_filenames: true
       # Catch the Mermaid syntax that GitHub's renderer rejects — a `;` anywhere

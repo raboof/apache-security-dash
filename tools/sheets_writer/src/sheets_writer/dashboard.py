@@ -120,6 +120,7 @@ def render_dashboard(today: str, sheet_url: str, data: dict) -> str:
     pipe = [
         ("Pre-flight (model not yet verified)", sc["Pre-flight"]),
         ("Nominated (model awaiting verification)", data["nominated"]),
+        ("Rejected (PMC declined an agent-readable model)", data.get("rejected", 0)),
         ("Ready (model verified, awaiting submit)", sc["Ready"]),
         ("Submitted (sent to ASF Tooling)", sc["Submitted"]),
         ("Triaging (results back, sanity check)", sc["Triaging"]),

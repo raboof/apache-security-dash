@@ -81,6 +81,48 @@ def test_compute_pmc_status_no_model_is_missing() -> None:
     assert compute_pmc_status(row, col_idx)["model_status"] == "Missing"
 
 
+# 'Model rejected' — the PMC declined an AGENTS.md / agent-readable threat
+# model. It outranks every other model status, and a sheet that predates the
+# column keeps its old behaviour (HEADER above has no 'Model rejected').
+HEADER_WITH_REJECTED = [*HEADER, "Model rejected"]
+
+
+def test_compute_pmc_status_rejected_beats_nominated() -> None:
+    """A draft we wrote does not count once the PMC has said no."""
+    row, col_idx = _row(
+        HEADER_WITH_REJECTED,
+        **{
+            "PMC Slug": "x",
+            "Security Model": "https://gist.github.com/someone/draft",
+            "Model rejected": "2026-07-11 — PMC declined AGENTS.md + agent-readable model",
+        },
+    )
+    assert compute_pmc_status(row, col_idx)["model_status"] == "Rejected"
+
+
+def test_compute_pmc_status_rejected_beats_verified() -> None:
+    """Rejection is terminal: it outranks even a previously verified model."""
+    row, col_idx = _row(
+        HEADER_WITH_REJECTED,
+        **{
+            "PMC Slug": "x",
+            "Security Model": "https://x.org/model",
+            "Security model verified": "2026-06-01",
+            "Model rejected": "2026-07-11",
+        },
+    )
+    assert compute_pmc_status(row, col_idx)["model_status"] == "Rejected"
+
+
+def test_compute_pmc_status_empty_rejected_cell_is_ignored() -> None:
+    """An empty cell in the new column must not change anything."""
+    row, col_idx = _row(
+        HEADER_WITH_REJECTED,
+        **{"PMC Slug": "x", "Security Model": "https://x.org", "Model rejected": ""},
+    )
+    assert compute_pmc_status(row, col_idx)["model_status"] == "Nominated"
+
+
 def test_compute_pmc_status_ready() -> None:
     """Model verified, no submission yet → Ready."""
     row, col_idx = _row(
@@ -278,6 +320,38 @@ def test_subscription_sync_no_expedite_column_is_noop() -> None:
     assert compute_subscription_syncs(grid, {"PMC Slug": 0}) == []
 
 
+# The response SKILL writes the literal 'none' into the Expedite cell when a
+# PMC declines the OSS-subscription offer, so the opt-out is recorded rather
+# than left blank. It is a sentinel, not an address: it must never be copied
+# into 'Claude OSS Subscriptions Submitted' (which asserts a granted
+# subscription) nor become a person in the registry.
+
+
+def test_subscription_sync_ignores_the_none_optout_sentinel() -> None:
+    grid, idx = _sub_grid(
+        {
+            "PMC Slug": "kafka",
+            "Date scan requested": "2026-06-14",
+            "Expedite Claude OSS Requests": "none",
+            "Claude OSS Subscriptions Submitted": "",
+        }
+    )
+    assert compute_subscription_syncs(grid, idx) == []
+
+
+def test_subscription_sync_keeps_addresses_alongside_a_sentinel() -> None:
+    """A cell mixing prose with a real address still syncs the address."""
+    grid, idx = _sub_grid(
+        {
+            "PMC Slug": "spark",
+            "Date scan requested": "2026-05-26",
+            "Expedite Claude OSS Requests": "none\nreal@apache.org",
+            "Claude OSS Subscriptions Submitted": "",
+        }
+    )
+    assert compute_subscription_syncs(grid, idx) == [(2, ["real@apache.org"], ["real@apache.org"])]
+
+
 # --- OSS-subscription registry (the persistent 'OSS Subscriptions' tab) ---
 
 _REG_HEADER = [
@@ -427,6 +501,32 @@ def test_subscription_email_rows_strips_status_annotations() -> None:
         ("rusackas@apache.org", "superset", "2026-06-08"),
         ("villebro@apache.org", "superset", "2026-06-08"),
     ]
+
+
+def test_subscription_email_rows_skips_the_none_optout_sentinel() -> None:
+    """'none' is an opt-out marker, not a person — it must not enter the registry."""
+    grid, idx = _reg_grid(
+        {
+            "PMC Slug": "kafka",
+            "Request date": "2026-05-13",
+            "Date scan requested": "2026-06-14",
+            "Expedite Claude OSS Requests": "none",
+            "Claude OSS Subscriptions Submitted": "none",
+        }
+    )
+    assert subscription_email_rows(grid, idx) == []
+
+
+def test_subscription_email_rows_keeps_addresses_alongside_a_sentinel() -> None:
+    grid, idx = _reg_grid(
+        {
+            "PMC Slug": "kafka",
+            "Request date": "2026-05-13",
+            "Date scan requested": "2026-06-14",
+            "Expedite Claude OSS Requests": "none\nsomeone@apache.org",
+        }
+    )
+    assert subscription_email_rows(grid, idx) == [("someone@apache.org", "kafka", "2026-05-13")]
 
 
 def test_parse_registry_normalizes_annotated_email() -> None:

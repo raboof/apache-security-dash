@@ -130,4 +130,8 @@ MODEL_COLOR = {
     "Verified": {"red": 0.70, "green": 0.90, "blue": 0.70},
     "Nominated": {"red": 1.00, "green": 0.93, "blue": 0.70},
     "Missing": {"red": 0.96, "green": 0.78, "blue": 0.78},
+    # Neutral grey, deliberately not red: the PMC declined an AGENTS.md /
+    # agent-readable threat model, so this is a settled outcome rather than
+    # outstanding work. It never becomes Verified without the PMC reversing.
+    "Rejected": {"red": 0.85, "green": 0.85, "blue": 0.85},
 }

@@ -9,6 +9,7 @@ description: >-
   The assessment is the team's own read; as of 2026-07-15 it is ATTACHED to the PMC forward (frontier-model-preparation-forward) as an ADVISORY guide — the dispositions help the PMC triage quickly, but the PMC still owns the authoritative per-finding call. It is NEVER published to a gist or any public surface (pre-disclosure candidates stay in the private repo and go only to the PMC's @apache.org recipients via the forward).
   Assess ONLY scans whose project has completed threat-model preparation — i.e. the Mythos tracker's `Security model verified` is set for that PMC (per frontier-model-preparation-model-verify); skip projects whose model is merely nominated or pending verification.
   Output is a set of files committed to `apache/tooling-agents-private` after explicit human approval — never auto-committed; shared with the PMC only as the forward's attachment, never to a public surface.
+  Two optional Claude Code Security plugin steps sit alongside the model triage and never replace it: an opt-in per-finding truth panel (`claude-security:scan-verifier`, three lenses, votes TRUE_POSITIVE/FALSE_POSITIVE against the code at head_sha — answers "is this finding true", not "is it in scope"), and a routine fold-in of any plugin scan of the same repo already archived under `scans/claude-code-security-*/`, whose threat-model defects, report corrections and coverage gaps can change dispositions here. Neither the panel nor a fresh plugin scan runs by default — both cost real agent budget and need explicit operator instruction.
   Use whenever Jarek says "assess the <project> scan", "do the pre-forward assessment for <project>", "triage the <project> scan against its threat model", "assess the pending scans", or "store the assessment in pre-forward-results".
 ---
 
@@ -54,13 +55,29 @@ For "assess the pending scans", the eligible set is the **intersection** of (sca
 
 7. **Be decisive, but flag genuine MODEL-GAPs.** Assign each finding exactly one disposition. When a finding's disposition genuinely depends on a trust boundary the model does not state (e.g. "is LDIF admin-only import or untrusted app input?"), disposition it `MODEL-GAP` and record the specific ruling the PMC/model-owner would need to make. Do not invent a boundary the model doesn't have just to force a clean disposition.
 
-8. **Don't second-guess ASF Tooling's findings on substance beyond the model.** The job is *disposition against the contract*, not re-auditing the code. If a finding looks technically wrong, note it briefly as an observation — but the disposition is about scope/model, and the authoritative correctness call is still the PMC's.
+8. **Separate the truth question from the scope question — and answer both.** Two orthogonal axes, never collapsed into one:
+   - *Is the finding **true**?* — settled by the independent truth panel (step 5.5), which votes `TRUE_POSITIVE` / `FALSE_POSITIVE` against the code at `head_sha`.
+   - *Is the finding **in scope**?* — settled by disposition against the project's model (step 5).
+
+   A finding the panel refutes is dispositioned `WITHDRAWN` and does **not** get a scope disposition; disputing scope on a finding that isn't true is wasted PMC attention. Do not re-audit the whole codebase — the job is still disposition, not a fresh scan — but where the panel produces an evidenced, file:line-cited refutation, record it. The authoritative correctness call remains the PMC's; a `WITHDRAWN` is the team's evidenced recommendation, phrased as such.
+
+   *(Superseded the pre-2026-07-26 rule "don't second-guess ASF Tooling's findings on substance". In practice that rule cost real signal: reviews that did look at substance withdrew findings that were factually wrong about the code, and surfaced true findings neither the scan nor the first-pass assessment had.)*
 
 9. **Draft + confirm before any write to the private repo.** Show the planned files (paths + content) and the planned commit (message + file list) and wait for explicit "yes" / "go" before `git add/commit` and before `git push` / opening a PR. Pushing to a shared private repo is an outward-facing action — it gets a confirmation, every time.
 
 10. **Commit hygiene.** Commit message starts with `[pre-forward] <project>/<repo>` (parallel to the archive's `[scan]` convention, so `git log --grep '\[pre-forward\]'` works). No PMC member / reporter names in commit metadata. End the message with the repo's `Generated-by:` trailer (memory: this repo uses `Generated-by:`, never `Co-Authored-By:`). Run `prek run --all-files` before committing if committing into a repo that runs it.
 
 11. **Stamp provenance, including the model.** Every assessment records `assessed_with` (the model id that produced it, e.g. `claude-opus-4-8`), `assessed_by` (operator `@apache.org`), and `assessed_date`. The archive README's confidentiality note requires knowing which model touched pre-disclosure findings.
+
+12. **Never spend agent budget by default.** The default assessment is the operator reading the bundle against the model — steps 1–5, then 6. The two Claude Code Security plugin steps cost real money and are **opt-in on explicit operator instruction**, never automatic and never proposed as "while we're here":
+
+    | Step | Cost | Default |
+    | --- | --- | --- |
+    | 5.5 truth panel (`scan-verifier` × 3 lenses × N findings) | high — hundreds of `xhigh` agent dispatches on a large bundle | **OFF.** Run only when the operator asks. When they do, panel the load-bearing set unless they say otherwise; putting a whole bundle to the panel needs its own explicit go-ahead. |
+    | Running a **full plugin scan** of the PMC repo (`/claude-security` → scan-codebase) | highest — a complete multi-agent scan of the repository | **OFF, and out of scope for this SKILL.** Never start one to support an assessment. If the operator wants one, it is a separate deliberate job with its own archive tree. |
+    | 5.6 folding in a plugin review **already in the archive** | negligible — reading committed files | **ON.** Always check for a sibling bundle; reading one costs nothing. |
+
+    So: step 5.6 is routine, step 5.5 is asked-for, and a fresh plugin scan is never this SKILL's call. If the panel would materially change the assessment, say so and let the operator decide — do not run it and present the bill afterwards.
 
 ## Disposition framework
 
@@ -77,6 +94,9 @@ Use the project model's own table when it has one. The threat-model-producer rub
 | `BY-DESIGN: property-disclaimed` | Concerns a property the model explicitly disclaims (e.g. "no security without configuration"; "client ≠ server"). |
 | `KNOWN-NON-FINDING` | Matches a model's known-non-findings / recurring-false-positive list. |
 | `MODEL-GAP` | Routes to none of the above → the model needs a ruling (record which one). |
+| `WITHDRAWN` | **Not true.** The truth panel (step 5.5) refuted it against the code at `head_sha` — the finding is factually wrong about what it cites. Carries the panel's tally + decisive `file:line`; no scope disposition is assigned. |
+
+`WITHDRAWN` is a *truth* verdict and the only one the truth panel can produce; every other row is a *scope* verdict assigned against the project's model. A finding gets exactly one row from either axis — never both.
 
 The headline the team cares about: **how many `VALID`** (real, default-config, in-scope) vs. how many are hardening / out-of-model / disclaimed — and any `MODEL-GAP`s that should become model updates.
 
@@ -103,6 +123,7 @@ Each assessment leaf directory holds:
 | `metadata.yml` | Assessment header — back-pointer to the scan, threat-model chain, disposition framework used, disposition counts, recommended sanity verdict, model-gap count, provenance. |
 | `assessment.md` | The full write-up — threat-model context, sanity-check log, the per-finding disposition table, the headline, and structural notes (duplicates, coverage gaps, model gaps). |
 | `dispositions.yml` | Machine-readable per-finding map: finding id → `{disposition, one-line rationale}`. Lets a later run diff dispositions across re-scans without re-parsing prose. |
+| `verification.yml` | Truth-panel record (step 5.5): finding id → the three lens votes, the code-computed tally, and the decisive `file:line`. Written only when the panel ran; its `WITHDRAWN` set feeds `dispositions.yml`. |
 
 ### `metadata.yml` shape
 
@@ -129,6 +150,26 @@ sanity_check:          PASS            # recommended verdict: PENDING / PASS / P
 assessed_by:           <operator>@apache.org
 assessed_date:         2026-06-24
 assessed_with:         claude-opus-4-8
+
+# --- step 5.5: independent truth panel (claude-security plugin) -------------
+verification:
+  status:              RAN             # RAN / PARTIAL / SKIPPED / NOT-APPLICABLE
+  verifier:            claude-security:scan-verifier 0.10.0
+  scan_root:           <org>/<repo> @ <head_sha>   # the checkout the panel judged against
+  lenses:              [REACHABILITY, IMPACT, DEFENSES]
+  quorum:              "2 of 3 FALSE_POSITIVE refutes"
+  panelled:            <n>             # findings put to the panel
+  not_panelled:        <n>             # and why — see verification.yml
+  withdrawn:           <n>             # refuted; carry no scope disposition
+
+# --- step 5.6: judgment applied from a plugin scan of the same repo ---------
+plugin_review:
+  source:              scans/claude-code-security-<model>-<effort>[-adversarial]/<project>/<scan-id>
+  direction:           plugin-review -> this assessment   # which way the judgment flowed
+  applied_date:        <YYYY-MM-DD>
+  applied:             [<TM-n>, <AC-n>, ...]   # verified against the tree, dispositions changed
+  unconfirmed:         [<TM-n>, ...]           # judgment recorded, could not be confirmed
+  gate_impact:         "<AC-n> — model re-verification requested; routed to model-verify"
 ```
 
 ### `assessment.md` shape
@@ -177,6 +218,46 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
    - Sanity check (same checklist as `frontier-model-preparation-forward`): project identity, model identity, repo coverage, truncation, cross-PMC leakage, formatting, plausibility. Record per-check PASS / PASS-with-note / FAIL and a recommended verdict. On a FAIL, surface it — a broken scan should go back to ASF Tooling, not be assessed as if sound.
    - Triage each finding in `issues.md` against the model, assigning exactly one disposition (hard rules 4, 6, 7). Note duplicates, coverage gaps (e.g. "no findings against the model's primary claimed property"), and MODEL-GAPs.
 
+5.5. **Run the independent truth panel — only if the operator asked** (Claude Code Security plugin — `claude-security` ≥ 0.10.0). Off by default; see hard rule 12. If it was not asked for, record `verification: NOT-RUN` and go to 5.6.
+
+   The panel answers *"is this finding true?"* — the axis the model triage in step 5 cannot reach. It is an independent second opinion on ASF Tooling's findings, not a re-scan.
+
+   **Prerequisite — a `SCAN_ROOT`.** The verifier judges against *source*, not against the report, so this step needs a checkout of the PMC repo at the bundle's `head_sha` (step 2 only clones the archive). Clone `<repo>` to a scratch path and `git checkout <head_sha>` — the exact commit, never the branch tip, or the cited lines will have moved. If the commit is unreachable (force-push, deleted branch), **skip the panel** and record `verification: SKIPPED — head_sha unreachable`; do not verify against a different tree.
+
+   **Dispatch.** For each finding in `issues.md` that carries a `file:line`, dispatch `claude-security:scan-verifier` **three times — once per lens** (`REACHABILITY`, `IMPACT`, `DEFENSES`), each with:
+   - `SCAN_ROOT` as an absolute path (the agent runs `git -C <SCAN_ROOT>` and reads by absolute path; it does *not* assume the cwd);
+   - the finding as written — title, rationale, cited `file:line`, evidence — quoted as data;
+   - the lens name.
+
+   Each returns `{verdict: TRUE_POSITIVE | FALSE_POSITIVE, reasoning}` — the reasoning must cite the decisive `file:line`.
+
+   **Tally in code, not in a model** (this is why the plugin's own workflow computes it outside every agent): a finding is refuted when **≥ 2 of 3** lenses return `FALSE_POSITIVE`. Refuted → `WITHDRAWN`. Survivors carry on to the step-5 scope disposition unchanged.
+
+   **What this step does *not* do.** The verifier's vocabulary is binary; it cannot re-bucket a scope disposition, audit scan coverage, or surface a finding the scan missed. Those remain manual assessment work — and in practice that is where a review finds most of its value: true findings the scan never reported, and coverage claims that turn out to be artefacts of how little of the tree was actually read. A clean panel is **not** evidence the assessment is sound. Findings with no `file:line` are un-panelable; list them as `verification: NOT-APPLICABLE` rather than silently dropping them.
+
+   **Cost.** Three `xhigh` read-only agents per finding — a large bundle therefore costs hundreds of dispatches, so do not panel everything by reflex. Panel the load-bearing set first (every `VALID`, every `MODEL-GAP`, and any finding whose disposition rests on "a lower layer sanitises it"); panel the long `VALID-HARDENING` tail only on the operator's say-so. Record in `verification.yml` exactly which findings were panelled and which were not — a partial panel that reads as complete is worse than none.
+
+5.6. **Apply any Claude Code Security plugin review of the same repo.**
+
+   The plugin is also run as a *scanner* in its own right, archived in sibling trees — `scans/claude-code-security-<model>-<effort>[-adversarial]/<project>/<scan-id>/`. When one exists for the same repo (any commit, not just this `head_sha`), read its `consolidated.md`, `actions.md` and `issues.md` and fold its judgment into this assessment. It is an independent read of the same code by a different method, and the parts that bear on the assessment are worth more than its findings list.
+
+   Four classes of judgment, in descending value:
+
+   | Class | Where | What it does to the assessment |
+   | --- | --- | --- |
+   | **Threat-model defects** (`TM-n`, `actions.md` §3) | the model itself | **Highest value — apply first.** A disposition that rests on a model claim the plugin proved false against the tree is void. Re-disposition it and record why. Also the reverse: a §-gap the plugin names (no coverage for outbound TLS, PRNG quality, header sanitisation, …) can move a finding from `VALID-HARDENING` to `MODEL-GAP`, because "the model says nothing here" is a gap, not a soft yes. |
+   | **Report corrections** (`actions.md` §4) | individual findings | Factual errors in the scan's own text — refuted mechanisms, wrong citations, misnamed vulnerability classes. Feeds the `WITHDRAWN` set and the correction notes. |
+   | **Coverage gaps** (`actions.md` §6) | scan scope | Corroborates or refutes this assessment's own coverage statement. Directories assigned to no researcher, categories pruned everywhere, candidate sites never voted on — "no findings there" means *not examined*, and the forward must say so. |
+   | **Programme actions** (`actions.md` §6) | the pipeline | May invalidate the **eligibility gate** itself: if the plugin shows the "verified" model contains maintainer-confirmed statements that are false against the code, hard rule 2's gate passed on a model that should not have cleared it. Surface to `frontier-model-preparation-model-verify`; do not silently proceed. |
+
+   **Rules for applying it:**
+
+   - **Verify before you apply.** The plugin's review is another agent's output, not ground truth. Re-read every cited `file:line` against the tree at the relevant commit before you let a judgment change a disposition. A judgment you could not confirm is recorded as *unconfirmed*, not applied.
+   - **Never compare finding counts.** The plugin scan is not ASVS-driven (`asvs_level: N/A`) and is usually attack-surface-scoped; a Mythos bundle and a plugin bundle count completely different things. Comparing totals is meaningless and reads as one scanner beating the other.
+   - **Check `_filter_drop_log.md` before claiming a miss.** Before recording that the plugin found something Mythos missed, confirm Mythos did not surface and deliberately drop it. The useful output of the cross-read is *what each side found alone*, with the drop log accounted for.
+   - **Record the direction and the date.** Both directions happen — the plugin review gets amended by this assessment, and this assessment gets amended by the plugin review. Stamp which way the judgment flowed and when, in `metadata.yml`, or the two documents ping-pong with no audit trail. Never edit an earlier assessment in place: leave it intact and consolidate forward into a new version, exactly as `assessment.md` → `adversarial-review.md` → `assessment-v2.md` did.
+   - **Cross-link both ways.** The plugin bundle's `see_also` should point here and this `metadata.yml` should point there, so a reader landing on either finds the other.
+
 6. **Write the assessment files** into `pre-forward-results/<rel>/<scan-id>/` — `metadata.yml`, `assessment.md`, `dispositions.yml` (shapes above). If `pre-forward-results/README.md` doesn't exist yet, create it: a short doc stating that this tree mirrors `scans/` one-for-one, that each leaf is the team's internal pre-forward assessment of the same-named scan, the file roles, and a pointer to the Confidentiality section of the archive README (these are pre-disclosure candidates; private repo only).
 
 7. **Show + confirm.** Present the planned file paths, the assessment content (at least the disposition table + headline + sanity verdict), and the planned commit message. Wait for explicit "yes".
@@ -195,6 +276,11 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
 - **`threat-model-producer`** — consumes this SKILL's `MODEL-GAP` findings; produces the model additions that close them.
 - **`frontier-model-preparation-run`** — the sweep can flag scans that are archived but not yet assessed, routing here.
 - **`triage-assess`** — that SKILL triages *inbound security@ reports* against a model and drafts replies; this one triages *archived ASF Tooling scans* into the private `pre-forward-results/` tree. Same disposition discipline, different input and output surface.
+- **Claude Code Security plugin** (`claude-security`, user-scope) — used here in two distinct roles, neither of which replaces the model triage:
+  - its `claude-security:scan-verifier` agent supplies the step-5.5 truth panel (per-finding `TRUE_POSITIVE` / `FALSE_POSITIVE`, three lenses, code-computed quorum);
+  - its *scanner* jobs (`/claude-security` → scan-codebase) produce the sibling `scans/claude-code-security-*/` bundles whose adversarial review is folded in at step 5.6.
+
+  The plugin cannot do this SKILL's job: it has no notion of a threat-model disposition, no `pre-forward-results/` output, and no entrypoint that accepts someone else's scan report. It answers *is this true*; this SKILL answers *is this in scope*.
 
 ## Style notes
 
@@ -213,6 +299,10 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
 - Forcing a clean disposition on a finding whose scope genuinely depends on an unstated trust boundary, instead of flagging `MODEL-GAP`.
 - Mutating the scan bundle (`scans/...`) — this SKILL only writes under `pre-forward-results/`.
 - Auto-committing / pushing without showing the files and the commit and getting an explicit "yes".
+- Firing the step-5.5 truth panel — or, worse, a full plugin scan of the PMC repo — because it seemed thorough. Both are opt-in (hard rule 12); an unrequested panel spends the operator's budget on a decision that was theirs.
+- Presenting a partial panel as if the whole bundle were verified. Record what was panelled *and* what was not.
+- Comparing a plugin bundle's finding count with a Mythos bundle's. Different methodology, different scoping, usually not ASVS-driven — the counts are not commensurable and quoting them side by side invites a false conclusion.
+- Letting a plugin review's judgment change a disposition without re-reading the cited `file:line` yourself. It is another agent's output, not ground truth.
 
 ## Provenance
 
