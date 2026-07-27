@@ -74,6 +74,7 @@ LEGEND_ENTRIES = [
     ("Submitted — sent to ASF Tooling, awaiting results", STATE_COLOR["Submitted"]),
     ("Triaging — results back, pre-forward sanity check", STATE_COLOR["Triaging"]),
     ("Delivered — forwarded to PMC", STATE_COLOR["Delivered"]),
+    ("Rejected — PMC declined an agent-readable model", MODEL_COLOR["Rejected"]),
 ]
 
 # Origin buckets for the threat/security model, in display order, with the
@@ -166,6 +167,7 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
     backup = cell("Backup contact")
     model = cell("Security Model")
     model_verified = cell("Security model verified")
+    model_rejected = cell("Model rejected")
     submitted_date = cell("Date scan requested")
     received_date = cell("Date scan received")
     forwarded_date = cell("Forwarded scan to PMC")
@@ -184,7 +186,13 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
     else:
         state = "Pre-flight"
 
-    if model_verified:
+    # 'Model rejected' wins over everything else: the PMC has declined to add an
+    # AGENTS.md / agent-readable threat model, so whatever sits in the 'Security
+    # Model' cell (a draft gist, a nominated page) is not a model the scan can
+    # use. Terminal unless the PMC reverses, at which point the cell is cleared.
+    if model_rejected:
+        model_status = "Rejected"
+    elif model_verified:
         model_status = "Verified"
     elif model:
         model_status = "Nominated"
@@ -1294,7 +1302,10 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     repos_not_submitted = total_repos_requested - total_repos_submitted
 
     nominated_count = sum(1 for e in entries if e["model_status"] == "Nominated")
-    has_model = sum(1 for e in entries if e["model_status"] != "Missing")
+    rejected_count = sum(1 for e in entries if e["model_status"] == "Rejected")
+    # A Rejected PMC does not count as having a model: the PMC declined an
+    # agent-readable one, so it can never feed a scan.
+    has_model = sum(1 for e in entries if e["model_status"] in ("Verified", "Nominated"))
     results_back = sum(state_counts[s] for s in ("Triaging", "Delivered"))
     origin_counts = {
         key: sum(1 for e in entries if e["model_origin"] == key) for key, _ in MODEL_ORIGINS
@@ -1341,6 +1352,7 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         "total_pmcs": total_pmcs,
         "state_counts": state_counts,
         "nominated": nominated_count,
+        "rejected": rejected_count,
         "results_back": results_back,
         "has_model": has_model,
         "repos": (total_repos_submitted, repos_not_submitted, total_repos_requested),
@@ -1479,6 +1491,9 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         "Pre-flight (model not yet verified)", state_counts["Pre-flight"], STATE_COLOR["Pre-flight"]
     )
     _pipe("Nominated (model awaiting verification)", nominated_count, NOMINATED_COLOR)
+    _pipe(
+        "Rejected (PMC declined an agent-readable model)", rejected_count, MODEL_COLOR["Rejected"]
+    )
     _pipe("Ready (model verified, awaiting submit)", state_counts["Ready"], STATE_COLOR["Ready"])
     _pipe("Submitted (sent to ASF Tooling)", state_counts["Submitted"], STATE_COLOR["Submitted"])
     _pipe(
