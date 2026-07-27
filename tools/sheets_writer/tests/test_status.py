@@ -320,6 +320,38 @@ def test_subscription_sync_no_expedite_column_is_noop() -> None:
     assert compute_subscription_syncs(grid, {"PMC Slug": 0}) == []
 
 
+# The response SKILL writes the literal 'none' into the Expedite cell when a
+# PMC declines the OSS-subscription offer, so the opt-out is recorded rather
+# than left blank. It is a sentinel, not an address: it must never be copied
+# into 'Claude OSS Subscriptions Submitted' (which asserts a granted
+# subscription) nor become a person in the registry.
+
+
+def test_subscription_sync_ignores_the_none_optout_sentinel() -> None:
+    grid, idx = _sub_grid(
+        {
+            "PMC Slug": "kafka",
+            "Date scan requested": "2026-06-14",
+            "Expedite Claude OSS Requests": "none",
+            "Claude OSS Subscriptions Submitted": "",
+        }
+    )
+    assert compute_subscription_syncs(grid, idx) == []
+
+
+def test_subscription_sync_keeps_addresses_alongside_a_sentinel() -> None:
+    """A cell mixing prose with a real address still syncs the address."""
+    grid, idx = _sub_grid(
+        {
+            "PMC Slug": "spark",
+            "Date scan requested": "2026-05-26",
+            "Expedite Claude OSS Requests": "none\nreal@apache.org",
+            "Claude OSS Subscriptions Submitted": "",
+        }
+    )
+    assert compute_subscription_syncs(grid, idx) == [(2, ["real@apache.org"], ["real@apache.org"])]
+
+
 # --- OSS-subscription registry (the persistent 'OSS Subscriptions' tab) ---
 
 _REG_HEADER = [
@@ -469,6 +501,32 @@ def test_subscription_email_rows_strips_status_annotations() -> None:
         ("rusackas@apache.org", "superset", "2026-06-08"),
         ("villebro@apache.org", "superset", "2026-06-08"),
     ]
+
+
+def test_subscription_email_rows_skips_the_none_optout_sentinel() -> None:
+    """'none' is an opt-out marker, not a person — it must not enter the registry."""
+    grid, idx = _reg_grid(
+        {
+            "PMC Slug": "kafka",
+            "Request date": "2026-05-13",
+            "Date scan requested": "2026-06-14",
+            "Expedite Claude OSS Requests": "none",
+            "Claude OSS Subscriptions Submitted": "none",
+        }
+    )
+    assert subscription_email_rows(grid, idx) == []
+
+
+def test_subscription_email_rows_keeps_addresses_alongside_a_sentinel() -> None:
+    grid, idx = _reg_grid(
+        {
+            "PMC Slug": "kafka",
+            "Request date": "2026-05-13",
+            "Date scan requested": "2026-06-14",
+            "Expedite Claude OSS Requests": "none\nsomeone@apache.org",
+        }
+    )
+    assert subscription_email_rows(grid, idx) == [("someone@apache.org", "kafka", "2026-05-13")]
 
 
 def test_parse_registry_normalizes_annotated_email() -> None:
