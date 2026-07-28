@@ -587,18 +587,11 @@ Output format:
 
 ### Step 5.5 — Resolve ponymail thread URLs
 
-The PMCs sheet has two columns dedicated to **direct** lists-apache.org thread permalinks:
+The PMCs sheet has one column dedicated to **direct** lists-apache.org thread permalinks:
 
 - `PMC thread (ponymail)` — the `[GLASSWING]` request thread between the Security team and the PMC.
-- `Mirko thread (ponymail)` — historically the scan-submission
-  + scan-results delivery thread (legacy external-relay era; pre-ASF-Tooling).
-    Since the
-  move to internal ASF Tooling, `frontier-model-preparation-submit` enrolls scans by setting the tracker rather than emailing a relay,
-  so this column stays blank for new submissions —
-  there is no public-list thread to permalink to.
-  Kept for back-compat with pre-transition submissions; not maintained for new ones.
 
-Both cells should only ever contain `https://lists.apache.org/thread/<tid>` URLs — direct permalinks to the actual thread.
+The cell should only ever contain a `https://lists.apache.org/thread/<tid>` URL — a direct permalink to the actual thread.
 **No fallback or "starter" URLs.**
 If a thread cannot be resolved (because ponymail auth isn't set up, or the thread isn't indexed yet), leave the cell blank rather than write a substitute.
 
@@ -621,18 +614,12 @@ Procedure:
    the original `[GLASSWING]` request is CC'd there,
    so the thread is in that archive too.
 
-3. **`Mirko thread (ponymail)` is not maintained for submissions made after the move to internal ASF Tooling.**
-   `frontier-model-preparation-submit` now enrolls scans by setting the tracker rather than emailing a relay,
-   so there is no public-list thread to permalink to.
-   Leave the cell blank for new submissions; do not search for it.
-   The column stays in the schema for back-compat with pre-transition submissions whose legacy scan-delivery thread was permalinked before the transition.
-
-4. If a thread can't be found despite ponymail auth being active, leave the cell blank and surface the row in the action list under a "ponymail thread not yet indexed" note.
+3. If a thread can't be found despite ponymail auth being active, leave the cell blank and surface the row in the action list under a "ponymail thread not yet indexed" note.
    Indexing can lag by a day or two for new threads.
 
-The columns are blank-tolerant.
+The column is blank-tolerant.
 Never substitute a list-view URL or a search URL for a direct thread permalink —
-the columns commit to direct permalinks specifically so a click lands on the thread itself.
+the column commits to direct permalinks specifically so a click lands on the thread itself.
 
 ### Step 6 — Refresh the Status sheet + the Scan Results tab
 
