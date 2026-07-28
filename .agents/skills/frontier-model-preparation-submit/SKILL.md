@@ -140,7 +140,7 @@ Before rendering the enrollment plan:
     - `Date scan requested` — today (the enrollment date).
     - `Repositories submitted` — the exact list of repo URLs enrolled, newline-separated, in descending-Criticality order.
 
-    Setting `Date scan requested` is what moves the PMC to the `Submitted` state and what projects its repos into the Scan Queue tab (flagged `Added after ASF tooling started` = Yes). The `Mirko thread (ponymail)` column stays blank (a retired legacy-relay column, kept only for back-compat with pre-transition submissions; not maintained going forward).
+    Setting `Date scan requested` is what moves the PMC to the `Submitted` state and what projects its repos into the Scan Queue tab (flagged `Added after ASF tooling started` = Yes).
 
     This SKILL does not write to the spreadsheet directly;
     it produces the two values (`Date scan requested`, `Repositories submitted`) and hands off to the update SKILL.

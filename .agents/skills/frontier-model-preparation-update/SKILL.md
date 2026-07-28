@@ -19,7 +19,7 @@ The helper (`sheets-writer` CLI in [`tools/sheets_writer/`](../../../tools/sheet
 
 ## When to invoke
 
-- Jarek says "mark PMC X as scan-requested" (or any equivalent mutation of the `Scan Requested`, `Repositories requested`, `Repositories submitted`, `Request date`, `Date scan requested`, `Date scan received`, `Forwarded scan to PMC`, `Contact Person`, `Backup contact`, `Report recipients`, `Security Model`, `Security model verified`, `Notes`, `Initial Model assessment`, `Expedite Claude OSS Requests`, `Claude OSS Subscriptions Submitted`, `PR/Issues`, `PMC thread (ponymail)`, or `Mirko thread (ponymail)` columns).
+- Jarek says "mark PMC X as scan-requested" (or any equivalent mutation of the `Scan Requested`, `Repositories requested`, `Repositories submitted`, `Request date`, `Date scan requested`, `Date scan received`, `Forwarded scan to PMC`, `Contact Person`, `Backup contact`, `Report recipients`, `Security Model`, `Security model verified`, `Notes`, `Initial Model assessment`, `Expedite Claude OSS Requests`, `Claude OSS Subscriptions Submitted`, `PR/Issues`, or `PMC thread (ponymail)` columns).
   - `Report recipients` is the per-PMC list of `@apache.org` addresses the scan report is forwarded to (newline-separated). It is the source the `Scan Queue` tab's `Report recipients` column mirrors per repo. Seed it from `Contact Person` + `Backup contact` and refine per PMC (some PMCs nominate a wider results list than just primary + backup).
 - The scan for a PMC progresses through one of its workflow stages:
   request received (`Request date`), submitted to Frontier Model Preparation (`Date scan requested`),
