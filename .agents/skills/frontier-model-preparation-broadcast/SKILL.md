@@ -2,7 +2,7 @@
 name: frontier-model-preparation-broadcast
 description: >-
   Draft a program-status update to the opted-in (Scan Requested = Yes) PMCs about where the Frontier Model Preparation scanning program stands —
-  the Mythos 5 provisioning and the live 1–31 July 2026 credit window,
+  the Mythos 5 provisioning and that scans run in the sequence of submission,
   the criticality-sorted Scan Queue tab in the tracker,
   what each PMC can expect next,
   and a tailored nudge for PMCs that have not yet cleared pre-flight.
@@ -105,7 +105,7 @@ For the 2026-07 Mythos 5 provisioning update these were:
 
 - The ASF is **now provisioned on the upgraded Mythos 5** model (via Frontier Model Preparation / Trusted Access) as of 2026-07-01;
   scanning is kicking off.
-- There is a **live credit window: 1–31 July 2026** — landing pre-flight prerequisites soon means a PMC's scan runs this cycle.
+- **No deadline claim.** A nominal 1–31 July 2026 credit window exists, but as of 2026-07-29 it has **not** closed and any change to it is **ASF Tooling's to announce**. Do not tell a PMC their scan must land "this cycle" or "before the window closes".
 - Scans run in **OSS Criticality Score order** from the **Scan Queue** tab;
   readiness + criticality rank drive ordering within the window.
 - (Context, optional) Claude Fable 5 — the public "safe" model released the same week — ships safety classifiers that block security-research prompts,
@@ -168,12 +168,11 @@ Keep the program-status wording aligned with the `program-status` canned respons
 > everyone who's signed up kept in the loop.
 >
 > Good news: the ASF is now **provisioned on the upgraded Mythos 5
-> model**, and the scanning is kicking off. It runs on a credit window
-> that's live through **31 July 2026**, so there's a real cycle to land
-> in: if your project's pre-flight items (threat model / merging the
-> discoverability PR we opened) come together in the next week or two,
-> your scan runs in this window. We'll keep you posted as your slot comes
-> up in OSS Criticality Score order.
+> model**, and the scanning is under way. Scans run in the sequence in
+> which projects were submitted, so if your project's pre-flight items
+> (threat model / merging the discoverability PR we opened) come
+> together, that's the one thing between you and a place in that
+> sequence. We'll keep you posted as your slot comes up.
 >
 > How scans are ordered: we work in **OSS Criticality Score order** —
 > highest-criticality repositories first — from a single queue of
@@ -212,9 +211,9 @@ Keep the program-status wording aligned with the `program-status` canned respons
 >
 > None of these are heavy — most PMCs clear them in a single reply.
 > Finishing them is what puts your project *into* the criticality-sorted
-> queue; scanning is live now on a window that runs through 31 July, so
-> landing these in the next week or two is what gets your scan into this
-> cycle. The sooner they land, the sooner you're in line. If the PMC has
+> queue; scanning is under way now, and repos are scanned in the
+> sequence of submission. The sooner they land, the sooner you're in
+> line. If the PMC has
 > decided to sit this one out, just say so and we'll take you off the
 > active queue.
 >
@@ -239,9 +238,11 @@ keep the two in sync.)
 - **One screen per draft.** A status update is short:
   the shared opener, the one tailored paragraph, a sign-off.
   Don't restate the whole program.
-- **Lead with the good news.** The deadline extension and "you're in the queue / you're done" are reassuring;
+- **Lead with the good news.** "Scanning is under way" and "you're in the queue / you're done" are reassuring;
   open there, not with the model mechanics.
-- **No false urgency.** With the window extended, do not imply a cliff.
-  The lever is readiness + criticality rank, not a clock.
+- **No false urgency, and no date claims at all.** Do not imply a cliff, and do not promise a window, cycle, or turnaround date —
+  the nominal 1–31 July 2026 credit window has **not** closed, and its status is **ASF Tooling's to announce**, not ours to forecast.
+  The lever is readiness + submission order, not a clock.
+  If a PMC asks how long, say scans run in the sequence of submission and decline to give a date.
 - **Never the cost mechanics.** Anthropic / Mythos / Frontier Model Preparation / ASF Tooling yes;
   the $1M / credit / seat cost mechanics never (Hard Rule 6).
