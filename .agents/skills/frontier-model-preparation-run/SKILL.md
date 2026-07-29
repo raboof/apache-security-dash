@@ -81,25 +81,28 @@ Each stage has its own SKILL responsible for the work that moves an engagement t
 This SKILL doesn't replicate that logic —
 it just figures out which stage each engagement is *in* and surfaces what to do next.
 
-## Program timeline — Mythos 5 provisioned; hard 1–31 July 2026 window (read this)
+## Program timeline — Mythos 5 provisioned; window status is ASF Tooling's to announce (read this)
 
-The timeline has flipped **back to time-boxed**. Earlier history: the program ran on a *"no rush"* footing through late May 2026 (an early **external-relay arrangement** — a third party ran the scan off a Google-Form submission and emailed the report back; since superseded by the internal ASF Tooling path); a **27 May 2026 donation of $1M in Mythos credits** briefly added a **direct-internal path** under a 30 June cliff; that cliff was then **lifted** while the ASF sat in Anthropic's provisioning queue (Mythos Preview → Mythos 5 transition), with ordering by readiness + OSS Criticality Score.
+The program has run through several timeline shapes. History: a *"no rush"* footing through late May 2026 (an early **external-relay arrangement** — a third party ran the scan off a Google-Form submission and emailed the report back; since superseded by the internal ASF Tooling path); a **27 May 2026 donation of $1M in Mythos credits** briefly added a **direct-internal path** under a 30 June cliff; that cliff was **lifted** while the ASF sat in Anthropic's provisioning queue (Mythos Preview → Mythos 5 transition), with ordering by readiness + OSS Criticality Score.
 
 **That provisioning pause is over.**
-Per Sally Khudairi's program updates: the ASF executed the **Claude Mythos 5** work order (2026-06-30) — same **$1M** value, a **30-day credit window of 1–31 July 2026** — and is **officially provisioned as of 2026-07-01**.
+Per Sally Khudairi's program updates: the ASF executed the **Claude Mythos 5** work order (2026-06-30) — same **$1M** value, a nominal **30-day credit window of 1–31 July 2026** — and is **officially provisioned as of 2026-07-01**.
+
+**Do not treat 31 July 2026 as a cliff.** As of **2026-07-29** the window has **not** closed, and its actual status — extension, roll-over, or a new end date — is **ASF Tooling's to determine and communicate** (the VP Tooling / Tooling team will announce it). Earlier revisions of this SKILL asserted a hard 31 July cliff and told the sweep to nudge "with urgency" against it; that was wrong and has been removed. Treat any date-based urgency as unsourced until the Tooling team states it.
 Internal scanning is run by **VP Tooling + Infra + Security**: **Andrew Musselman (akm@apache.org)** is the **technical contact for the scans**, while the **Security team (Jarek Potiuk) continues to manage the scan queue** — PMC outreach, pre-flight / model verification, and criticality-ordering — from the Security side.
 Route technical scan-execution questions to Andrew; queue / pre-flight / model-verification / outreach stays with the Security team.
 
-What this changes for *this* SKILL is a **hard cliff again — 31 July 2026** — but it is a *credit-window* cliff, not a re-qualification of anyone.
-The priority is to get every signed-up PMC **pre-flight-complete (model verified + discoverable on the default branch)** so its scan runs on the live Mythos 5 credits **within July**.
-Engagements that still owe us prerequisites — `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, `pmc-pitch-replied-awaiting-operator-decision`, or an open model PR awaiting PMC merge — get nudged **now, with urgency**: clearing them is what lets the scan run before the window closes.
+What this changes for *this* SKILL is: **no deadline-driven urgency.**
+The priority is still to get every signed-up PMC **pre-flight-complete (model verified + discoverable on the default branch)**, because that is what puts a project into the queue at its rank — but the lever is *readiness*, not a clock.
+Engagements that still owe us prerequisites — `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, `pmc-pitch-replied-awaiting-operator-decision`, or an open model PR awaiting PMC merge — are ordinary nudge candidates on the 14-day rule below, framed as "this is the one thing between you and the queue", never as "before the window closes".
 Ordering within that push is still **readiness + OSS Criticality Score**, drawn from the pre-flight-cleared **Scan Queue** (see `build-status-tab`).
 The `Scan Queue` tab is the submission manifest, **one row per submitted repo × branch/tag** (the Repositories sheet's `Branches/tags to scan` cell is comma-split; blank = a single default-branch row), criticality-ranked. Each row carries auto-derived identity (`Report recipients`, `Branch/tag`, `Model discussion (ponymail)`, `When ready`) plus a per-scan tracking block — `When scanned` · `Model send thread (ponymail)` · `When report sent` · `Commit hash` — that **repeats as `Scan 1` … `Scan 5`** (alternating yellow blocks). Those per-scan columns have no automated source yet, so they stay blank, carried over across refreshes keyed by (Repo, Branch/tag) until their automation lands. Continuation branch-rows of a repo are greyed; **a row with any scan data is never dropped** (retained + flagged if it leaves the current spec).
 The signed-up PMCs keep their spot; the nudge is about landing prerequisites in time, not re-qualifying them.
 
 Internal only — keep OUT of PMC-facing text (Hard Rule 5 / the response SKILL): the program's cost mechanics — the $1M figure, the per-MTok credit pricing, and the seat/provisioning mechanics. (ASF Tooling as the runner is fine to name.)
-PMC-facing framing is "we're now provisioned on the scanning model and expect to run scans through July — finalizing / merging your threat model in the next week or two puts your scan in this cycle."
-A gentle-but-firm nudge canned response (topic `deadline`) exists for stalled PMCs, reframed around the live July window.
+PMC-facing framing is "we're provisioned on the scanning model and scans are running in the sequence of submission — finalizing / merging your threat model is the one thing between your project and the queue."
+Do **not** promise a cycle, a window, or a turnaround date; if a PMC asks how long, say scans run in the sequence of submission and that you'd rather not give a date you can't stand behind.
+A gentle-but-firm nudge canned response (topic `deadline`) exists for stalled PMCs — despite the topic name it is framed around readiness and submission order, with no date claim, and should stay that way.
 
 ## When to invoke
 
@@ -468,8 +471,8 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `asf-tooling-correspondence` | Scan-results / queue update from ASF Tooling on a queued / submitted scan (from the `apache/tooling-agents-private` archive, or a legacy relay email). | Read the update; possibly forward to the PMC; update sheet. |
 
 The "time-overdue" rule: any engagement in `awaiting-pmc-reply` or `submitted-awaiting-asf-tooling` for more than 14 days gets flagged for a nudge.
-**There is again a hard cliff — the 31 July 2026 Mythos 5 credit window (see "Program timeline" above) — so the nudge now carries real urgency: land the prerequisite in time for the scan to run before the window closes, not merely "eventually":**
-any PMC that still owes *us* something before it can be queued —
+**There is no cliff to nudge against** (see "Program timeline" above — the 1–31 July window has not closed, and any change to it is ASF Tooling's to announce), so the nudge is the ordinary readiness kind: land the prerequisite because it is what puts the PMC into the queue, not because a clock is running.
+Any PMC that still owes *us* something before it can be queued —
 `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, or `pmc-pitch-replied-awaiting-operator-decision` —
 and has been quiet for more than ~7–14 days is a nudge candidate,
 because clearing those items is what puts the PMC *into* the criticality-ordered queue at its rank.
