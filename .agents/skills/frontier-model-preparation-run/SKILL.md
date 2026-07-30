@@ -81,14 +81,23 @@ Each stage has its own SKILL responsible for the work that moves an engagement t
 This SKILL doesn't replicate that logic —
 it just figures out which stage each engagement is *in* and surfaces what to do next.
 
-## Program timeline — Mythos 5 provisioned; window status is ASF Tooling's to announce (read this)
+## Program timeline — the pause was technical; restart is ASF Tooling's to announce (read this)
 
-The program has run through several timeline shapes. History: a *"no rush"* footing through late May 2026 (an early **external-relay arrangement** — a third party ran the scan off a Google-Form submission and emailed the report back; since superseded by the internal ASF Tooling path); a **27 May 2026 donation of $1M in Mythos credits** briefly added a **direct-internal path** under a 30 June cliff; that cliff was **lifted** while the ASF sat in Anthropic's provisioning queue (Mythos Preview → Mythos 5 transition), with ordering by readiness + OSS Criticality Score.
+The program has run through several timeline shapes. History: a *"no rush"* footing through late May 2026 (an early **external-relay arrangement** — a third party ran the scan off a Google-Form submission and emailed the report back; since superseded by the internal ASF Tooling path); a **27 May 2026 donation of $1M in Mythos credits** briefly added a **direct-internal path** under a 30 June cliff; that cliff was **lifted** while the ASF sat in Anthropic's provisioning queue (Mythos Preview → Mythos 5 transition). The ASF then executed a **Claude Mythos 5** work order (2026-06-30) with a nominal 1–31 July 2026 credit window.
 
-**That provisioning pause is over.**
-Per Sally Khudairi's program updates: the ASF executed the **Claude Mythos 5** work order (2026-06-30) — same **$1M** value, a nominal **30-day credit window of 1–31 July 2026** — and is **officially provisioned as of 2026-07-01**.
+**Correction (2026-07-30) — earlier revisions of this section were wrong, in a way that would make the sweep tell PMCs something untrue.**
+This SKILL previously asserted the ASF was "officially provisioned as of 2026-07-01" and that Mythos 5 scans were running. They were not. Per **Dave Fisher (wave@, VP Tooling)** on the internal `Glasswing scan queue status` thread, 2026-07-29:
 
-**Do not treat 31 July 2026 as a cliff.** As of **2026-07-29** the window has **not** closed, and its actual status — extension, roll-over, or a new end date — is **ASF Tooling's to determine and communicate** (the VP Tooling / Tooling team will announce it). Earlier revisions of this SKILL asserted a hard 31 July cliff and told the sweep to nudge "with urgency" against it; that was wrong and has been removed. Treat any date-based urgency as unsourced until the Tooling team states it.
+- Scans — including ours — were **blocked for technical reasons**, and **Glasswing was "unusable until we have 1st party provisioning."**
+- The ASF is being **de-provisioned from AWS Bedrock and migrated to Anthropic 1P directly**.
+- wave@ declared the pause over on **2026-07-30 07:51Z**: *"We are now unblocked."* The **restart announcement is Tooling's to make, not ours.**
+
+**Credit window — a rolling monthly renewal, not a cliff.** Per **Sally Khudairi (sk@)**, 2026-07-29, marked confidential: a new order form was executed at the **$1M** level — nominal expiry **31 August 2026**, but **access through June 2027**, with **a new order form signed monthly**. So there is no date to nudge against, and there never was. Treat any date-based urgency as **unsourced** until the Tooling team states it.
+
+**Scope boundary — Security prepares, Tooling scans.** Per **Mark J Cox (mjc@, VP Security)**, 2026-07-30: *"we agreed to let Jarek help projects with their Threat Models … Our position has always been that security do not run code scanning."* Threat-model preparation, model verification, discoverability wiring, outreach, queue management, the pre-forward sanity check and forwarding are in remit; **running scans is not**. Never describe the Security team as running or owning scans in PMC-facing or foundation-facing text. Note the operator does currently *send* the reports, which is why Security has a legitimate stake in vetting what goes out (akm@'s proposal: Security + Tooling jointly confirm Critical/High/Medium findings are actionable, and tell PMCs that Lows are defense-in-depth).
+
+**NDA:** Glasswing's methods / agents / skills are under NDA and must not be shared.
+
 Internal scanning is run by **VP Tooling + Infra + Security**: **Andrew Musselman (akm@apache.org)** is the **technical contact for the scans**, while the **Security team (Jarek Potiuk) continues to manage the scan queue** — PMC outreach, pre-flight / model verification, and criticality-ordering — from the Security side.
 Route technical scan-execution questions to Andrew; queue / pre-flight / model-verification / outreach stays with the Security team.
 
@@ -441,6 +450,23 @@ route each to `frontier-model-preparation-model-verify` (for model-PR review thr
 gated on operator approval per that SKILL's draft-and-confirm rules.
 The `pr-approved-awaiting-merge` set is surfaced separately as merge-nudge candidates (the merge itself is the PMC's call).
 
+**Merged-PR reconciliation — the `enrollable-not-enrolled` pass (run on every sweep; do NOT skip because the PR is closed).**
+Everything above triages **open** PRs. That leaves a blind spot with real cost: a discoverability PR that **merges quietly** disappears from every open-PR query at the same moment it becomes the thing that makes a repo scannable. Nobody is waiting on us, no thread moves, no flag fires — and the repo sits enrollable and un-enrolled indefinitely. On 2026-07-30 this pass found `apache/solr-operator` (merged 2026-07-17, 13 days idle) and `apache/opendal` (discoverable since 2026-07-02, **28 days** idle, and the only non-blank-criticality repo in its PMC's scope). Neither was visible to any check this SKILL previously ran.
+
+For every PMC with `Scan Requested = Yes`, reconcile **merged** state against enrolment:
+
+1. Take every repo in the PMC's `Repositories requested` cell.
+2. Subtract the repos already listed in `Repositories submitted`.
+3. For each remainder, check discoverability **on the default branch** (Check A — `AGENTS.md` → `SECURITY.md` → model). The default branch is the only branch a scan sees; a chain that exists only on a PR branch does not count.
+4. Any repo that passes is **`enrollable-not-enrolled`** → surface it with its OSSF Criticality Score.
+
+Two traps this pass must avoid, both hit on 2026-07-30:
+
+- **Bare autolinks.** `SECURITY.md` may point at the model as `<https://example/model>` rather than `[label](url)`. A markdown-link-only grep false-negatives it and reports a passing repo as FAIL (this happened to `apache/avro-rs`). Accept **both** forms.
+- **Criticality-weighted judgement, not a raw count.** "3 of 4 repos still failing" is not a reason to hold the PMC if the one that passes is the only repo with a non-blank Criticality Score. Blank score = not "active" by the same definition the scope gate uses, so a phase-1 enrolment of the scored repo is usually right and holding it is usually wrong. Surface the scores and let the operator decide; never present a bare pass/fail ratio.
+
+This pass is **read-only and surfaces only** — enrolment stays operator-gated via `frontier-model-preparation-submit` (it changes what gets scanned and triggers a PMC notification). Also correct any tracker `PR/Issues` cell still recording a merged PR as `OPEN`; those cells go stale silently and are what makes this blind spot invisible on a spreadsheet read.
+
 This pass is **wide** (every open PR across every in-flight PMC),
 so for a large cohort fan it out —
 but it runs on **every** sweep;
@@ -464,6 +490,7 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `scan-needs-assessment` | A scan bundle exists at `scans/mythos/<project>/<scan-id>/` in the archive but has **no** matching `pre-forward-results/mythos/<project>/<scan-id>/` assessment (detected in Step 2.5). The pre-forward assessment (sanity check + dispositions) hasn't been produced yet. | Run `asvs-scan-assess` (eligible only if the PMC's `Security model verified` is set; else surface as blocked-on-model-verify). |
 | `scan-needs-forward` | The scan has an assessment with `sanity_check: PASS` / `PASS-with-notes`, but the PMC row's `Forwarded scan to PMC` is blank (Step 2.5). Ready to deliver. | Run `frontier-model-preparation-forward` (attaches the scan `.zip` + assessment `.md`, drafts the email, records the tracker + ponymail permalink). |
 | `scan-returned` | The scan's assessment recorded `sanity_check: RETURNED` (a broken scan — wrong project / stale model / truncation / cross-PMC leak). | Escalate to ASF Tooling for a re-run; do **not** forward. |
+| `enrollable-not-enrolled` | A repo in `Repositories requested` passes Check A on its **default branch** but is absent from `Repositories submitted` (detected by the merged-PR reconciliation in Step 3). Usually caused by a discoverability PR merging quietly — it vanishes from open-PR queries exactly when it becomes enrollable. | Surface with the repo's OSSF Criticality Score and how long it has been enrollable. Operator decides; on go-ahead, `frontier-model-preparation-submit` for that repo (phase-1 subset is fine — see hard rule 6 there). Never auto-enrol. |
 | `archived-not-forwarded` | An archive commit exists under `scans/<project>/<repo>/` for this PMC but `Forwarded scan to PMC` is still blank. Process bug (the email should have been drafted at the same time). Detection signal: `git log --grep="^\[scan\] <project>/"` returns a commit newer than the sheet's `Forwarded scan to PMC` date. | Surface for manual intervention; re-run `frontier-model-preparation-forward` from step 7 (draft email) using the existing archive entry. |
 | `forwarded-closed` | `Forwarded scan to PMC` set **and** the corresponding archive commit exists in `scans/`. | Done. Move to "Completed" section of report. |
 | `blocked-on-discoverability` | Some repos in `Repositories requested` lack `AGENTS.md`; PMC needs to fix or we PR. | Surface; await PMC decision on path. |
@@ -471,7 +498,7 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `asf-tooling-correspondence` | Scan-results / queue update from ASF Tooling on a queued / submitted scan (from the `apache/tooling-agents-private` archive, or a legacy relay email). | Read the update; possibly forward to the PMC; update sheet. |
 
 The "time-overdue" rule: any engagement in `awaiting-pmc-reply` or `submitted-awaiting-asf-tooling` for more than 14 days gets flagged for a nudge.
-**There is no cliff to nudge against** (see "Program timeline" above — the 1–31 July window has not closed, and any change to it is ASF Tooling's to announce), so the nudge is the ordinary readiness kind: land the prerequisite because it is what puts the PMC into the queue, not because a clock is running.
+**There is no cliff to nudge against** (see "Program timeline" above — the credit arrangement is a rolling monthly renewal running through June 2027, and any change to it is ASF Tooling's to announce), so the nudge is the ordinary readiness kind: land the prerequisite because it is what puts the PMC into the queue, not because a clock is running.
 Any PMC that still owes *us* something before it can be queued —
 `awaiting-pmc-reply`, `blocked-on-discoverability`, `blocked-on-gate-2`, `model-verify-pending`, or `pmc-pitch-replied-awaiting-operator-decision` —
 and has been quiet for more than ~7–14 days is a nudge candidate,
@@ -558,6 +585,15 @@ Output format:
 
 ### prs-approved-awaiting-merge (N)   [merge is the PMC's call — nudge candidates]
 - <PMC> — <owner/repo#num> — approved <date>; open <D> days. Optional nudge.
+
+### enrollable-not-enrolled (N)   [ready to scan, nobody noticed — from Step 3 reconciliation]
+- <PMC> — <owner/repo> — passes Check A on the default
+  branch since <date> (<D> days); criticality <NN.N%>;
+  absent from `Repositories submitted`. Enabling PR
+  <owner/repo#num> merged <date>. Next: operator
+  decision, then frontier-model-preparation-submit.
+  Note the PMC's other in-scope repos and their scores so
+  the phase-1-vs-wait call is informed.
 
 ## Awaiting PMC reply (no action needed)
 - <PMC> — we replied <date>; <D days> ago.
@@ -755,6 +791,12 @@ Do not chain into a SKILL unbidden.
   A `COMMENTED` review or an issue-comment carries a maintainer's question with **no** `CHANGES_REQUESTED` and no `reviewDecision` change, so the shortcut reports the PR clean while a real question sits unanswered.
   The 2026-07-05 Maven `#12421` (elharo scope review) and CloudStack `#13293` (review-process question) misses are the reference failure — both were caught only by a dedicated comment-fetch re-run.
   Fetch the comment/review threads on **every** sweep (mechanical recipe in Step 3); never derive the flag second-hand.
+- A sweep that only looks at **open** PRs and therefore never notices a repo that became scannable when its discoverability PR merged (the `enrollable-not-enrolled` pass in Step 3).
+  This failure is silent by construction: the PR leaves the open-PR query at the exact moment the repo becomes enrollable, so no thread moves and no flag fires.
+  On 2026-07-30 it had left `apache/solr-operator` idle 13 days and `apache/opendal` idle 28 — the latter being the only scored repo in its PMC's scope, i.e. that PMC's entire scan value was parked.
+  Reconcile `Repositories requested` minus `Repositories submitted` against default-branch discoverability on every sweep, and fix any `PR/Issues` cell still saying `OPEN` for a merged PR.
+- A sweep that decides a PMC isn't ready from a bare pass/fail ratio ("only 1 of 4 repos passes") without looking at Criticality Scores.
+  Blank-criticality repos are not "active" by the definition the scope gate uses; holding a scored repo behind unscored ones parks the real scan value. Surface the scores, let the operator choose.
 
 ## Provenance
 
