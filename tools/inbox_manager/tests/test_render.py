@@ -26,7 +26,6 @@ from email.policy import default
 from types import SimpleNamespace
 
 import pytest
-
 from inbox_manager import email_utils
 
 TRIAGER = "Jordan Triager"
@@ -146,11 +145,18 @@ def test_reject_drops_model_link_line_when_pmc_has_none():
 
 
 @pytest.mark.parametrize(
-    "from_addr", ["Jane Reporter <jane@example.com>", "jane@example.com"]
+    "from_addr, greeting",
+    [
+        ("Jane Reporter <jane@example.com>", "Jane Reporter"),
+        # No display name to greet by. The bare address is deliberately not used
+        # as a fallback: "Hello jane@example.com," reads worse than "Hello there,".
+        ("jane@example.com", "there"),
+    ],
 )
-def test_reporter_name_falls_back_to_address(from_addr):
+def test_reporter_greeting_falls_back_to_there(from_addr, greeting):
     out = email_utils.fill_receipt_template(
         make_pmc(), make_message(from_addr), "", TRIAGER
     )
-    assert ("Jane Reporter" in out) or ("jane@example.com" in out)
+    assert f"Hello {greeting}," in out
+    assert "jane@example.com" not in out
     assert no_markers_left(out)
