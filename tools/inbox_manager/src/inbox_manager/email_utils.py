@@ -1,14 +1,15 @@
+import email
 import re
 import subprocess
 import tempfile
-import nh3
 from datetime import date
-from html import unescape
-import email
 from email.message import EmailMessage
 from email.utils import formataddr, getaddresses, parseaddr, parsedate_to_datetime
+from html import unescape
 from os import getenv
 from pathlib import Path
+
+import nh3
 
 from inbox_manager.markdown_render import md_to_html, md_to_text
 
@@ -194,9 +195,7 @@ def make_forward(original, intro_md, from_addr, to_addr):
     if not re.fullmatch(r"security@.+\.apache\.org", to_email, re.IGNORECASE):
         fwd["Cc"] = "ASF Security <security@apache.org>"
     subject = _header_value(original["Subject"])
-    fwd["Subject"] = (
-        subject if subject.lower().startswith("fwd:") else f"Fwd: {subject}"
-    )
+    fwd["Subject"] = subject if subject.lower().startswith("fwd:") else f"Fwd: {subject}"
     mid = original["Message-ID"]
     if mid:
         fwd["References"] = mid
@@ -213,9 +212,7 @@ def make_forward(original, intro_md, from_addr, to_addr):
 
     # --- plain-text body ---
     original_text = body_to_text(original)
-    plain_body = (
-        f"{md_to_text(intro_md)}\n\n" + "\n".join(header_lines) + f"\n{original_text}"
-    )
+    plain_body = f"{md_to_text(intro_md)}\n\n" + "\n".join(header_lines) + f"\n{original_text}"
 
     # --- html body: rendered note + (sanitised original html | escaped text) ---
     header_html = _text_to_html("\n".join(header_lines))
@@ -238,9 +235,7 @@ def make_forward(original, intro_md, from_addr, to_addr):
     if html_part is not None:
         html_alt = fwd.get_payload()[1]
         for cid, data, subtype in _safe_inline_images(original, original_html):
-            html_alt.add_related(
-                data, maintype="image", subtype=subtype, cid=f"<{cid}>"
-            )
+            html_alt.add_related(data, maintype="image", subtype=subtype, cid=f"<{cid}>")
 
     _copy_attachments(fwd, original)
     return fwd
@@ -301,7 +296,7 @@ def fill_markers(text, pmc, original, triager_name, reporter_name=None):
     it wins over the live ``From`` display name,
     which stays as the fallback for interactive reports with no cached name.
     """
-    name, addr = parseaddr(reporter_from(original) or "")
+    name, _addr = parseaddr(reporter_from(original) or "")
     values = {
         "Reporter name": reporter_name or name or "there",
         "Triager full name": triager_name or "the Apache Security Team",
@@ -320,9 +315,7 @@ def fill_markers(text, pmc, original, triager_name, reporter_name=None):
             values["contributing link"] = pmc.contributing
     text = _apply(text, values)
     text = "".join(
-        ln
-        for ln in text.splitlines(keepends=True)
-        if not any(f"<{m}>" in ln for m in _ALL_MARKERS)
+        ln for ln in text.splitlines(keepends=True) if not any(f"<{m}>" in ln for m in _ALL_MARKERS)
     )
     return re.sub(r"\n{3,}", "\n\n", text)
 
@@ -332,9 +325,7 @@ def fill_llm_suggestions_template(summary, model):
     content = {}
     content["summary"] = summary
     content["model"] = model
-    return _apply(
-        (TEMPLATE_DIR / "forward-llm-summary.md").read_text(encoding="utf-8"), content
-    )
+    return _apply((TEMPLATE_DIR / "forward-llm-summary.md").read_text(encoding="utf-8"), content)
 
 
 def fill_forward_template(pmc, original, summary, model, triager_name, duplicate_of=""):

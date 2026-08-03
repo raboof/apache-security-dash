@@ -18,11 +18,12 @@
 """The triage state the cache hands to inbox-manager: what it suggests, what it files."""
 
 import email
+from email.policy import default
 
 import pytest
-from email.policy import default
-from inbox_manager import cli
 from report_cache.index import Disposition, Entry, Status
+
+from inbox_manager import cli
 
 
 def entry(status=Status.ASSESSED, disposition=Disposition.TRACK, labels=None):
@@ -139,9 +140,7 @@ def test_draft_artifact_no_entry_is_empty_string():
 
 def test_existing_label_is_attached_and_archived(message, confirm):
     inbox = FakeInbox(folders=["spark/2026-05-24 xxe rest api"])
-    ok = cli.file_message(
-        inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe rest api"])
-    )
+    ok = cli.file_message(inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe rest api"]))
     assert ok
     assert inbox.added == ["spark/2026-05-24 xxe rest api"]
     assert inbox.created == []  # it already exists: nothing to mint
@@ -150,21 +149,15 @@ def test_existing_label_is_attached_and_archived(message, confirm):
 
 def test_fresh_label_is_created(message, confirm):
     inbox = FakeInbox()  # no folders: the label does not exist yet
-    ok = cli.file_message(
-        inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe rest api"])
-    )
+    ok = cli.file_message(inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe rest api"]))
     assert ok
     assert inbox.created == ["spark/2026-05-24 xxe rest api"]
     assert inbox.added == ["spark/2026-05-24 xxe rest api"]
 
 
 def test_label_already_on_the_message_is_left_alone(message, confirm):
-    inbox = FakeInbox(
-        folders=["spark/2026-05-24 xxe"], on_message=["spark/2026-05-24 xxe"]
-    )
-    ok = cli.file_message(
-        inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"])
-    )
+    inbox = FakeInbox(folders=["spark/2026-05-24 xxe"], on_message=["spark/2026-05-24 xxe"])
+    ok = cli.file_message(inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"]))
     assert ok
     assert inbox.added == []  # nothing to attach, but still archived
     assert inbox.moved_to == "[Gmail]/All Mail"
@@ -188,9 +181,7 @@ def test_declining_the_confirm_leaves_the_message_in_the_inbox(message, monkeypa
     monkeypatch.setattr(cli, "read_key", lambda: "n")
     monkeypatch.setattr(cli, "input_with_prefill", lambda prompt, text: text)
     inbox = FakeInbox(folders=["spark/2026-05-24 xxe"])
-    ok = cli.file_message(
-        inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"])
-    )
+    ok = cli.file_message(inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"]))
     assert not ok
     assert inbox.added == []
     assert inbox.moved_to is None
@@ -219,13 +210,9 @@ def test_an_emptied_fresh_label_is_skipped_not_aborted(message, monkeypatch):
 
 def test_an_edited_fresh_label_is_the_one_attached(message, monkeypatch):
     monkeypatch.setattr(cli, "read_key", lambda: "y")
-    monkeypatch.setattr(
-        cli, "input_with_prefill", lambda prompt, text: "spark/2026-05-24 xxe rest"
-    )
+    monkeypatch.setattr(cli, "input_with_prefill", lambda prompt, text: "spark/2026-05-24 xxe rest")
     inbox = FakeInbox()
-    ok = cli.file_message(
-        inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"])
-    )
+    ok = cli.file_message(inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"]))
     assert ok
     assert inbox.added == ["spark/2026-05-24 xxe rest"]
     assert inbox.created == ["spark/2026-05-24 xxe rest"]

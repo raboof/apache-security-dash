@@ -46,13 +46,13 @@ from whimsy_lookup.pmc_guess import guess_pmcs, pmc_for
 # TERMINFO_DIRS).
 load_dotenv()
 
-from inbox_manager import imap, email_utils  # noqa: E402
-
 # Prefer the stdlib readline when it is GNU-backed.
 # Fall back to gnureadline on libedit interpreters (uv's standalone Python),
 # where input_with_prefill's prefill is a no-op.
 # See the README "Terminal editing" section (TERMINFO_DIRS).
 import readline as _stdlib_readline  # noqa: E402
+
+from inbox_manager import email_utils, imap  # noqa: E402
 
 if _stdlib_readline.backend == "readline":
     readline = _stdlib_readline
@@ -84,9 +84,7 @@ def load_pmc_data():
 
 def guess_pmc(original, committees, coordinates):
     """Best-guess PMCs for a message (most likely first), fully resolved."""
-    text = " ".join(
-        original[h] or "" for h in ("Subject", "From", "To", "Cc", "Delivered-To")
-    )
+    text = " ".join(original[h] or "" for h in ("Subject", "From", "To", "Cc", "Delivered-To"))
     return guess_pmcs(text, committees, coordinates)
 
 
@@ -106,9 +104,7 @@ def print_pmc(pmc):
     if pmc.security_model_source is None:
         print(f"PMC: {pmc.id} ({pmc.internal_security_contact})")
     else:
-        print(
-            f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_model_link}"
-        )
+        print(f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_model_link}")
 
 
 def read_key():
@@ -227,9 +223,7 @@ def _preview(msg, title):
     print()
 
 
-def send_forward_and_receipt(
-    inbox, original, uid, pmc, to_addr, forward_md, receipt_md, entry
-):
+def send_forward_and_receipt(inbox, original, uid, pmc, to_addr, forward_md, receipt_md, entry):
     """Preview a PMC forward (forward_md) + reporter receipt (receipt_md), send
     on confirmation, then file the report.
 
@@ -326,9 +320,7 @@ def accept_message(inbox, original, uid, pmc, entry, committees, coordinates):
     )
     note = draft_artifact(entry, "note.md")
     reporter_name = entry.reporter_name if entry else None
-    receipt_md = email_utils.fill_receipt_template(
-        pmc, original, note, TRIAGER_NAME, reporter_name
-    )
+    receipt_md = email_utils.fill_receipt_template(pmc, original, note, TRIAGER_NAME, reporter_name)
     return send_forward_and_receipt(
         inbox, original, uid, pmc, to_addr, forward_md, receipt_md, entry
     )
@@ -344,9 +336,7 @@ def reject_message(inbox, original, uid, pmc, entry):
     """
     reason = draft_artifact(entry, "reason.md")
     reporter_name = entry.reporter_name if entry else None
-    body_md = email_utils.fill_reject_template(
-        pmc, original, reason, TRIAGER_NAME, reporter_name
-    )
+    body_md = email_utils.fill_reject_template(pmc, original, reason, TRIAGER_NAME, reporter_name)
     if not reason:
         print("editing reject reply...")
         body_md = email_utils.edit_markdown_in_editor(body_md)
@@ -372,9 +362,7 @@ def suggested_action(entry: Entry | None) -> str | None:
     }.get(entry.disposition)
 
 
-CVE_RESERVED_RE = re.compile(
-    r"\s*(CVE-\d{4}-\d+)\s+reserved for\s+(\S+)", re.IGNORECASE
-)
+CVE_RESERVED_RE = re.compile(r"\s*(CVE-\d{4}-\d+)\s+reserved for\s+(\S+)", re.IGNORECASE)
 
 
 def parse_cve_reservation(original):
@@ -493,9 +481,7 @@ def is_thread_head(data, headers):
     head. ``References`` is used rather than ``In-Reply-To`` because forwards
     carry ``References`` but often omit ``In-Reply-To``.
     """
-    return (
-        data.get(b"X-GM-MSGID") == data.get(b"X-GM-THRID") or not headers["References"]
-    )
+    return data.get(b"X-GM-MSGID") == data.get(b"X-GM-THRID") or not headers["References"]
 
 
 def skip_reason(headers, is_head):
@@ -569,7 +555,10 @@ def handle_message(inbox, uid, committees, coordinates, index):
         print("Suggested action: [a]ccept (forward the drafted summary + receipt)")
     elif suggested == "r":
         print("Suggested action: [r]eject (send the drafted reply)")
-    prompt = "Action? [a]ccept / [r]eject / [s]kip / [j]unk / [f]ile under / [q]uit / [d]isplay / [c]onfused: "
+    prompt = (
+        "Action? [a]ccept / [r]eject / [s]kip / [j]unk / [f]ile under / "
+        "[q]uit / [d]isplay / [c]onfused: "
+    )
     if suggested:
         # Mark the key Enter runs, so the default is visible in the menu itself.
         prompt = prompt.replace(f"[{suggested}]", f"[{suggested.upper()}]", 1)
@@ -621,7 +610,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
             print("Filed under 'hack or license confusion'")
             return
         if action in ("q", "\x03"):
-            exit(0)
+            sys.exit(0)
         if action == "d":
             print()
             subprocess.run(["less"], input=body, text=True)
@@ -654,11 +643,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"(report-cache: {len(index)} reports indexed)")
     inbox = imap.connect()
     uids = inbox.search(["ALL"])
-    fetched = (
-        inbox.fetch(uids, [HEADER_FETCH, INTERNAL_DATE, *GMAIL_ID_FETCH])
-        if uids
-        else {}
-    )
+    fetched = inbox.fetch(uids, [HEADER_FETCH, INTERNAL_DATE, *GMAIL_ID_FETCH]) if uids else {}
 
     # Process oldest-first by server receive time. Gmail's INBOX UIDs are not in
     # date order, so a UID sort is not chronological - sort on INTERNALDATE.
