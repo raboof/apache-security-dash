@@ -14,7 +14,7 @@ ASF Security
 
 PS: this email was sent using some new tooling we're putting together. If you notice anything that seems off, or have other feedback do let us know at security@apache.org.
 
-PS2: we also have an (also experimental) [overview of the open security reports for your project](\<dashboard link>) for you.
+PS2: we also have an (also experimental) [overview of the open security reports for your project](\<dashboard link>).
 
 ## Summary
 
