@@ -20,11 +20,11 @@ retrieve the scan bundle and its assessment from the private archive, attach bot
 The PMC receives two attachments:
 
 1. **The scan bundle**, zipped — the ASF Tooling scan output (`issues.md`, `metadata.yml`, and the rest of the bundle) from `apache/tooling-agents-private/scans/mythos/<project>/<scan-id>/`.
-2. **The pre-forward assessment** (`.md`) — the team's read of the findings against the project's threat model, with likely dispositions, from `apache/tooling-agents-private/pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (produced by [`asvs-scan-assess`](../../../.claude/skills/asvs-scan-assess/SKILL.md)).
+2. **The pre-forward assessment** (`.md`) — the team's read of the findings against the project's threat model, with likely dispositions, from `apache/tooling-agents-private/pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (produced by [`pre-forward-report-preparation`](../../../.claude/skills/pre-forward-report-preparation/SKILL.md)).
 
 The assessment is shared with the PMC as an **advisory guide** — the dispositions help the PMC triage quickly, but the PMC's own assessment is authoritative. The team does not decide findings on the PMC's behalf; it hands them the scan plus a starting-point read.
 
-> **Policy note (2026-07-15):** the assessment used to be a strictly *internal* artefact (never forwarded). It is now **attached to the forward** as an advisory guide. `asvs-scan-assess` is updated to match; its dispositions are still the team's working read, not a ruling on the PMC's behalf.
+> **Policy note (2026-07-15):** the assessment used to be a strictly *internal* artefact (never forwarded). It is now **attached to the forward** as an advisory guide. `pre-forward-report-preparation` is updated to match; its dispositions are still the team's working read, not a ruling on the PMC's behalf.
 
 ## When to invoke
 
@@ -33,7 +33,7 @@ The assessment is shared with the PMC as an **advisory guide** — the dispositi
 - The Mythos tracker shows a PMC with `Date scan requested` filled but `Date scan received` / `Forwarded scan to PMC` blank, and the archive has the scan + assessment.
 
 Skip when:
-- The scan has **no assessment** in `pre-forward-results/mythos/...` yet — run [`asvs-scan-assess`](../../../.claude/skills/asvs-scan-assess/SKILL.md) first (the assessment is a required attachment).
+- The scan has **no assessment** in `pre-forward-results/mythos/...` yet — run [`pre-forward-report-preparation`](../../../.claude/skills/pre-forward-report-preparation/SKILL.md) first (the assessment is a required attachment).
 - The assessment's recommended sanity verdict is `RETURNED` (a broken scan) — surface it and escalate to ASF Tooling rather than forwarding.
 - The PMC's row indicates incomplete pre-flight (`Security model verified` blank) — should not happen; surface the gap.
 
@@ -41,7 +41,7 @@ Skip when:
 
 1. **Both artefacts come from the archive, and both are ATTACHED.** Retrieve the scan bundle from `scans/mythos/<project>/<scan-id>/` and the assessment from `pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (against a clean local clone of `apache/tooling-agents-private`). Attach the scan as a single `.zip` (zip the scan-id directory) and the assessment as its `.md`. Do **not** paste findings into the email body — the full content rides in the attachments. **One exception:** the assessment's `MODEL-GAP` findings (dispositions that need a ruling only the PMC can make) are surfaced in the body as an explicit *decision ask* — the decision needed only, not the finding's exploit detail (see "Items needing a PMC decision").
 
-2. **Forward only on a passing assessment.** Read the assessment's `metadata.yml` `sanity_check` field (produced by `asvs-scan-assess`). Forward only when it is `PASS` or `PASS-with-notes`. If it is `RETURNED` (or the assessment is missing), stop: surface to the operator and escalate to ASF Tooling — do not forward a broken scan. The assessment IS the sanity gate; this SKILL does not re-run the full checklist, it confirms the recorded verdict.
+2. **Forward only on a passing assessment.** Read the assessment's `metadata.yml` `sanity_check` field (produced by `pre-forward-report-preparation`). Forward only when it is `PASS` or `PASS-with-notes`. If it is `RETURNED` (or the assessment is missing), stop: surface to the operator and escalate to ASF Tooling — do not forward a broken scan. The assessment IS the sanity gate; this SKILL does not re-run the full checklist, it confirms the recorded verdict.
 
 3. **Extract identity from the scan, not from memory.** PMC slug, repo, branch, and scan date come from the scan bundle's `metadata.yml` (`project`, `repo`, `head_sha`, `scan_date`; branch defaults to the repo's default branch unless the scan pinned one). These drive the subject line and the tracker cells.
 
@@ -176,7 +176,7 @@ The one deliberate exception to "don't inline findings" (hard rule 1): when the 
 
 3. **Read the scan `metadata.yml`** — extract `project` (PMC slug), `repo`, `head_sha`, `scan_date`, and the branch (default branch unless pinned). These build the subject line and the tracker dates.
 
-4. **Confirm the assessment + its verdict.** Read `pre-forward-results/mythos/<project>/<scan-id>/metadata.yml`. If it's absent, stop and route to `asvs-scan-assess`. If `sanity_check` is `RETURNED`, stop and escalate to ASF Tooling. Note the assessment's headline (VALID count) for the plan. Proceed only on `PASS` / `PASS-with-notes`.
+4. **Confirm the assessment + its verdict.** Read `pre-forward-results/mythos/<project>/<scan-id>/metadata.yml`. If it's absent, stop and route to `pre-forward-report-preparation`. If `sanity_check` is `RETURNED`, stop and escalate to ASF Tooling. Note the assessment's headline (VALID count) for the plan. Proceed only on `PASS` / `PASS-with-notes`.
 
 5. **Pull the PMC's row** from the Mythos tracker (via the `frontier-model-preparation-status` flow or a direct Sheets read). Confirm `Scan Requested = Yes`, `Repositories submitted` non-empty, `Date scan requested` filled, `Date scan received` + `Forwarded scan to PMC` blank. Refuse on any wrong pre-condition.
 
@@ -239,7 +239,7 @@ This closes the loop the programme most needs: the scan asks PMCs for feedback e
 
 ## Examples of bad forwards (avoid)
 
-- Forwarding without the assessment attached, or before `asvs-scan-assess` has produced it — the assessment is a required attachment and the sanity gate.
+- Forwarding without the assessment attached, or before `pre-forward-report-preparation` has produced it — the assessment is a required attachment and the sanity gate.
 - Forwarding a scan whose assessment verdict is `RETURNED` — that's a broken scan; escalate to ASF Tooling.
 - Pasting the findings / dispositions into the email body instead of attaching them.
 - Using `mcp__claude_ai_Gmail__create_draft` — it can't attach files and adds tracking. Use `forward-draft`.
