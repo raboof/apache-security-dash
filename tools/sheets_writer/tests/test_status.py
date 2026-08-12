@@ -17,7 +17,10 @@
 
 from __future__ import annotations
 
+import re
+
 from sheets_writer.status import (
+    SCAN_QUEUE_FIXED,
     SCAN_QUEUE_HEADER,
     _parse_addrs,
     added_after_asf_tooling,
@@ -620,6 +623,27 @@ def _sq_row(cells: list[str]) -> list[str]:
     return cells + [""] * (len(SCAN_QUEUE_HEADER) - len(cells))
 
 
+def _sq_named(**cells: str) -> list[str]:
+    """A Scan Queue data row built by column NAME, not position.
+
+    Keyword keys are header names with non-identifier characters replaced by
+    underscores (``Scan 1 · When scanned`` -> ``Scan_1___When_scanned``). Adding
+    a fixed column then shifts these fixtures automatically instead of silently
+    writing every value into the wrong cell — which is what made the positional
+    fixtures miss the carry-over bug this suite now covers.
+    """
+    slug = {re.sub(r"\W", "_", name): j for j, name in enumerate(SCAN_QUEUE_HEADER)}
+    row = [""] * len(SCAN_QUEUE_HEADER)
+    for key, value in cells.items():
+        row[slug[key]] = value
+    return row
+
+
+def _sq_col(name: str) -> int:
+    """Current index of a Scan Queue column, by name."""
+    return SCAN_QUEUE_HEADER.index(name)
+
+
 def test_scan_queue_auto_rows_split_per_branch_sorted() -> None:
     grid, col_idx = _pmcs_grid()
     rows = scan_queue_auto_rows(grid, col_idx, _repos_grid())
@@ -682,34 +706,29 @@ def test_scan_queue_auto_rows_blank_repositories_sheet_leaves_crit_blank() -> No
 
 
 def test_parse_scan_queue_keys_by_repo_and_branch() -> None:
-    dubbo = _sq_row(
-        [
-            "https://github.com/apache/dubbo",
-            "Apache Dubbo",
-            "63.0%",
-            "rainyu@apache.org",
-            "main",  # Branch/tag (col 4)
-            "https://lists.apache.org/thread/dubbotid",  # model discussion
-            "2026-06-01",  # when ready (col 6)
-            "No",  # Added after ASF tooling started (col 7)
-            # Scan 1 (cols 8-11): when scanned / model send thread / report sent / commit
-            "2026-06-03",
-            "https://lists.apache.org/thread/sendtid",
-            "2026-06-05",
-            "abc1234",
-        ]
+    dubbo = _sq_named(
+        Repo="https://github.com/apache/dubbo",
+        PMC="Apache Dubbo",
+        Criticality_Score____="63.0%",
+        Report_recipients="rainyu@apache.org",
+        Branch_tag="main",
+        Model_discussion__ponymail_="https://lists.apache.org/thread/dubbotid",
+        When_ready="2026-06-01",
+        Added_after_ASF_tooling_started="No",
+        Scan_1___When_scanned="2026-06-03",
+        Scan_1___Model_send_thread__ponymail_="https://lists.apache.org/thread/sendtid",
+        Scan_1___When_report_sent="2026-06-05",
+        Scan_1___Commit_hash="abc1234",
     )
-    pdfbox = _sq_row(
-        [
-            "https://github.com/apache/pdfbox",
-            "Apache PDFBox",
-            "48.3%",
-            "andrea@apache.org",
-            "",  # default branch
-            "https://lists.apache.org/thread/pdfboxtid",
-            "2026-06-08",
-            "No",  # Added after ASF tooling started (col 7)
-        ]
+    pdfbox = _sq_named(
+        Repo="https://github.com/apache/pdfbox",
+        PMC="Apache PDFBox",
+        Criticality_Score____="48.3%",
+        Report_recipients="andrea@apache.org",
+        Branch_tag="",  # default branch
+        Model_discussion__ponymail_="https://lists.apache.org/thread/pdfboxtid",
+        When_ready="2026-06-08",
+        Added_after_ASF_tooling_started="No",
     )
     sq_grid = [["t"], ["s"], ["c"], [""], SCAN_QUEUE_HEADER, dubbo, pdfbox]
     prev = parse_scan_queue(sq_grid)
@@ -719,13 +738,47 @@ def test_parse_scan_queue_keys_by_repo_and_branch() -> None:
         ("https://github.com/apache/pdfbox", ""),
     }
     d = scan_queue_carried(prev[("https://github.com/apache/dubbo", "main")])
-    assert d[8] == "2026-06-03"
-    assert d[9] == "https://lists.apache.org/thread/sendtid"
-    assert d[10] == "2026-06-05"
-    assert d[11] == "abc1234"
+    assert d[_sq_col("Scan 1 · When scanned")] == "2026-06-03"
+    assert d[_sq_col("Scan 1 · Model send thread (ponymail)")] == (
+        "https://lists.apache.org/thread/sendtid"
+    )
+    assert d[_sq_col("Scan 1 · When report sent")] == "2026-06-05"
+    assert d[_sq_col("Scan 1 · Commit hash")] == "abc1234"
     assert scan_queue_has_data(prev[("https://github.com/apache/dubbo", "main")]) is True
     # A row with no per-scan cell filled has no scan data.
     assert scan_queue_has_data(prev[("https://github.com/apache/pdfbox", "")]) is False
+
+
+def test_parse_scan_queue_carries_over_a_narrower_previous_header() -> None:
+    """A tab written before a fixed column was added must still carry over.
+
+    Regression: the header was matched by exact equality, so adding one column
+    made ``parse_scan_queue`` return ``{}`` — read by the rebuild as "no previous
+    rows", which then wrote blanks over every hand-entered per-scan cell. The
+    per-scan columns have no automated source, so that loss is unrecoverable.
+    Matching must be structural and values must map by column NAME.
+    """
+    # The header as it stood BEFORE "Security model" was inserted.
+    old_fixed = [c for c in SCAN_QUEUE_FIXED if c != "Security model"]
+    old_header = old_fixed + [c for c in SCAN_QUEUE_HEADER if c not in SCAN_QUEUE_FIXED]
+    assert len(old_header) == len(SCAN_QUEUE_HEADER) - 1
+    old_row = [""] * len(old_header)
+    for name, value in {
+        "Repo": "https://github.com/apache/apisix",
+        "Branch/tag": "",
+        "Scan 1 · When scanned": "2026-07-15",
+        "Scan 1 · Commit hash": "6c68775",
+    }.items():
+        old_row[old_header.index(name)] = value
+
+    prev = parse_scan_queue([["title"], [""], old_header, old_row])
+    key = ("https://github.com/apache/apisix", "")
+    assert key in prev, "structural header match must tolerate a narrower header"
+    assert scan_queue_has_data(prev[key]) is True
+    carried = scan_queue_carried(prev[key])
+    # Values land on the CURRENT indices, not the old ones.
+    assert carried[_sq_col("Scan 1 · When scanned")] == "2026-07-15"
+    assert carried[_sq_col("Scan 1 · Commit hash")] == "6c68775"
 
 
 def test_parse_scan_queue_unknown_layout_is_empty() -> None:
@@ -739,21 +792,17 @@ def test_scan_queue_carry_over_and_retained_by_key() -> None:
     data), never silently dropped."""
 
     def _dubbo_row(branch: str, when_scanned: str, commit: str) -> list[str]:
-        return _sq_row(
-            [
-                "https://github.com/apache/dubbo",
-                "Apache Dubbo",
-                "63.0%",
-                "rainyu@apache.org",
-                branch,
-                "https://lists.apache.org/thread/dubbotid",
-                "2026-06-01",
-                "No",  # Added after ASF tooling started (col 7)
-                when_scanned,  # Scan 1 when scanned (col 8)
-                "",
-                "",
-                commit,  # Scan 1 commit (col 11)
-            ]
+        return _sq_named(
+            Repo="https://github.com/apache/dubbo",
+            PMC="Apache Dubbo",
+            Criticality_Score____="63.0%",
+            Report_recipients="rainyu@apache.org",
+            Branch_tag=branch,
+            Model_discussion__ponymail_="https://lists.apache.org/thread/dubbotid",
+            When_ready="2026-06-01",
+            Added_after_ASF_tooling_started="No",
+            Scan_1___When_scanned=when_scanned,
+            Scan_1___Commit_hash=commit,
         )
 
     sq_grid = [
@@ -774,8 +823,8 @@ def test_scan_queue_carry_over_and_retained_by_key() -> None:
     # "main" is in the auto set -> its carried scan data reattaches by key.
     assert ("https://github.com/apache/dubbo", "main") in auto_keys
     carried = scan_queue_carried(prev[("https://github.com/apache/dubbo", "main")])
-    assert carried[8] == "2026-06-09"
-    assert carried[11] == "deadbee"
+    assert carried[_sq_col("Scan 1 · When scanned")] == "2026-06-09"
+    assert carried[_sq_col("Scan 1 · Commit hash")] == "deadbee"
     # "9.9" is not in the auto set but has scan data -> it must be retained.
     off = ("https://github.com/apache/dubbo", "9.9")
     assert off not in auto_keys
