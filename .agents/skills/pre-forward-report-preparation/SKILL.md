@@ -510,6 +510,27 @@ For each panel survivor, ask the narrower question: **is there a complete attack
 
 Name the **binding constraint** per finding — the one precondition that decides whether a deployment is affected. That single sentence is what a PMC uses to decide whether it applies to them.
 
+### M6a. Movement summary — what each stage changed, per scanner
+
+A funnel that only counts survivors hides most of what the work did. **Every stage must also report, per scanner, how many findings it promoted, demoted and left alone** — a finding that survives a stage rated three levels lower has been changed as substantially as one that was dropped.
+
+| Movement | Meaning |
+| --- | --- |
+| `promoted` | Severity raised, or disposition strengthened (e.g. excluded → `VALID`, `VALID-HARDENING` → `VALID`), or a vote moved toward reporting |
+| `demoted` | Severity lowered, or disposition weakened (`VALID` → `VALID-HARDENING` / `MODEL-GAP`), or a vote moved away from reporting |
+| `unchanged` | Survived the stage as stated |
+
+Report it **per scanner**, not just in total. The whole point is to tell the sources apart: a scanner whose findings mostly survive unchanged is behaving very differently from one whose findings mostly survive demoted, and a combined number conceals exactly that.
+
+Where a stage genuinely cannot produce the number — a panel record that keeps only final votes, with no first-round tally to compare against — **say so explicitly rather than reporting zero.** Zero movement and no record of movement are different claims, and conflating them flatters the process.
+
+Two stages always have it available:
+
+- **verification** — compare each finding's claimed severity against the severity assessed after re-reading the code. This is where most demotion happens, and `PARTIALLY_CONFIRMED` findings are precisely the ones that moved.
+- **panel deliberation** — compare the first-round tally against the final one. Findings that changed position are the panel's actual output; a panel where nobody moved reached its answer by first impressions.
+
+State the totals in the PMC report's summary too, in one sentence: how many of the findings they are being shown were rated lower by us than by the scanner that found them. It sets expectations about the raw bundles they also receive.
+
 ### M7. Scan-currency re-check
 
 Step 5.7, unchanged and mandatory here: re-check every reportable finding against the newest commit held before it goes anywhere near the report.
