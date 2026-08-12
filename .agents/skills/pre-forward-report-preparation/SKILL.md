@@ -519,6 +519,20 @@ The main deliverable. Shape and voice are specified below.
 
 **Audience: a maintainer who is a strong engineer and not a security specialist.** They know their codebase far better than we do, and they should not have to decode our vocabulary to use our output.
 
+### Name
+
+Title the report, as its `#` heading and as its filename:
+
+```
+CVE Worthy Priority Issues to process by <PMC> - based on <repo> <commit>
+```
+
+`<PMC>` is the project's name as the PMC uses it (`APISIX`, `Superset`), not the repo slug. Where a bundle spans more than one repository or commit, list each pair — the reader must be able to tell which tree a finding refers to without opening another file.
+
+The name is doing real work: it says who owns it, that it is a prioritised subset rather than everything the scanners produced, and exactly which commit it describes. A report that outlives its commit is misleading, and the title is what stops someone reading a months-old assessment as current.
+
+Filename: the same string, spaces to hyphens, one `.md`. Keep it stable across revisions of the same commit so links do not rot; a new commit gets a new report.
+
 ### Structure
 
 1. **What this is** — one short paragraph: who scanned, who reviewed, what the document is and is not. State plainly that it is advisory and the PMC owns the call.
