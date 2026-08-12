@@ -62,6 +62,40 @@ Skip / refuse when:
 
 For "assess the pending scans", the eligible set is the **intersection** of (scans archived but not yet assessed) and (projects whose `Security model verified` is set). Projects with an archived scan but an unverified model are listed as "skipped — model not verified", not assessed.
 
+## Parameters
+
+Passed at invocation ("do the max pass on apisix, `report-steps-to-use=verify,panel,report`") or asked for when the request is ambiguous. All three have defaults that make the common case a bare invocation.
+
+| Parameter | Values | Default | What it controls |
+| --- | --- | --- | --- |
+| `include-asvs-scan` | `true` \| `false` | `true` when an ASVS bundle exists for the project, else `false` | Whether the ASVS bundle's findings enter the docket alongside the Claude Code Security scan. When `true`, **every** ASVS finding is carried through every later stage (M3) — not a filtered subset. |
+| `repository-to-scan` | `<org>/<repo>` or a local path, optionally `@<commit>` | the `repo` from the scan bundle's `metadata.yml`, at its `head_sha` | Which tree the Claude Code Security scan and every verification agent read. |
+| `report-steps-to-use` | comma-separated subset of `verify,panel,exploit,currency,patches,report` | all six | Which max-pass stages to run. |
+
+### `include-asvs-scan`
+
+`false` is for the case where there is no ASVS bundle, or the operator wants a clean Claude Code Security read to compare against one already assessed. Record the value in `metadata.yml` either way — a report built from one source reads identically to one built from two unless the provenance says otherwise, and the funnel numbers are not comparable across the two modes.
+
+Setting it `false` when an ASVS bundle *does* exist is a deliberate narrowing: say so in the report's limits section, because the PMC would otherwise reasonably assume both sources were used.
+
+### `repository-to-scan`
+
+**Always resolves to an exact commit, never a branch tip.** If the parameter names a branch or omits the commit, resolve it to a SHA, record that SHA, and use it everywhere — the scan, the verifiers, the panel, the exploitability pass and the patch worktrees must all read the same tree, or findings will cite lines that have moved.
+
+Two legitimate reasons to override the default:
+- **the scan bundle's `head_sha` is unreachable** (force-push, deleted branch) — then either name a reachable commit and say so prominently in the report, or stop;
+- **a currency check** — deliberately scanning a newer commit to see what is still present. Then `repository-to-scan` and the bundle's `head_sha` differ **by design**; record both, and expect step 5.7 to have more to say.
+
+A mismatch that is *not* deliberate is a defect: it means the assessment and the bundle describe different code.
+
+### `report-steps-to-use`
+
+Stages are ordered and each consumes the previous one's output, so a subset must be a **prefix-closed** selection: `panel` without `verify` has no verified set to panel, and `patches` without `exploit` produces fixes for chains nobody checked. Reject a non-prefix-closed request and say which stage is missing rather than silently running more than was asked.
+
+`report` is the only stage that can be run alone, and only to regenerate the write-up from artefacts already in the archive.
+
+Record the selection in `metadata.yml` as `report_steps: [...]`. A report produced from a subset **must say so in its limits section** — "no exploitability pass was run" is exactly the kind of thing a PMC will otherwise assume was done.
+
 ## Hard rules (do not skip)
 
 1. **Advisory, not a ruling.** The assessment is attached to the PMC forward (as of 2026-07-15) as an advisory guide; the PMC still owns the authoritative per-finding call, and the team does not decide findings on the PMC's behalf. The dispositions guide the PMC to triage quickly — they are not the team's verdict imposed on the PMC's copy. Deliver the assessment as the attached `assessment.md` (via `frontier-model-preparation-forward`); do not inline the dispositions into the email body.
@@ -478,9 +512,17 @@ The main deliverable. Shape and voice are specified below.
    - **why it is CVE-worthy** — which promise breaks and for whom, not a CWE number;
    - the draft patch, if there is one.
 4. **Worth fixing, not urgent** — real defects that did not clear the bar, with one line each on why.
-5. **What we could not settle** — the open questions and the threat-model rulings we need from them. Often the most valuable section.
-6. **Limits you should hold us to** — what was not executed, what depends on a dependency we could not read, where our reviewers are correlated, where this report disagrees with our own earlier passes.
-7. **Where the detail lives** — pointers into the full ASVS and Claude Code Security bundles by report name and section heading, for anyone who wants it. Keep the report readable and let the depth sit behind the pointer.
+5. **Gaps in your threat model, and the calls only you can make** — **mandatory, never omitted, even when empty** (say "none found"). Two kinds of item, kept apart because they need different things from the reader:
+   - **Model gaps** — every finding dispositioned `MODEL-GAP`: a real defect the model is *silent* about. State what the model does not say, not that the model is wrong. Give the specific ruling that would settle it, phrased so it can be answered yes or no. Where several findings turn on one gap, present the gap once with the findings under it — a PMC should not have to infer that seven items are one question.
+   - **Proposals that need PMC judgement** — anything where we deliberately stopped short: a fix that would change documented behaviour, a default whose safer value breaks existing deployments, a severity that hinges on a deployment shape only they know, a patch we did not write because writing it would have settled a design decision that is theirs. Say what we would do, what it would cost, and why it is theirs to decide.
+
+   Say which way the ruling cuts. *"If yes, these five become in-scope defects and §4.8 needs a new property; if no, they close as out-of-model and `SECURITY.md` should say plainly that these gates are not security boundaries, because users will otherwise assume they are."* A gap stated without its consequences is a question the PMC has no reason to prioritise.
+
+   Where the project's own code already answers the question one way while the model is silent, **say so** — that is the strongest possible argument for an update, and it comes from their repository rather than from us.
+
+6. **What we could not settle** — findings rated `UNPROVEN`, dependencies we could not read, and the specific experiment that would resolve each.
+7. **Limits you should hold us to** — what was not executed, what depends on a dependency we could not read, where our reviewers are correlated, where this report disagrees with our own earlier passes.
+8. **Where the detail lives** — pointers into the full ASVS and Claude Code Security bundles by report name and section heading, for anyone who wants it. Keep the report readable and let the depth sit behind the pointer.
 
 ### Voice
 
