@@ -561,13 +561,37 @@ Title the report, as its `#` heading and as its filename:
 CVE Worthy Priority Issues to process by <PMC> - based on <repo> <commit>
 ```
 
-`<PMC>` is the project's name as the PMC uses it (`APISIX`, `Superset`), not the repo slug. Where a bundle spans more than one repository or commit, list each pair — the reader must be able to tell which tree a finding refers to without opening another file.
+**The `#` heading carries only that much.** The repository-and-commit detail goes in a `###` subtitle immediately under it:
+
+```
+# CVE Worthy Priority Issues to process by <PMC>
+
+### Based on <repo> at <commit> and <repo> at <commit>
+```
+
+`<PMC>` is the project's name as the PMC uses it (`APISIX`, `Superset`), not the repo slug. Where a bundle spans more than one repository or commit, the subtitle lists each pair — the reader must be able to tell which tree a finding refers to without opening another file — and any *other* commits the bundle touches (a second scanner at an older commit) get a line of their own beneath it.
+
+Splitting it this way keeps the title readable where titles are shown without their body — a mail subject, a directory listing, a link — while losing none of the precision that makes the report checkable.
 
 The name is doing real work: it says who owns it, that it is a prioritised subset rather than everything the scanners produced, and exactly which commit it describes. A report that outlives its commit is misleading, and the title is what stops someone reading a months-old assessment as current.
 
 Filename: the same string, spaces to hyphens, one `.md`. Keep it stable across revisions of the same commit so links do not rot; a new commit gets a new report.
 
 ### Structure
+
+**0. TL;DR — first thing in the document, above everything including "What this is".**
+
+A PMC member should be able to read this alone and know whether they need to act. It carries, in this order:
+
+- **what was scanned and what came out** — raw finding count, then the number actually in front of them, with severities;
+- **the single most important finding**, in one sentence;
+- **what they have already fixed**, if anything — leading with that is both accurate and a courtesy;
+- **an explicit "what we are asking of you"** list, numbered, naming every ruling and decision required. This is the part most likely to be acted on, so it must not be inferable-only from later sections;
+- one line stating the document is advisory and nothing is published.
+
+Keep it short enough to read in under a minute. It is a summary, not an abstract of every section — a finding that needs a paragraph belongs below, not here.
+
+**Ask for what you need, plainly.** If two threat-model rulings and three design decisions are required, the TL;DR says so and says which findings each one decides. A report that buries its asks in section five gets the findings triaged and the questions ignored.
 
 1. **What this is** — one short paragraph: who scanned, who reviewed, what the document is and is not. State plainly that it is advisory and the PMC owns the call.
 2. **Short summary** — the numbers in three sentences. How many raw findings, how many survived, how many we are actually asking them to look at. Give them permission to ignore the rest.
