@@ -134,4 +134,9 @@ MODEL_COLOR = {
     # agent-readable threat model, so this is a settled outcome rather than
     # outstanding work. It never becomes Verified without the PMC reversing.
     "Rejected": {"red": 0.85, "green": 0.85, "blue": 0.85},
+    # Blue-grey, deliberately not the Verified green: the model content is
+    # agreed, but no repo points at it, so a scan cannot discover it and the
+    # runner must be handed it out-of-band. Distinct from both "done" and
+    # "outstanding" — it is done-but-undiscoverable.
+    "Secret": {"red": 0.78, "green": 0.85, "blue": 0.93},
 }
