@@ -79,6 +79,20 @@ For "assess the pending scans", the eligible set is the **intersection** of (sca
 
     So: step 5.6 is routine, step 5.5 is asked-for, and a fresh plugin scan is never this SKILL's call. If the panel would materially change the assessment, say so and let the operator decide — do not run it and present the bill afterwards.
 
+13. **Cite the property, or it is not `VALID`.** Before dispositioning a finding `VALID`, **name and quote** the specific clause of the project's model that states the property it violates, *and* the clause that establishes the attacking principal as untrusted. If you cannot quote both, the finding is not `VALID` — it is `MODEL-GAP` (the model is silent and needs a ruling) or `OUT-OF-MODEL` (the model excludes it).
+
+    *"It is obviously a security boundary"* is not a citation. Neither is the scanner's framing, nor the truth panel's — **both routinely assert boundaries the project has never undertaken to defend.** A scanner that says "cross-tenant" has told you what it thinks the impact is, not what the project promised.
+
+    **The mirror matters as much, and skipping it drops real findings rather than keeping false ones.** Before excluding on an out-of-scope clause, read the *whole* clause and check for a carve-back. Models routinely disclaim a category and then hand scope straight back — APISIX §4.3 point 5 reads as a blanket "all plugins are opt-in" exclusion and then says "enabling a plugin and finding a bug in it **is in scope of §4.8**". §4.8 point 8 does the same in the other direction, pre-empting the exact "the config author made a typo" exclusion a first-pass assessment reached for.
+
+    *(Added 2026-08-12 after the APISIX assessment. The first pass led with five "multi-tenant boundary crossings" including both HIGHs, having adopted the scanner's framing without opening §4.3 — which puts Kubernetes namespace isolation explicitly out of scope and treats a CRD creator as assumed-trusted. Its own stated test said "crosses a boundary the project claims"; nothing forced the model to be opened, so it wasn't. Applying this rule honestly moved that bundle from 19 asserted CVE candidates to 9, and promoted three findings the first pass had buried.)*
+
+14. **Re-check survivors against the newest commit you hold, before reporting any of them.** Bundles are routinely scanned at **different commits per scanner** — weeks apart. A finding reported at the older commit may already be fixed at the newer one, in the same delivered bundle. For every finding you are about to put in front of the PMC, confirm it is still present at the newest commit available for that repository, and record `status: fixed-upstream` with the fixing commit for any that are not.
+
+    Cheap to run (`git merge-base --is-ancestor`, then read the cited code at the newer tree) and it protects the PMC's attention and the team's credibility in one step. Reporting a fixed HIGH is the single most expensive error this SKILL can make.
+
+    *(Added 2026-08-12. The APISIX ingress bundle was scanned at `611487c` (2026-07-08) and `39325e8` (2026-08-06); the fix landed at `be19f90` (2026-07-29), between them. Three findings — including **both** HIGHs and the expert panel's only unanimous CVE candidate — were already fixed 8 days before the bundle was delivered, and the assessment led with one of them as live. The exploitability pass had named this exact gap as a limitation and not acted on it.)*
+
 ## Disposition framework
 
 Use the project model's own table when it has one. The threat-model-producer rubric (which most of these models follow) defines a **§13 triage dispositions** table — use those labels verbatim. The generic fallback set, when the model defines none:
@@ -95,8 +109,9 @@ Use the project model's own table when it has one. The threat-model-producer rub
 | `KNOWN-NON-FINDING` | Matches a model's known-non-findings / recurring-false-positive list. |
 | `MODEL-GAP` | Routes to none of the above → the model needs a ruling (record which one). |
 | `WITHDRAWN` | **Not true.** The truth panel (step 5.5) refuted it against the code at `head_sha` — the finding is factually wrong about what it cites. Carries the panel's tally + decisive `file:line`; no scope disposition is assigned. |
+| `FIXED-UPSTREAM` | **True when scanned, fixed since.** Step 5.7 confirmed the defect is gone at the newest commit held for the repo. Carries the fixing commit. The scan-time verdict stays as recorded — it described a different commit — and is not a contradiction. |
 
-`WITHDRAWN` is a *truth* verdict and the only one the truth panel can produce; every other row is a *scope* verdict assigned against the project's model. A finding gets exactly one row from either axis — never both.
+`WITHDRAWN` is a *truth* verdict and the only one the truth panel can produce; `FIXED-UPSTREAM` is a *currency* verdict from step 5.7; every other row is a *scope* verdict assigned against the project's model. A finding gets exactly one row, from whichever axis settles it first — truth, then currency, then scope. There is no point dispositioning the scope of something that is not true, and no point reporting the scope of something already fixed.
 
 The headline the team cares about: **how many `VALID`** (real, default-config, in-scope) vs. how many are hardening / out-of-model / disclaimed — and any `MODEL-GAP`s that should become model updates.
 
@@ -216,7 +231,9 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
 
 5. **Run the sanity check + triage.**
    - Sanity check (same checklist as `frontier-model-preparation-forward`): project identity, model identity, repo coverage, truncation, cross-PMC leakage, formatting, plausibility. Record per-check PASS / PASS-with-note / FAIL and a recommended verdict. On a FAIL, surface it — a broken scan should go back to ASF Tooling, not be assessed as if sound.
+   - **Note every commit the bundle was scanned at.** Where scanners ran at different commits, record each and establish their order (`git merge-base --is-ancestor <older> <newer>`). This is the input to step 5.7 and is cheap to capture now.
    - Triage each finding in `issues.md` against the model, assigning exactly one disposition (hard rules 4, 6, 7). Note duplicates, coverage gaps (e.g. "no findings against the model's primary claimed property"), and MODEL-GAPs.
+   - **Apply the cite-the-property gate to every candidate `VALID`** (hard rule 13). Quote the clause stating the property and the clause making the principal untrusted, into the `why` field. No pair of quotes → `MODEL-GAP` or `OUT-OF-MODEL`, not `VALID`. Before excluding on an out-of-scope clause, read the whole clause for a carve-back.
 
 5.5. **Run the independent truth panel — only if the operator asked** (Claude Code Security plugin — `claude-security` ≥ 0.10.0). Off by default; see hard rule 12. If it was not asked for, record `verification: NOT-RUN` and go to 5.6.
 
@@ -257,6 +274,15 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
    - **Check `_filter_drop_log.md` before claiming a miss.** Before recording that the plugin found something Mythos missed, confirm Mythos did not surface and deliberately drop it. The useful output of the cross-read is *what each side found alone*, with the drop log accounted for.
    - **Record the direction and the date.** Both directions happen — the plugin review gets amended by this assessment, and this assessment gets amended by the plugin review. Stamp which way the judgment flowed and when, in `metadata.yml`, or the two documents ping-pong with no audit trail. Never edit an earlier assessment in place: leave it intact and consolidate forward into a new version, exactly as `assessment.md` → `adversarial-review.md` → `assessment-v2.md` did.
    - **Cross-link both ways.** The plugin bundle's `see_also` should point here and this `metadata.yml` should point there, so a reader landing on either finds the other.
+
+5.7. **Re-check the reportable set against the newest commit you hold** (hard rule 14). Always on — it costs a few greps and it is the last gate before the PMC sees anything.
+
+   For every finding you would report (`VALID`, `MODEL-GAP`, and anything the operator is escalating), read the cited code at the **newest** commit available for that repository — which, when scanners ran at different commits, is not the commit the finding was reported at. If the defect is gone, disposition it `FIXED-UPSTREAM`, record the fixing commit, and drop it from the reportable set.
+
+   - Establish ordering first: `git merge-base --is-ancestor <older> <newer>`. If the commits are on divergent branches, say so and re-check both rather than assuming.
+   - `git log <older>..<newer> -S '<symbol>' -- <path>` finds the fixing commit cheaply once you know the defect is gone.
+   - Keep the original verdict intact. A verdict describes the code at the commit the finding was **scanned** at and stays true; `FIXED-UPSTREAM` is a separate, later fact. Recording both is not a contradiction, and the assessment should say so explicitly so a reader does not "correct" one of them.
+   - Report the count in the headline. "Three of twelve already fixed" is useful signal to both the PMC and ASF Tooling about scan currency.
 
 6. **Write the assessment files** into `pre-forward-results/<rel>/<scan-id>/` — `metadata.yml`, `assessment.md`, `dispositions.yml` (shapes above). If `pre-forward-results/README.md` doesn't exist yet, create it: a short doc stating that this tree mirrors `scans/` one-for-one, that each leaf is the team's internal pre-forward assessment of the same-named scan, the file roles, and a pointer to the Confidentiality section of the archive README (these are pre-disclosure candidates; private repo only).
 
