@@ -531,6 +531,21 @@ Two stages always have it available:
 
 State the totals in the PMC report's summary too, in one sentence: how many of the findings they are being shown were rated lower by us than by the scanner that found them. It sets expectations about the raw bundles they also receive.
 
+### M6b. Explain the model-triage step — it is the biggest drop and the easiest to misread
+
+Between *verified* and *panelled* sits the **model triage**: every verified finding is dispositioned against the project's own threat model, and only those that could be CVE-worthy go on. In practice this removes far more findings than any other stage — on both bundles assessed to date it took 176 → 20 and 85 → 13, roughly 87% each time.
+
+**A funnel that shows the drop without naming the filter is misleading**, because the obvious reading is wrong. The findings leaving here are **not refuted**. They survived verification; they are *true*. They stop because they do not break a property the project claims.
+
+So the report must state, for this stage specifically:
+
+- **that it is a scope judgement, not a truth judgement** — in those words, early;
+- **the disposition breakdown of what it dropped**, not just the count, with a plain-language gloss of each (`VALID-HARDENING` = real but no claimed property broken; `OUT-OF-MODEL` = needs a principal or input the model treats as trusted);
+- **how many of the dropped findings were fully `CONFIRMED`.** This is the number that makes the stage honest — findings true as written that stopped on scope alone. A PMC wanting "real defects that did not clear the CVE bar" is asking for exactly that list;
+- **what dispositions the panelled findings carried**, so the taken and the dropped can be compared rather than assumed.
+
+**Do not let this stage read as quality filtering.** It is the project's own model deciding what counts, and if the model is wrong or silent the stage inherits that — which is why `MODEL-GAP` findings must go *to* the panel rather than stopping here.
+
 ### M7. Scan-currency re-check
 
 Step 5.7, unchanged and mandatory here: re-check every reportable finding against the newest commit held before it goes anywhere near the report.
