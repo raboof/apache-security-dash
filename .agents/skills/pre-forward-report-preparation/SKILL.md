@@ -462,7 +462,20 @@ Dispatch `claude-security:scan-verifier` per finding against `SCAN_ROOT`, with t
 
 Each verdict records `CONFIRMED` / `PARTIALLY_CONFIRMED` / `REFUTED` / `UNCERTAIN`, the decisive `file:line`, whether the finding's own anchor was accurate, and any precondition the attack needs. **`PARTIALLY_CONFIRMED` is the most common and most useful verdict** — the mechanism is real but the stated impact overreaches — and collapsing it into confirmed/refuted throws away most of the signal.
 
-Anchor accuracy is worth counting separately: it is the single best measure of a scanner's precision, and it is what tells ASF Tooling something actionable.
+**Anchor accuracy is worth counting separately** — it is the cheapest measure of a scanner's precision and the one thing in this pass that tells ASF Tooling something directly actionable. A finding's **anchor** is the `file:line` it points at. The anchor is *accurate* when that location contains what the finding says it contains.
+
+**Record two distinct failures, never one merged number:**
+
+| | Meaning | Whose problem |
+| --- | --- | --- |
+| `anchor-wrong` | The cited location never contained the described code, at the commit the finding was scanned at. | The scanner's. Real precision signal |
+| `anchor-drifted` | The citation was correct at the scanned commit; the code has since moved. | Nobody's. An artefact of time passing |
+
+Merging them overstates the first. Distinguish them by checking the citation **at the commit the finding was scanned at** — not at the newest tree — which is the only commit at which the scanner could have been right.
+
+*(On the APISIX bundle all 37 flagged anchors came from one scanner, and a re-check established that **zero** were explainable by drift: 30 cited paths that exist at their own scan commit, 5 cited no path at all. So the count was a genuine precision signal — but that was established by checking, not assumed, and the check is cheap enough to repeat.)*
+
+**In PMC-facing text, do not use the word "anchor" at all.** Say that some line references in the scan reports no longer match their current code, that the findings were confirmed against the code as it stood at the scanned commit, and that it is the line numbers that may need re-finding rather than the findings that need re-checking.
 
 ### M5. Voting panel on the contested set
 
