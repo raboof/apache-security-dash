@@ -1,21 +1,44 @@
 ---
-name: asvs-scan-assess
+name: pre-forward-report-preparation
 description: >-
-  Produce the Security team's INTERNAL pre-forward assessment of an archived Glasswing scan —
+  Produce the Security team's pre-forward assessment AND the PMC-facing report for an archived Glasswing scan.
+  Two depths. The **baseline** (default) is the model triage described below. The **max pass** (opt-in, expensive) additionally runs a full Claude Code Security scan of the repo at the scanned commit, carries every ASVS finding through it, and adds adversarial verification, a voting panel, an exploitability pass, a scan-currency re-check and draft patches — then writes a plain-language report for the PMC.
+  The PMC report is written for a maintainer who is NOT a security specialist: a short summary, a prioritised list of what to fix first, a concrete exploit scenario per issue, why it is CVE-worthy, and a pointer to the detailed ASVS and Claude Code Security bundles for anyone who wants the depth. Draft patches accompany the CVE-worthy findings.
+  Before ANY report reaches a model, programme code names are stripped deterministically from file contents AND from file/folder names by a PreToolUse hook — never by asking the model to avoid them.
+  Baseline scope —
   pull the scan bundle from the `apache/tooling-agents-private` archive (per its README layout),
-  read the project's own threat model (the `metadata.yml` `threat_model` URL plus any delegated/umbrella model it points to),
+  read the project's own threat model **from the project's directory at the scanned commit** and reconcile it against the `threat_model` recorded in `metadata.yml` (surfacing any mismatch, which invalidates scope judgements built on it), following delegation to any umbrella/addendum model,
   run the pre-forward sanity check, and triage every finding in `issues.md` against that model's disposition framework (e.g. the threat-model-producer §13 table: VALID / VALID-HARDENING / OUT-OF-MODEL / BY-DESIGN / KNOWN-NON-FINDING / MODEL-GAP).
   The assessment is written back into the private repo under `pre-forward-results/`, mirroring the exact `scans/` path structure — one assessment directory per scan, keyed by the same scan-id.
   The assessment is the team's own read; as of 2026-07-15 it is ATTACHED to the PMC forward (frontier-model-preparation-forward) as an ADVISORY guide — the dispositions help the PMC triage quickly, but the PMC still owns the authoritative per-finding call. It is NEVER published to a gist or any public surface (pre-disclosure candidates stay in the private repo and go only to the PMC's @apache.org recipients via the forward).
   Assess ONLY scans whose project has completed threat-model preparation — i.e. the Mythos tracker's `Security model verified` is set for that PMC (per frontier-model-preparation-model-verify); skip projects whose model is merely nominated or pending verification.
   Output is a set of files committed to `apache/tooling-agents-private` after explicit human approval — never auto-committed; shared with the PMC only as the forward's attachment, never to a public surface.
   Two optional Claude Code Security plugin steps sit alongside the model triage and never replace it: an opt-in per-finding truth panel (`claude-security:scan-verifier`, three lenses, votes TRUE_POSITIVE/FALSE_POSITIVE against the code at head_sha — answers "is this finding true", not "is it in scope"), and a routine fold-in of any plugin scan of the same repo already archived under `scans/claude-code-security-*/`, whose threat-model defects, report corrections and coverage gaps can change dispositions here. Neither the panel nor a fresh plugin scan runs by default — both cost real agent budget and need explicit operator instruction.
-  Use whenever Jarek says "assess the <project> scan", "do the pre-forward assessment for <project>", "triage the <project> scan against its threat model", "assess the pending scans", or "store the assessment in pre-forward-results".
+  Use whenever Jarek says "assess the <project> scan", "do the pre-forward assessment for <project>", "triage the <project> scan against its threat model", "assess the pending scans", "store the assessment in pre-forward-results", "prepare the pre-forward report", or "do the max pass on <project>".
 ---
 
-# asvs-scan-assess SKILL
+# pre-forward-report-preparation SKILL
 
-The **pre-forward assessment** step of the Glasswing pipeline — a deeper, written-down companion to the sanity check that `frontier-model-preparation-forward` does inline.
+The **pre-forward assessment and report** step of the Glasswing pipeline — a deeper, written-down companion to the sanity check that `frontier-model-preparation-forward` does inline.
+
+> **Renamed 2026-08-12** from `asvs-scan-assess`. The old name described one input (the ASVS bundle); the work is now scan-source-agnostic and its most valuable output is the PMC-facing report, not the internal disposition table.
+
+**Two depths, and the difference is cost.**
+
+| | Baseline (default) | Max pass (opt-in) |
+| --- | --- | --- |
+| Model triage of every finding | yes | yes |
+| Sanity check | yes | yes |
+| Claude Code Security scan of the repo | no | **yes — full, max effort** |
+| ASVS findings carried through every later stage | n/a | **yes — all of them** |
+| Adversarial verification per finding | no | yes |
+| Voting panel on contested findings | opt-in (step 5.5) | yes |
+| Exploitability pass | no | yes |
+| Scan-currency re-check | yes (step 5.7) | yes |
+| Draft patches for CVE-worthy findings | no | yes |
+| Plain-language PMC report | short form | **full — the main deliverable** |
+
+The max pass costs hundreds of agent dispatches and real money. It runs **only on explicit operator instruction** (hard rule 12) — never because a bundle looks interesting.
 
 `frontier-model-preparation-forward` delivers the scan bundle **and this assessment** to the PMC as attachments — the assessment as an **advisory** guide (the PMC still owns the authoritative per-finding call; the team does not decide findings on the PMC's behalf). This SKILL produces the team's read of a scan against the project's threat model and files it in the private archive. The assessment helps the team:
 
@@ -39,6 +62,40 @@ Skip / refuse when:
 
 For "assess the pending scans", the eligible set is the **intersection** of (scans archived but not yet assessed) and (projects whose `Security model verified` is set). Projects with an archived scan but an unverified model are listed as "skipped — model not verified", not assessed.
 
+## Parameters
+
+Passed at invocation ("do the max pass on apisix, `report-steps-to-use=verify,panel,report`") or asked for when the request is ambiguous. All three have defaults that make the common case a bare invocation.
+
+| Parameter | Values | Default | What it controls |
+| --- | --- | --- | --- |
+| `include-asvs-scan` | `true` \| `false` | `true` when an ASVS bundle exists for the project, else `false` | Whether the ASVS bundle's findings enter the docket alongside the Claude Code Security scan. When `true`, **every** ASVS finding is carried through every later stage (M3) — not a filtered subset. |
+| `repository-to-scan` | `<org>/<repo>` or a local path, optionally `@<commit>` | the `repo` from the scan bundle's `metadata.yml`, at its `head_sha` | Which tree the Claude Code Security scan and every verification agent read. |
+| `report-steps-to-use` | comma-separated subset of `verify,panel,exploit,currency,patches,report` | all six | Which max-pass stages to run. |
+
+### `include-asvs-scan`
+
+`false` is for the case where there is no ASVS bundle, or the operator wants a clean Claude Code Security read to compare against one already assessed. Record the value in `metadata.yml` either way — a report built from one source reads identically to one built from two unless the provenance says otherwise, and the funnel numbers are not comparable across the two modes.
+
+Setting it `false` when an ASVS bundle *does* exist is a deliberate narrowing: say so in the report's limits section, because the PMC would otherwise reasonably assume both sources were used.
+
+### `repository-to-scan`
+
+**Always resolves to an exact commit, never a branch tip.** If the parameter names a branch or omits the commit, resolve it to a SHA, record that SHA, and use it everywhere — the scan, the verifiers, the panel, the exploitability pass and the patch worktrees must all read the same tree, or findings will cite lines that have moved.
+
+Two legitimate reasons to override the default:
+- **the scan bundle's `head_sha` is unreachable** (force-push, deleted branch) — then either name a reachable commit and say so prominently in the report, or stop;
+- **a currency check** — deliberately scanning a newer commit to see what is still present. Then `repository-to-scan` and the bundle's `head_sha` differ **by design**; record both, and expect step 5.7 to have more to say.
+
+A mismatch that is *not* deliberate is a defect: it means the assessment and the bundle describe different code.
+
+### `report-steps-to-use`
+
+Stages are ordered and each consumes the previous one's output, so a subset must be a **prefix-closed** selection: `panel` without `verify` has no verified set to panel, and `patches` without `exploit` produces fixes for chains nobody checked. Reject a non-prefix-closed request and say which stage is missing rather than silently running more than was asked.
+
+`report` is the only stage that can be run alone, and only to regenerate the write-up from artefacts already in the archive.
+
+Record the selection in `metadata.yml` as `report_steps: [...]`. A report produced from a subset **must say so in its limits section** — "no exploitability pass was run" is exactly the kind of thing a PMC will otherwise assume was done.
+
 ## Hard rules (do not skip)
 
 1. **Advisory, not a ruling.** The assessment is attached to the PMC forward (as of 2026-07-15) as an advisory guide; the PMC still owns the authoritative per-finding call, and the team does not decide findings on the PMC's behalf. The dispositions guide the PMC to triage quickly — they are not the team's verdict imposed on the PMC's copy. Deliver the assessment as the attached `assessment.md` (via `frontier-model-preparation-forward`); do not inline the dispositions into the email body.
@@ -47,7 +104,7 @@ For "assess the pending scans", the eligible set is the **intersection** of (sca
 
 3. **Never a gist, never public.** Results go **only** to `apache/tooling-agents-private/pre-forward-results/`. These are pre-disclosure vulnerability candidates (see the archive README's Confidentiality section). No public gist, no paste into a public tracker, no third-party surface. (This SKILL exists precisely because the one-off version wrote to a gist — the canonical home is the private repo.)
 
-4. **Triage against the project's OWN model, not a generic checklist.** Read the `threat_model` URL from the scan's `metadata.yml`, and **follow delegation** — if that doc delegates to an umbrella / addendum model (as `directory-ldap-api/SECURITY.md` → `directory-server/THREAT_MODEL.md` does), read the umbrella too and use **its** disposition vocabulary (the threat-model-producer §13 table). Only fall back to the generic disposition set (below) when the project's model defines none.
+4. **Triage against the project's OWN model, not a generic checklist — read it from the repo, then reconcile with `metadata.yml`.** The authoritative text is the model **as it exists in the project's own directory at the scanned commit** (`<SCAN_ROOT>/<path>` — e.g. `docs/.../security-threat-model.md`, `SECURITY.md`, `THREAT_MODEL.md`), not a URL fetched from a branch tip that may have moved. Read that file, then **cross-check it against the `threat_model` recorded in the scan's `metadata.yml`**: they must be the same document. If they disagree — different path, different content, a URL that resolves to a newer revision, or a `metadata.yml` pointing at a model the repo does not contain at that commit — **record the discrepancy and surface it**, and disposition against the in-repo text. A mismatch is itself a finding: it means the scanner was briefed on a different contract than the code shipped under, which invalidates scope judgements built on it. Follow delegation from the in-repo model too — if that doc delegates to an umbrella / addendum model (as `directory-ldap-api/SECURITY.md` → `directory-server/THREAT_MODEL.md` does), read the umbrella too and use **its** disposition vocabulary (the threat-model-producer §13 table). Only fall back to the generic disposition set (below) when the project's model defines none.
 
 5. **Mirror the `scans/` path exactly.** The assessment for a scan at `scans/<rel>/` is written to `pre-forward-results/<rel>/` — identical relative path, same scan-id leaf directory, same single-repo-collapse rule. A reader must be able to `diff -r scans/<rel> pre-forward-results/<rel>` and have the paths line up. See the layout in the archive README.
 
@@ -79,6 +136,26 @@ For "assess the pending scans", the eligible set is the **intersection** of (sca
 
     So: step 5.6 is routine, step 5.5 is asked-for, and a fresh plugin scan is never this SKILL's call. If the panel would materially change the assessment, say so and let the operator decide — do not run it and present the bill afterwards.
 
+13. **Cite the property, or it is not `VALID`.** Before dispositioning a finding `VALID`, **name and quote** the specific clause of the project's model that states the property it violates, *and* the clause that establishes the attacking principal as untrusted. If you cannot quote both, the finding is not `VALID` — it is `MODEL-GAP` (the model is silent and needs a ruling) or `OUT-OF-MODEL` (the model excludes it).
+
+    *"It is obviously a security boundary"* is not a citation. Neither is the scanner's framing, nor the truth panel's — **both routinely assert boundaries the project has never undertaken to defend.** A scanner that says "cross-tenant" has told you what it thinks the impact is, not what the project promised.
+
+    **The mirror matters as much, and skipping it drops real findings rather than keeping false ones.** Before excluding on an out-of-scope clause, read the *whole* clause and check for a carve-back. Models routinely disclaim a category and then hand scope straight back — APISIX §4.3 point 5 reads as a blanket "all plugins are opt-in" exclusion and then says "enabling a plugin and finding a bug in it **is in scope of §4.8**". §4.8 point 8 does the same in the other direction, pre-empting the exact "the config author made a typo" exclusion a first-pass assessment reached for.
+
+    *(Added 2026-08-12 after the APISIX assessment. The first pass led with five "multi-tenant boundary crossings" including both HIGHs, having adopted the scanner's framing without opening §4.3 — which puts Kubernetes namespace isolation explicitly out of scope and treats a CRD creator as assumed-trusted. Its own stated test said "crosses a boundary the project claims"; nothing forced the model to be opened, so it wasn't. Applying this rule honestly moved that bundle from 19 asserted CVE candidates to 9, and promoted three findings the first pass had buried.)*
+
+14. **Re-check survivors against the newest commit you hold, before reporting any of them.** Bundles are routinely scanned at **different commits per scanner** — weeks apart. A finding reported at the older commit may already be fixed at the newer one, in the same delivered bundle. For every finding you are about to put in front of the PMC, confirm it is still present at the newest commit available for that repository, and record `status: fixed-upstream` with the fixing commit for any that are not.
+
+    Cheap to run (`git merge-base --is-ancestor`, then read the cited code at the newer tree) and it protects the PMC's attention and the team's credibility in one step. Reporting a fixed HIGH is the single most expensive error this SKILL can make.
+
+    *(Added 2026-08-12. The APISIX ingress bundle was scanned at `611487c` (2026-07-08) and `39325e8` (2026-08-06); the fix landed at `be19f90` (2026-07-29), between them. Three findings — including **both** HIGHs and the expert panel's only unanimous CVE candidate — were already fixed 8 days before the bundle was delivered, and the assessment led with one of them as live. The exploitability pass had named this exact gap as a limitation and not acted on it.)*
+
+15. **Sanitize deterministically, never by instruction.** Programme and model code names must not reach a model that is drafting PMC-facing text. Enforce this with a `PreToolUse` hook on `Read` that swaps the file for a sanitized mirror — substituting **file contents and path components**, case-insensitively, with separator-aware boundaries — and by rendering any generated brief through the same sanitizer function. Asking a model to avoid a word is not a control: it fails silently and cannot be audited.
+
+    Verify by assertion — grep every generated brief and every report for each code name and fail loudly on a hit. Exclude the operator's own config trees from the hook, or it will rewrite unrelated filenames.
+
+    **The hook does not cover prompts you build by hand.** Every leak observed to date came from hard-coding a raw archive path into an agent prompt, which never passes through `Read`. Build agent prompts from sanitized values only. Full mechanics in "The max pass" → M1.
+
 ## Disposition framework
 
 Use the project model's own table when it has one. The threat-model-producer rubric (which most of these models follow) defines a **§13 triage dispositions** table — use those labels verbatim. The generic fallback set, when the model defines none:
@@ -95,8 +172,9 @@ Use the project model's own table when it has one. The threat-model-producer rub
 | `KNOWN-NON-FINDING` | Matches a model's known-non-findings / recurring-false-positive list. |
 | `MODEL-GAP` | Routes to none of the above → the model needs a ruling (record which one). |
 | `WITHDRAWN` | **Not true.** The truth panel (step 5.5) refuted it against the code at `head_sha` — the finding is factually wrong about what it cites. Carries the panel's tally + decisive `file:line`; no scope disposition is assigned. |
+| `FIXED-UPSTREAM` | **True when scanned, fixed since.** Step 5.7 confirmed the defect is gone at the newest commit held for the repo. Carries the fixing commit. The scan-time verdict stays as recorded — it described a different commit — and is not a contradiction. |
 
-`WITHDRAWN` is a *truth* verdict and the only one the truth panel can produce; every other row is a *scope* verdict assigned against the project's model. A finding gets exactly one row from either axis — never both.
+`WITHDRAWN` is a *truth* verdict and the only one the truth panel can produce; `FIXED-UPSTREAM` is a *currency* verdict from step 5.7; every other row is a *scope* verdict assigned against the project's model. A finding gets exactly one row, from whichever axis settles it first — truth, then currency, then scope. There is no point dispositioning the scope of something that is not true, and no point reporting the scope of something already fixed.
 
 The headline the team cares about: **how many `VALID`** (real, default-config, in-scope) vs. how many are hardening / out-of-model / disclaimed — and any `MODEL-GAP`s that should become model updates.
 
@@ -124,6 +202,19 @@ Each assessment leaf directory holds:
 | `assessment.md` | The full write-up — threat-model context, sanity-check log, the per-finding disposition table, the headline, and structural notes (duplicates, coverage gaps, model gaps). |
 | `dispositions.yml` | Machine-readable per-finding map: finding id → `{disposition, one-line rationale}`. Lets a later run diff dispositions across re-scans without re-parsing prose. |
 | `verification.yml` | Truth-panel record (step 5.5): finding id → the three lens votes, the code-computed tally, and the decisive `file:line`. Written only when the panel ran; its `WITHDRAWN` set feeds `dispositions.yml`. |
+
+**Max pass only** — additional artefacts in the same leaf directory:
+
+| File | Purpose |
+| --- | --- |
+| `REPORT-FOR-PMC.md` | **The deliverable.** Plain-language report for a non-specialist maintainer: summary, prioritised fix list with exploit scenarios and CVE-worthiness rationale, open questions, limits, pointers into the detailed bundles. Shape and voice in "The PMC report". |
+| `adversarial-review.md` | Per-finding verification verdicts across both scan sources, with anchor accuracy and per-scanner precision. |
+| `panel-votes.json` | Raw panel record: per-lens votes, round-1 and final code-computed tallies, who changed position and on what argument. |
+| `PANEL-REPORT.md` | The panel's narrative, written by a rapporteur that did not vote. |
+| `EXPLOITABILITY-CHECK.md` | Per-survivor `REACHABLE` / `CONDITIONAL` / `UNPROVEN` with the binding constraint and the experiments that would settle the unproven ones. |
+| `patches/` + `PATCHES.md` | Draft patches per repository, and what verification each one actually has. Drafts for the PMC, never filed upstream. |
+
+Records of what a pass concluded are **annotated, never rewritten**, when a later pass overturns them: add a status banner pointing at the current document and leave the original text intact. A verdict describes the code at the commit it was scanned at and stays true even after the finding is fixed.
 
 ### `metadata.yml` shape
 
@@ -212,11 +303,18 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
 
 3. **Read the scan bundle.** `metadata.yml` (project, repo, head_sha, threat_model, asvs_level, findings_total), `issues.md` (the findings), and for context `consolidated.md`, `_security_profile.md`, `_filter_drop_log.md`, `_review_queue.md`, `issues_cross_reference.md` where present.
 
-4. **Read the project's threat model.** Fetch the `threat_model` URL at the scanned commit; **follow delegation** to any umbrella/addendum model and read that too. Identify the disposition framework (its §13 table, or the generic fallback). Extract: what the model claims for this component, its disclaimers, its operator-trusted inputs, its known-non-findings, its out-of-scope list.
+4. **Read the project's threat model from the project's own directory, then reconcile it with `metadata.yml`** (hard rule 4).
+   - Check the repo out at the scanned commit and read the model **from that tree** — `docs/.../security-threat-model.md`, `SECURITY.md`, `THREAT_MODEL.md`, whatever the project uses. This is the authoritative text: it is the contract the scanned code actually shipped under.
+   - **Then compare it against the `threat_model` recorded in the scan's `metadata.yml`.** Confirm they are the same document — same path, same content at that commit. Record the result of the comparison either way; "checked, consistent" is a finding worth having on the record.
+   - **On a mismatch, surface it and disposition against the in-repo text.** A `metadata.yml` pointing at a moved URL, a newer revision, or a model the repo does not contain at that commit means the scanner was briefed on a different contract than the code shipped under — every scope judgement built on it is suspect. Note it in `metadata.yml` as `threat_model_reconciliation: MISMATCH — <what differs>` and raise it with ASF Tooling; a large divergence is grounds to return the scan rather than assess it.
+   - **Follow delegation** from the in-repo model to any umbrella/addendum model and read that too. Identify the disposition framework (its §13 table, or the generic fallback). Extract: what the model claims for this component, its disclaimers, its operator-trusted inputs, its known-non-findings, its out-of-scope list.
+   - The URL still matters for the PMC-facing report — cite the model the PMC can open, once you have confirmed it matches what you read.
 
 5. **Run the sanity check + triage.**
    - Sanity check (same checklist as `frontier-model-preparation-forward`): project identity, model identity, repo coverage, truncation, cross-PMC leakage, formatting, plausibility. Record per-check PASS / PASS-with-note / FAIL and a recommended verdict. On a FAIL, surface it — a broken scan should go back to ASF Tooling, not be assessed as if sound.
+   - **Note every commit the bundle was scanned at.** Where scanners ran at different commits, record each and establish their order (`git merge-base --is-ancestor <older> <newer>`). This is the input to step 5.7 and is cheap to capture now.
    - Triage each finding in `issues.md` against the model, assigning exactly one disposition (hard rules 4, 6, 7). Note duplicates, coverage gaps (e.g. "no findings against the model's primary claimed property"), and MODEL-GAPs.
+   - **Apply the cite-the-property gate to every candidate `VALID`** (hard rule 13). Quote the clause stating the property and the clause making the principal untrusted, into the `why` field. No pair of quotes → `MODEL-GAP` or `OUT-OF-MODEL`, not `VALID`. Before excluding on an out-of-scope clause, read the whole clause for a carve-back.
 
 5.5. **Run the independent truth panel — only if the operator asked** (Claude Code Security plugin — `claude-security` ≥ 0.10.0). Off by default; see hard rule 12. If it was not asked for, record `verification: NOT-RUN` and go to 5.6.
 
@@ -258,6 +356,15 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
    - **Record the direction and the date.** Both directions happen — the plugin review gets amended by this assessment, and this assessment gets amended by the plugin review. Stamp which way the judgment flowed and when, in `metadata.yml`, or the two documents ping-pong with no audit trail. Never edit an earlier assessment in place: leave it intact and consolidate forward into a new version, exactly as `assessment.md` → `adversarial-review.md` → `assessment-v2.md` did.
    - **Cross-link both ways.** The plugin bundle's `see_also` should point here and this `metadata.yml` should point there, so a reader landing on either finds the other.
 
+5.7. **Re-check the reportable set against the newest commit you hold** (hard rule 14). Always on — it costs a few greps and it is the last gate before the PMC sees anything.
+
+   For every finding you would report (`VALID`, `MODEL-GAP`, and anything the operator is escalating), read the cited code at the **newest** commit available for that repository — which, when scanners ran at different commits, is not the commit the finding was reported at. If the defect is gone, disposition it `FIXED-UPSTREAM`, record the fixing commit, and drop it from the reportable set.
+
+   - Establish ordering first: `git merge-base --is-ancestor <older> <newer>`. If the commits are on divergent branches, say so and re-check both rather than assuming.
+   - `git log <older>..<newer> -S '<symbol>' -- <path>` finds the fixing commit cheaply once you know the defect is gone.
+   - Keep the original verdict intact. A verdict describes the code at the commit the finding was **scanned** at and stays true; `FIXED-UPSTREAM` is a separate, later fact. Recording both is not a contradiction, and the assessment should say so explicitly so a reader does not "correct" one of them.
+   - Report the count in the headline. "Three of twelve already fixed" is useful signal to both the PMC and ASF Tooling about scan currency.
+
 6. **Write the assessment files** into `pre-forward-results/<rel>/<scan-id>/` — `metadata.yml`, `assessment.md`, `dispositions.yml` (shapes above). If `pre-forward-results/README.md` doesn't exist yet, create it: a short doc stating that this tree mirrors `scans/` one-for-one, that each leaf is the team's internal pre-forward assessment of the same-named scan, the file roles, and a pointer to the Confidentiality section of the archive README (these are pre-disclosure candidates; private repo only).
 
 7. **Show + confirm.** Present the planned file paths, the assessment content (at least the disposition table + headline + sanity verdict), and the planned commit message. Wait for explicit "yes".
@@ -268,6 +375,173 @@ Recommended verdict: <PASS / PASS-with-notes / RETURNED>
    - feed `MODEL-GAP`s to **threat-model-producer** (the model needs a ruling/addendum);
    - feed `KNOWN-NON-FINDING` / clearly-out-of-model patterns to the next ASF Tooling run's suppression list;
    - note the recommended sanity verdict so the operator (or `frontier-model-preparation-forward`) can stamp `sanity_check` on the scan's own `metadata.yml` — **this SKILL does not mutate the scan bundle**, only `pre-forward-results/`.
+
+## The max pass (opt-in — hard rule 12)
+
+Runs only when the operator asks for it by name ("do the max pass on `<project>`", "full Claude Code Security pass"). Everything in the baseline still applies; these steps are additional.
+
+**What it is for.** The baseline answers *"where does each finding land against the model?"*. The max pass answers the three questions a PMC actually asks next: *is it true, can it be driven, and what do I change?* — and produces the report that says so in language a maintainer can act on.
+
+### M0. Install and verify the Claude Code Security plugin
+
+From the marketplace, once per machine:
+
+```
+/plugin marketplace add anthropics/claude-code-security
+/plugin install claude-security@claude-code-security
+```
+
+Then confirm before relying on it — a silently-absent plugin degrades into "the model made something up", which is the worst possible failure here:
+
+- `/plugin` lists `claude-security` as installed and enabled;
+- the agent types `claude-security:scan-verifier`, `claude-security:scan-researcher` and `claude-security:scan-inventory` resolve;
+- the version is **≥ 0.10.0** (earlier ones lack the verifier lens contract this SKILL depends on).
+
+If any check fails, **stop and say so**. Do not emulate the plugin with general-purpose agents and describe the result as a Claude Code Security scan — the provenance stamp in `metadata.yml` would then be false.
+
+### M1. Sanitize deterministically, before anything reaches a model
+
+Programme code names (and the model code names inside them) are NDA-covered and must not reach a model that is drafting PMC-facing text — the risk is not that the model leaks them deliberately but that it echoes a path or a filename verbatim into a report.
+
+**This is a mechanical guarantee, not an instruction to the model.** Asking a model to avoid a word is not a control; it fails silently and you cannot audit it.
+
+- A **`PreToolUse` hook on `Read`** rewrites the tool input to point at a sanitized mirror of the file, so the model never receives the original bytes. Configure it in the operator's settings, not per-session.
+- The hook substitutes **file contents *and* path components** — the archive's directory names carry the code names too, and a report that cites a path leaks just as effectively as one that names the programme.
+- Substitution is case-insensitive and **separator-aware**: the pattern must be bounded by `_`, `-`, `.` or a path separator so that `<codename>_tracker_notes.md` and `<codename>-scan.md` sanitize correctly instead of collapsing several distinct filenames onto one name.
+- **Exclude the operator's own config trees** (`~/.claude`, the settings repo). An early revision of this hook rewrote the memory index's filenames and collapsed unrelated files onto a single name.
+- Verify by assertion, not by eye: after generating any brief or report, grep the artefact for every code name and fail loudly on a hit. Every generated brief handed to an agent gets the same check.
+
+Where a brief is *rendered* for an agent rather than read from disk, render it through the same sanitizer function — one implementation, two call sites.
+
+> **The leaks that actually happen are the operator's, not the hook's.** Every leak observed to date came from hard-coding a raw archive path into an agent prompt, which bypasses the `Read` hook entirely. Build agent prompts from sanitized values only.
+
+### M2. Run the full Claude Code Security scan, at max effort
+
+Scan the **PMC repo at the bundle's scanned commit**, not the branch tip:
+
+```
+git clone <repo> <SCAN_ROOT> && git -C <SCAN_ROOT> checkout <head_sha>
+```
+
+Run the plugin's own scan workflow at maximum effort over the whole tree. Record in `metadata.yml`: plugin version, model id, effort level, agent count, and the commit. Archive the raw output under `scans/claude-code-security-*/` per the archive README so the next assessment can fold it in (step 5.6) instead of re-running it.
+
+If the commit is unreachable (force-push, deleted branch), **stop** — verifying against a different tree produces confident nonsense about lines that have moved.
+
+`SCAN_ROOT` is also where the threat model is read from (procedure step 4): take the model from this tree, at this commit, and reconcile it against the `threat_model` in `metadata.yml` before any finding is dispositioned or panelled. Every later stage — panel, exploitability, report — cites the model, so a mismatch discovered late invalidates all of it.
+
+### M3. Build one docket — carry **every** ASVS finding through
+
+The point of the max pass is a single reconciled view, so:
+
+- **Every finding from the ASVS bundle enters the docket**, alongside every Claude Code Security finding. Not the interesting ones, not the `VALID` ones — all of them. A finding dismissed at triage is exactly the kind that a second scanner's context can revive.
+- Give each a stable `uid` — `<repo>:<scanner>:<id>` — because the two scanners number independently and will collide otherwise. Keep the scanner's own identifier as the `id` part so it still matches the source report's text.
+- Record which commit each finding was reported at. Scanners routinely run at different commits (hard rule 14).
+- Deduplicate by mechanism, never by title: the same defect is described very differently by two scanners.
+
+### M4. Adversarial verification — instruct the reviewer to refute
+
+Dispatch `claude-security:scan-verifier` per finding against `SCAN_ROOT`, with the instruction to **refute**, defaulting to refuted when uncertain. Confirming bias is the failure mode that matters; a verifier told to "check" will find a way to agree.
+
+Each verdict records `CONFIRMED` / `PARTIALLY_CONFIRMED` / `REFUTED` / `UNCERTAIN`, the decisive `file:line`, whether the finding's own anchor was accurate, and any precondition the attack needs. **`PARTIALLY_CONFIRMED` is the most common and most useful verdict** — the mechanism is real but the stated impact overreaches — and collapsing it into confirmed/refuted throws away most of the signal.
+
+Anchor accuracy is worth counting separately: it is the single best measure of a scanner's precision, and it is what tells ASF Tooling something actionable.
+
+### M5. Voting panel on the contested set
+
+Panel every finding either pass rated as potentially CVE-worthy, plus anything the passes disagreed about. Three lenses, each an independent `claude-security:scan-verifier` dispatch:
+
+| Lens | Asks |
+| --- | --- |
+| threat-model | which stated property does this violate, and what makes the principal untrusted? |
+| domain | is this a defect by the standards of this problem domain, model aside? |
+| exploit | can a concrete chain be built, and what must the attacker already hold? |
+
+Then:
+
+- **Tally in code, never in a model.** A model asked to count its own panel will rationalise. Majority (≥ 2 of 3) decides.
+- **Deliberate only where the panel split**, giving each dissenter the others' reasoning and letting it re-vote. Record who moved and on what argument — and record who did *not*, because entrenchment is signal too.
+- **Preserve dissents verbatim.** A minority view with a strong argument is worth more to a PMC than a smoothed-over consensus.
+- The synthesizer that writes the panel narrative **must not vote**, and receives the code-computed tally as authoritative.
+
+> **State the independence caveat, every time.** The lenses are the same base model under different instructions, so a blind spot shared by all three does not show up as disagreement. A 3-0 means "no reviewer objected", not "three independent minds agreed". Write that into the report rather than letting a vote count imply more than it earns.
+
+### M6. Exploitability
+
+For each panel survivor, ask the narrower question: **is there a complete attack chain, and what must the attacker hold before step one?**
+
+| Rating | Meaning |
+| --- | --- |
+| `REACHABLE` | Complete chain, every step read in code, nothing needed beyond enabling the feature under attack |
+| `CONDITIONAL` | Complete chain, but needs a non-default option, a particular runtime, or specific upstream behaviour |
+| `UNPROVEN` | Mechanism confirmed, but a required step could not be settled by reading code |
+
+**`UNPROVEN` is a real answer and must not be rounded up.** Where a step cannot be settled statically, say so and name the specific experiment that would settle it. Emitting a config rule is not the same as capturing traffic; reaching a bind is not the same as the directory accepting it.
+
+Name the **binding constraint** per finding — the one precondition that decides whether a deployment is affected. That single sentence is what a PMC uses to decide whether it applies to them.
+
+### M7. Scan-currency re-check
+
+Step 5.7, unchanged and mandatory here: re-check every reportable finding against the newest commit held before it goes anywhere near the report.
+
+### M8. Draft patches for the CVE-worthy findings
+
+One patch file per repository, generated from real edits in the pinned worktree, archived under `patches/` beside the report.
+
+- **Patches are drafts for the PMC, never filed upstream.** Say so in the file and in the report.
+- **Verify as far as the language allows, and state the ceiling honestly.** Compiled languages get build + vet + the project's own test suite. For interpreted languages with no runtime available, verification is a code re-trace plus a mechanical check that every symbol introduced is in scope — a real check, but not execution. Label the two differently; do not let "reviewed" read as "tested".
+- **Prove the fix with a test that would fail without it.** A test that only passes after the patch proves nothing. Where practical, reproduce the pre-fix behaviour in the test and assert it *was* vulnerable, so a later regression fails loudly instead of passing vacuously.
+- **Do not patch a design decision.** Where the fix would change documented behaviour or break existing deployments, write the analysis and leave the call to the PMC. Flag compatibility breaks explicitly.
+- Check the newest commit first (M7) — an upstream fix may already exist, and discovering that after writing a patch wastes the work.
+
+### M9. Write the PMC report
+
+The main deliverable. Shape and voice are specified below.
+
+## The PMC report
+
+**Audience: a maintainer who is a strong engineer and not a security specialist.** They know their codebase far better than we do, and they should not have to decode our vocabulary to use our output.
+
+### Structure
+
+1. **What this is** — one short paragraph: who scanned, who reviewed, what the document is and is not. State plainly that it is advisory and the PMC owns the call.
+2. **Short summary** — the numbers in three sentences. How many raw findings, how many survived, how many we are actually asking them to look at. Give them permission to ignore the rest.
+3. **Fix these first** — the prioritised list, most important first. Every entry carries:
+   - what goes wrong, in one sentence;
+   - **a concrete exploit scenario** — an attacker who holds X sends Y and gets Z, with the `file:line` that makes it work;
+   - **exploitability** — `REACHABLE` / `CONDITIONAL` / `UNPROVEN`, plus the binding constraint in plain words;
+   - **why it is CVE-worthy** — which promise breaks and for whom, not a CWE number;
+   - the draft patch, if there is one.
+4. **Worth fixing, not urgent** — real defects that did not clear the bar, with one line each on why.
+5. **Gaps in your threat model, and the calls only you can make** — **mandatory, never omitted, even when empty** (say "none found"). Two kinds of item, kept apart because they need different things from the reader:
+   - **Model gaps** — every finding dispositioned `MODEL-GAP`: a real defect the model is *silent* about. State what the model does not say, not that the model is wrong. Give the specific ruling that would settle it, phrased so it can be answered yes or no. Where several findings turn on one gap, present the gap once with the findings under it — a PMC should not have to infer that seven items are one question.
+   - **Proposals that need PMC judgement** — anything where we deliberately stopped short: a fix that would change documented behaviour, a default whose safer value breaks existing deployments, a severity that hinges on a deployment shape only they know, a patch we did not write because writing it would have settled a design decision that is theirs. Say what we would do, what it would cost, and why it is theirs to decide.
+
+   Say which way the ruling cuts. *"If yes, these five become in-scope defects and §4.8 needs a new property; if no, they close as out-of-model and `SECURITY.md` should say plainly that these gates are not security boundaries, because users will otherwise assume they are."* A gap stated without its consequences is a question the PMC has no reason to prioritise.
+
+   Where the project's own code already answers the question one way while the model is silent, **say so** — that is the strongest possible argument for an update, and it comes from their repository rather than from us.
+
+6. **What we could not settle** — findings rated `UNPROVEN`, dependencies we could not read, and the specific experiment that would resolve each.
+7. **Limits you should hold us to** — what was not executed, what depends on a dependency we could not read, where our reviewers are correlated, where this report disagrees with our own earlier passes.
+8. **Where the detail lives** — pointers into the full ASVS and Claude Code Security bundles by report name and section heading, for anyone who wants it. Keep the report readable and let the depth sit behind the pointer.
+
+### Voice
+
+- **Write for a smart non-specialist.** Prefer "an attacker who can create a route in their own namespace" to "an in-scope adversary at trust tier 2". If a term of art earns its place, define it once in the sentence that uses it.
+- **Lead with the consequence, then the mechanism.** A maintainer decides from impact and reaches for the code path second.
+- **No CWE/CVSS-speak as a substitute for explanation.** A CWE id is a cross-reference, not a reason. "Why it is CVE-worthy" must be a sentence about what an attacker gains, not a taxonomy lookup.
+- **Never imply certainty the evidence does not carry.** If nothing was executed, say so in the summary, not only in a footnote.
+- **Group by root cause, not by scanner.** Three findings that are one defect wearing three hats should be fixed once, and saying so saves the PMC real time.
+- **Own our errors in the PMC's document, not just internally.** Where an earlier revision was wrong, correct it at the top and say it was ours. Where the PMC has already fixed something, lead with that.
+- Keep the file scoped to one bundle and name it for what it contains, not for the process that made it.
+
+### Hard content rules for the report
+
+- **No programme cost mechanics** — credit figures, per-token pricing, seat or provisioning mechanics stay out (hard rule in the response SKILL).
+- **No scanner internals.** Methods, agent names and prompts are NDA-covered. "Two independent automated scans, then an adversarial review and a three-way panel" is the right level.
+- **Security prepares and assesses; ASF Tooling runs the scans.** Never describe the Security team as running or owning a scan.
+- **No turnaround dates or queue promises.**
+- **Pre-disclosure.** The report and its patches go to the PMC's `@apache.org` recipients through `frontier-model-preparation-forward` and nowhere else.
+- **Zero code names**, verified by grep before the file is committed — not by reading it over.
 
 ## Relationship to the other Glasswing skills
 

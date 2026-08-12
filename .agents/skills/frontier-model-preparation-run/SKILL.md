@@ -359,7 +359,7 @@ Work against a **local clone at `~/code/tooling-agents-private`** (clone if abse
 
 Enumerate every scan-id directory under `scans/mythos/*/`. For each, read its `metadata.yml` (`project` = PMC slug, `repo`, `scan_date`, `head_sha`), then classify:
 
-1. **No assessment** at `pre-forward-results/mythos/<project>/<scan-id>/` → bucket **`scan-needs-assessment`** → route to `asvs-scan-assess`. (Eligible only if the PMC's `Security model verified` is set; if not, it's blocked on model-verify — surface that instead of assessing.)
+1. **No assessment** at `pre-forward-results/mythos/<project>/<scan-id>/` → bucket **`scan-needs-assessment`** → route to `pre-forward-report-preparation`. (Eligible only if the PMC's `Security model verified` is set; if not, it's blocked on model-verify — surface that instead of assessing.)
 2. **Assessment exists** → read its `metadata.yml` `sanity_check`:
    - `RETURNED` → bucket **`scan-returned`** → escalate to ASF Tooling; do **not** forward a broken scan.
    - `PASS` / `PASS-with-notes` → cross-reference the PMC's tracker row:
@@ -487,7 +487,7 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
 | `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X" (or to defer further). | Surface for operator decision. `frontier-model-preparation-submit` is operator-gated — never auto-fire on this state. |
 | `submitted-awaiting-asf-tooling` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
-| `scan-needs-assessment` | A scan bundle exists at `scans/mythos/<project>/<scan-id>/` in the archive but has **no** matching `pre-forward-results/mythos/<project>/<scan-id>/` assessment (detected in Step 2.5). The pre-forward assessment (sanity check + dispositions) hasn't been produced yet. | Run `asvs-scan-assess` (eligible only if the PMC's `Security model verified` is set; else surface as blocked-on-model-verify). |
+| `scan-needs-assessment` | A scan bundle exists at `scans/mythos/<project>/<scan-id>/` in the archive but has **no** matching `pre-forward-results/mythos/<project>/<scan-id>/` assessment (detected in Step 2.5). The pre-forward assessment (sanity check + dispositions) hasn't been produced yet. | Run `pre-forward-report-preparation` (eligible only if the PMC's `Security model verified` is set; else surface as blocked-on-model-verify). |
 | `scan-needs-forward` | The scan has an assessment with `sanity_check: PASS` / `PASS-with-notes`, but the PMC row's `Forwarded scan to PMC` is blank (Step 2.5). Ready to deliver. | Run `frontier-model-preparation-forward` (attaches the scan `.zip` + assessment `.md`, drafts the email, records the tracker + ponymail permalink). |
 | `scan-returned` | The scan's assessment recorded `sanity_check: RETURNED` (a broken scan — wrong project / stale model / truncation / cross-PMC leak). | Escalate to ASF Tooling for a re-run; do **not** forward. |
 | `enrollable-not-enrolled` | A repo in `Repositories requested` passes Check A on its **default branch** but is absent from `Repositories submitted` (detected by the merged-PR reconciliation in Step 3). Usually caused by a discoverability PR merging quietly — it vanishes from open-PR queries exactly when it becomes enrollable. | Surface with the repo's OSSF Criticality Score and how long it has been enrollable. Operator decides; on go-ahead, `frontier-model-preparation-submit` for that repo (phase-1 subset is fine — see hard rule 6 there). Never auto-enrol. |
@@ -554,7 +554,7 @@ Output format:
 
 ### scan-needs-assessment (N)   [new scan in the archive — from Step 2.5]
 - <PMC> — scan <scan-id> (repo <repo>, <scan_date>); no
-  assessment yet. Next: asvs-scan-assess (if Security model
+  assessment yet. Next: pre-forward-report-preparation (if Security model
   verified; else blocked-on-model-verify).
 
 ### scan-needs-forward (N)   [assessed PASS, ready to deliver — from Step 2.5]
