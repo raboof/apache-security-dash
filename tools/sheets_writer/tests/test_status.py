@@ -937,3 +937,34 @@ def test_repo_funnel_timeseries_aggregates_across_pmcs() -> None:
     #             e2 2 Pre-flight. -> Submitted 1, Pre-flight 4, Ready 0.
     assert by_date["2026-05-10"]["Submitted"] == 1
     assert by_date["2026-05-10"]["Ready"] == 0 and by_date["2026-05-10"]["Pre-flight"] == 4
+
+
+def test_compute_pmc_status_private_model_is_not_plain_verified() -> None:
+    """A private model fills the verified cell but is NOT discoverable.
+
+    Reporting it as "Verified" on the in-flight tab hides the one fact an
+    operator needs before queueing: the scan runner has to be handed the model
+    out-of-band because no repo points at it.
+    """
+    row, col_idx = _row(
+        HEADER,
+        **{
+            "PMC Slug": "commons",
+            "Security Model": "PRIVATE MODEL — https://gist.githubusercontent.com/x/raw/tm.md",
+            "Security model verified": "2026-08-13 — private model (discoverability NOT wired)",
+        },
+    )
+    assert compute_pmc_status(row, col_idx)["model_status"] == "Private"
+
+
+def test_compute_pmc_status_ordinary_model_still_verified() -> None:
+    """The private-model check must not swallow the normal verified case."""
+    row, col_idx = _row(
+        HEADER,
+        **{
+            "PMC Slug": "x",
+            "Security Model": "https://x.org/threat_model.html",
+            "Security model verified": "2026-06-01",
+        },
+    )
+    assert compute_pmc_status(row, col_idx)["model_status"] == "Verified"

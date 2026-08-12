@@ -221,6 +221,15 @@ def compute_pmc_status(row: list[str], col_idx: dict[str, int]) -> dict:
     # use. Terminal unless the PMC reverses, at which point the cell is cleared.
     if model_rejected:
         model_status = "Rejected"
+    elif model_verified and (
+        "private model" in model_verified.lower() or "private model" in model.lower()
+    ):
+        # A private model IS agreed content, so the verified cell is filled — but
+        # a scan cannot discover it from the repository, and it has to be handed
+        # to the runner out-of-band. Reporting that as a plain "Verified" hides
+        # the one fact an operator needs before queueing it, so it gets its own
+        # status rather than being folded in with models the chain resolves to.
+        model_status = "Private"
     elif model_verified:
         model_status = "Verified"
     elif model:
@@ -1383,7 +1392,9 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
     rejected_count = sum(1 for e in entries if e["model_status"] == "Rejected")
     # A Rejected PMC does not count as having a model: the PMC declined an
     # agent-readable one, so it can never feed a scan.
-    has_model = sum(1 for e in entries if e["model_status"] in ("Verified", "Nominated"))
+    # "Private" counts as having a model: the content is agreed, only its
+    # discoverability is missing.
+    has_model = sum(1 for e in entries if e["model_status"] in ("Verified", "Nominated", "Private"))
     results_back = sum(state_counts[s] for s in ("Triaging", "Delivered"))
     origin_counts = {
         key: sum(1 for e in entries if e["model_origin"] == key) for key, _ in MODEL_ORIGINS
@@ -1398,7 +1409,11 @@ def cmd_build_status_tab(args: argparse.Namespace) -> None:
         for key, _ in MODEL_ORIGINS
     }
     origin_complete = {
-        key: sum(1 for e in entries if e["model_origin"] == key and e["model_status"] == "Verified")
+        key: sum(
+            1
+            for e in entries
+            if e["model_origin"] == key and e["model_status"] in ("Verified", "Private")
+        )
         for key, _ in MODEL_ORIGINS
     }
 
