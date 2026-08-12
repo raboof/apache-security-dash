@@ -39,7 +39,6 @@ updates:
       prefix: "ci"
     labels:
       - dependencies
-      - github-actions
     # Cooldown — wait 7 days after upstream release before
     # opening a bump PR. Lets the release shake out any
     # last-minute breakage before we ratchet onto it. The
