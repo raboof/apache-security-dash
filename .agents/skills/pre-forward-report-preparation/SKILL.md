@@ -68,7 +68,8 @@ Passed at invocation ("do the max pass on apisix, `report-steps-to-use=verify,pa
 
 | Parameter | Values | Default | What it controls |
 | --- | --- | --- | --- |
-| `include-asvs-scan` | `true` \| `false` | `true` when an ASVS bundle exists for the project, else `false` | Whether the ASVS bundle's findings enter the docket alongside the Claude Code Security scan. When `true`, **every** ASVS finding is carried through every later stage (M3) — not a filtered subset. |
+| `include-asvs-scan` | `true` \| `false` | `true` when an ASVS bundle exists for the project, else `false` | Whether the ASVS bundle's findings enter the docket. When `true`, **every** ASVS finding is carried through every later stage (M3) — not a filtered subset. |
+| `include-claude-code-scan` | `true` \| `false` | `true` | Whether to run a Claude Code Security scan (M2) and put its findings in the docket. `false` skips M0 and M2 entirely and assesses the archived bundles alone. |
 | `repository-to-scan` | `<org>/<repo>` or a local path, optionally `@<commit>` | the `repo` from the scan bundle's `metadata.yml`, at its `head_sha` | Which tree the Claude Code Security scan and every verification agent read. |
 | `report-steps-to-use` | comma-separated subset of `verify,panel,exploit,currency,patches,report` | all six | Which max-pass stages to run. |
 
@@ -77,6 +78,16 @@ Passed at invocation ("do the max pass on apisix, `report-steps-to-use=verify,pa
 `false` is for the case where there is no ASVS bundle, or the operator wants a clean Claude Code Security read to compare against one already assessed. Record the value in `metadata.yml` either way — a report built from one source reads identically to one built from two unless the provenance says otherwise, and the funnel numbers are not comparable across the two modes.
 
 Setting it `false` when an ASVS bundle *does* exist is a deliberate narrowing: say so in the report's limits section, because the PMC would otherwise reasonably assume both sources were used.
+
+### `include-claude-code-scan`
+
+`false` turns the max pass into "everything except a new scan": the archived bundles still get adversarial verification, a panel, an exploitability pass and a report, but no fresh scan is run. Use it when a Claude Code Security scan of the same commit is **already in the archive** (fold it in via step 5.6 instead — reading a committed scan costs nothing), or when the operator wants the analysis without the scan's cost.
+
+Skipping the scan removes the second opinion, not just a cost: the archived ASVS bundle then becomes the sole source of findings, and the report must not imply otherwise.
+
+**`include-asvs-scan` and `include-claude-code-scan` cannot both be `false`** — that leaves no findings to assess. Reject the combination rather than producing an empty report.
+
+Record both values in `metadata.yml` as `sources_included`. A report built from one source reads identically to one built from two unless the provenance says so, and **the funnel numbers are not comparable across the two modes** — a single-source funnel has no cross-source corroboration at any stage.
 
 ### `repository-to-scan`
 
@@ -397,7 +408,14 @@ Then confirm before relying on it — a silently-absent plugin degrades into "th
 - the agent types `claude-security:scan-verifier`, `claude-security:scan-researcher` and `claude-security:scan-inventory` resolve;
 - the version is **≥ 0.10.0** (earlier ones lack the verifier lens contract this SKILL depends on).
 
-If any check fails, **stop and say so**. Do not emulate the plugin with general-purpose agents and describe the result as a Claude Code Security scan — the provenance stamp in `metadata.yml` would then be false.
+**If any check fails, the max pass does not run.** This is a refusal, not a warning:
+
+1. **Stop.** Do not start M2 and do not fall back. Emulating the plugin with general-purpose agents and calling the result a Claude Code Security scan makes the `metadata.yml` provenance stamp false, and every number downstream inherits that.
+2. **Offer to install it**, and do so on a "yes" — the two commands above are safe and idempotent, so ask once and run them rather than making the operator paste them.
+3. **If installation cannot complete unattended** — no marketplace access, a version below 0.10.0 with no upgrade path, an environment where `/plugin` is unavailable — print the exact steps for the operator to run themselves, including the marketplace `add`, the `install`, and the checks that confirm it worked. Say which check failed and what it means, so they are not debugging blind.
+4. **Offer the fallback explicitly rather than silently taking it:** the baseline assessment, or the max pass with `include-claude-code-scan=false`, both still run and are honest about their sources. Let the operator choose; do not decide for them that a narrower run is good enough.
+
+Never report a max pass as complete when this step did not pass.
 
 ### M1. Sanitize deterministically, before anything reaches a model
 
