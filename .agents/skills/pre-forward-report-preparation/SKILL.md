@@ -590,7 +590,9 @@ Splitting it this way keeps the title readable where titles are shown without th
 
 The name is doing real work: it says who owns it, that it is a prioritised subset rather than everything the scanners produced, and exactly which commit it describes. A report that outlives its commit is misleading, and the title is what stops someone reading a months-old assessment as current.
 
-Filename: the same string, spaces to hyphens, one `.md`. Keep it stable across revisions of the same commit so links do not rot; a new commit gets a new report.
+**Filename: the title only, spaces to hyphens, one `.md`** — `CVE-Worthy-Priority-Issues-to-process-by-APISIX.md`. The commit detail lives in the subtitle and does not belong in the filename: it made names unwieldy, and a bundle spanning two repositories produced a filename long enough to wrap in a terminal.
+
+One report per project per bundle, overwritten in place as the assessment is revised, so links to it never rot. The subtitle is what says which commits it describes — check that first when reading an assessment you did not just generate.
 
 ### Structure
 
@@ -601,12 +603,22 @@ A PMC member should be able to read this alone and know whether they need to act
 - **what was scanned and what came out** — raw finding count, then the number actually in front of them, with severities;
 - **the single most important finding**, in one sentence;
 - **what they have already fixed**, if anything — leading with that is both accurate and a courtesy;
-- **an explicit "what we are asking of you"** list, numbered, naming every ruling and decision required. This is the part most likely to be acted on, so it must not be inferable-only from later sections;
+- **an explicit "what we are asking of you"** list, numbered, naming every ruling and decision required. This is the part most likely to be acted on, so it must not be inferable-only from later sections. **Item 1 is always the review-and-fix ask** — see below;
 - one line stating the document is advisory and nothing is published.
 
 Keep it short enough to read in under a minute. It is a summary, not an abstract of every section — a finding that needs a paragraph belongs below, not here.
 
 **Ask for what you need, plainly.** If two threat-model rulings and three design decisions are required, the TL;DR says so and says which findings each one decides. A report that buries its asks in section five gets the findings triaged and the questions ignored.
+
+**The first ask is always to review and fix, in priority order — never leave it implied.** Everything else in the list is secondary to it. It is easy to omit precisely because it feels obvious, and a report full of rulings and caveats can read as an academic exercise rather than a request to act. Say it directly:
+
+- **review the findings and confirm which hold** in their deployment and their reading of their own model — they may reasonably reach a different answer on any of them;
+- **fix the ones that hold, highest severity first**, with our severities offered as a starting order and explicitly theirs to override;
+- **treat anything they judge a genuine vulnerability through their normal security process**, not as a public issue.
+
+Two things this ask must **not** do. It must not set or imply a deadline, a turnaround, or a queue position — the programme makes no such promise and neither does this report. And it must not instruct: the PMC owns the authoritative call on every finding, so this is a request for their attention in an order we suggest, not a work order. Phrase it as *"we are asking you to"*, not *"you must"*.
+
+Where the PMC already has fixes in flight — merged or open PRs against the findings — say so **in the same breath**, so the ask lands as "please finish and confirm" rather than "please start".
 
 1. **What this is** — one short paragraph: who scanned, who reviewed, what the document is and is not. State plainly that it is advisory and the PMC owns the call.
 2. **Short summary** — the numbers in three sentences. How many raw findings, how many survived, how many we are actually asking them to look at. Give them permission to ignore the rest.
