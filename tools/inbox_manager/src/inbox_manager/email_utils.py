@@ -6,7 +6,7 @@ from datetime import date
 from html import unescape
 import email
 from email.message import EmailMessage
-from email.utils import parseaddr, parsedate_to_datetime
+from email.utils import formataddr, getaddresses, parseaddr, parsedate_to_datetime
 from os import getenv
 from pathlib import Path
 
@@ -381,14 +381,92 @@ def quote_original(original):
     return "\n".join(header_lines) + f"\n{quoted}"
 
 
+# Reporters routinely Cc a project's public dev@/user@ list on their report.
+# Those copies usually sit in the list's moderation queue, but mail this tool
+# sends leaves through the ASF relay as security@apache.org and is NOT
+# moderated - so a reply that kept the list in Cc would publish the report, and
+# the team's assessment of it, straight into the public archives. Every
+# recipient recognised as a public ASF list is therefore dropped from replies.
+#
+# Only apache.org addresses are classified: a list elsewhere cannot be
+# recognised from its address alone, and our mail to it is moderated like
+# anyone else's.
+
+# The non-public lists on a project subdomain: the PMC's private list and its
+# security alias.
+_PRIVATE_LIST_NAMES = {"private", "security"}
+
+# The public lists at the bare apache.org domain. Nearly everything there is
+# either a committer's personal address or a private/moderated foundation list,
+# so this stays an explicit allowlist - the project lists (dev@, user@,
+# commits@, ...) all live on a subdomain and are caught by the rule below.
+_PUBLIC_LIST_NAMES = {
+    "announce",
+    "builds",
+    "community",
+    "diversity",
+    "feathercast",
+    "geospacial",
+    "history",
+    "infrastructure-dev",
+    "iot",
+    "jcp-open",
+    "legal-discuss",
+    "license",
+    "marketing",
+    "mirrors",
+    "privacy-commits",
+    "privacy-discuss",
+    "release-discuss",
+    "repository",
+    "retreats",
+    "site-dev",
+    "women",
+}
+
+
+def is_public_list(addr):
+    """True if ``addr`` is a public ASF mailing list rather than a person.
+
+    Addresses at any other domain are left alone: a list elsewhere is not
+    recognisable from its address.
+    """
+    _, address = parseaddr(addr or "")
+    local, _, domain = address.lower().partition("@")
+    local = local.split("+", 1)[0]  # ignore any plus-addressing suffix
+    if domain.endswith(".apache.org"):
+        # A project subdomain carries lists only - committers' personal
+        # addresses are never on one - so everything but private@/security@
+        # is a public list.
+        return local not in _PRIVATE_LIST_NAMES
+    if domain == "apache.org":
+        return local in _PUBLIC_LIST_NAMES
+    return False
+
+
+def without_public_lists(header_values):
+    """The recipients of a header that are not public lists, as address strings
+    with their display names preserved."""
+    return [
+        formataddr((_header_value(name), address))
+        for name, address in getaddresses([v for v in header_values if v])
+        if address and not is_public_list(address)
+    ]
+
+
 def _reply_envelope(original):
-    """A reply to the reporter(s): From security@, threaded, Bcc the team."""
+    """A reply to the reporter(s): From security@, threaded, Bcc the team.
+
+    Any public ASF mailing list the reporter Cc'ed is dropped (see
+    ``is_public_list``); the remaining Cc recipients are carried over.
+    """
     msg = EmailMessage()
     msg["Message-ID"] = email.utils.make_msgid(domain="security.apache.org")
     msg["From"] = "ASF Security <security@apache.org>"
     msg["To"] = reporter_from(original)
-    if original["Cc"]:
-        msg["Cc"] = original["Cc"]
+    cc = without_public_lists(original.get_all("Cc") or [])
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     msg["Bcc"] = "ASF Security <security@apache.org>"
     subject = str(original["Subject"] or "")
     msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
