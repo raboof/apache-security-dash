@@ -1,262 +1,172 @@
 ---
 name: frontier-model-preparation-forward
 description: >-
-  Forward an ASF Tooling scan result to the PMC by email, with the scan bundle (.zip) and the pre-forward assessment (.md) as ATTACHMENTS.
-  Retrieves the scan from the `apache/tooling-agents-private` archive (`scans/mythos/...`) and its assessment (`pre-forward-results/mythos/...`),
-  extracts the PMC + repo + date from the scan's `metadata.yml`,
-  confirms the assessment's recommended sanity verdict is PASS,
-  and drafts the forwarding email to the PMC's designated scan-result recipients (Cc Security + Tooling + the PMC's own security channel — its `security@<pmc>` team if it runs one, else its `private@<pmc>` list, resolved deterministically via `whimsy-lookup`; Marketing & Publicity is named in the body as a consultation contact but is NOT Cc'd).
-  The draft is created via the `forward-draft` tool (OAuth Gmail, plain-text body + attachments, no tracking) and left UNSENT for human review.
-  After the human sends, hand off to `frontier-model-preparation-update` to set `Date scan received` and `Forwarded scan to PMC`.
-  Use when an ASF Tooling scan (and its assessment) is in the archive and Jarek says "forward the X scan", "the X scan is back", or "send the X results".
+  Close out a Glasswing scan delivery: clear it for release, then record it once ASF Tooling has sent it to the PMC.
+  ASF Tooling now sends the PMC email itself, from `vp-tooling@apache.org`, per `docs/pmc-email.txt` in the `apache/tooling-agents-private` archive — this SKILL no longer drafts, addresses or sends any PMC-facing mail.
+  What it does own: reading the scan directory (`scans/glasswing/<repo>/<scan-id>/`), confirming the report was rendered and its fact-preservation verdict is clean before it goes out, resolving the delivery's ponymail permalink on the Tooling list afterwards, and writing the tracker — `Date scan received`, `Forwarded scan to PMC`, the Scan Queue per-scan block, the Scan Results row, and the mandatory `build-status-tab` refresh.
+  Use when Jarek says "the <PMC> scan is ready to go", "Tooling sent the <PMC> report", "record the <PMC> delivery", or when a sweep finds a scan Tooling has delivered that the tracker does not yet show as forwarded.
 ---
 
 # frontier-model-preparation-forward SKILL
 
 The "results path" of the Frontier Model Preparation pipeline — the inverse of `frontier-model-preparation-submit`.
-Where `submit` enrolls a request *with* ASF Tooling, this SKILL delivers the result *back* to the PMC:
-retrieve the scan bundle and its assessment from the private archive, attach both to a PMC-facing email, and record the delivery in the tracker.
 
-The PMC receives two attachments:
+**The send half is retired.** ASF Tooling delivers scan results to PMCs directly, from `vp-tooling@apache.org`, using the template at `docs/pmc-email.txt` in the archive. That is the correct division: Tooling runs the scans, so Tooling reports them. The Security team must never be framed as running them.
 
-1. **The scan bundle**, zipped — the ASF Tooling scan output (`issues.md`, `metadata.yml`, and the rest of the bundle) from `apache/tooling-agents-private/scans/mythos/<project>/<scan-id>/`.
-2. **The pre-forward assessment** (`.md`) — the team's read of the findings against the project's threat model, with likely dispositions, from `apache/tooling-agents-private/pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (produced by [`pre-forward-report-preparation`](../../../.claude/skills/pre-forward-report-preparation/SKILL.md)).
+What remains here is the half either side of the send:
 
-The assessment is shared with the PMC as an **advisory guide** — the dispositions help the PMC triage quickly, but the PMC's own assessment is authoritative. The team does not decide findings on the PMC's behalf; it hands them the scan plus a starting-point read.
+- **Before** — clear the scan for release: the report exists, it was rendered into the canonical format, and its fact-preservation verdict is clean.
+- **After** — record the delivery: resolve its permalink on the Tooling list and write the tracker so the programme's status views are true.
 
-> **Policy note (2026-07-15):** the assessment used to be a strictly *internal* artefact (never forwarded). It is now **attached to the forward** as an advisory guide. `pre-forward-report-preparation` is updated to match; its dispositions are still the team's working read, not a ruling on the PMC's behalf.
+This SKILL never drafts a PMC email, never resolves PMC recipients, and never sends anything.
 
 ## When to invoke
 
-- An ASF Tooling scan **and** its assessment are in the `apache/tooling-agents-private` archive (`scans/mythos/...` + `pre-forward-results/mythos/...`), and the scan hasn't been forwarded yet.
-- Jarek says "forward the <PMC> scan", "the <PMC> scan is back, send it", "send the <PMC> results".
-- The Mythos tracker shows a PMC with `Date scan requested` filled but `Date scan received` / `Forwarded scan to PMC` blank, and the archive has the scan + assessment.
+- Jarek says "the <PMC> scan is ready to go" / "clear <PMC> for release" (the *before* half).
+- Jarek says "Tooling sent the <PMC> report" / "record the <PMC> delivery" (the *after* half).
+- A sweep finds a scan in `scans/glasswing/` that Tooling has delivered while the tracker still shows `Forwarded scan to PMC` blank.
 
 Skip when:
-- The scan has **no assessment** in `pre-forward-results/mythos/...` yet — run [`pre-forward-report-preparation`](../../../.claude/skills/pre-forward-report-preparation/SKILL.md) first (the assessment is a required attachment).
-- The assessment's recommended sanity verdict is `RETURNED` (a broken scan) — surface it and escalate to ASF Tooling rather than forwarding.
-- The PMC's row indicates incomplete pre-flight (`Security model verified` blank) — should not happen; surface the gap.
+
+- **The scan has no `MAINTAINER-REPORT.md`** — there is nothing to release. Route to [`pre-forward-report-preparation`](../pre-forward-report-preparation/SKILL.md).
+- **The report was never rendered, or its verdict is not clean** — see hard rule 2. Surface it; do not clear it.
+- **The PMC's pre-flight is incomplete** (`Security model verified` blank) — should not happen at this stage; surface the gap.
 
 ## Hard rules (do not skip)
 
-1. **Both artefacts come from the archive, and both are ATTACHED.** Retrieve the scan bundle from `scans/mythos/<project>/<scan-id>/` and the assessment from `pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (against a clean local clone of `apache/tooling-agents-private`). Attach the scan as a single `.zip` (zip the scan-id directory) and the assessment as its `.md`. Do **not** paste findings into the email body — the full content rides in the attachments. **One exception:** the assessment's `MODEL-GAP` findings (dispositions that need a ruling only the PMC can make) are surfaced in the body as an explicit *decision ask* — the decision needed only, not the finding's exploit detail (see "Items needing a PMC decision").
+1. **Never draft, address or send a PMC email.** No recipients, no Cc list, no body template, no `forward-draft`. If asked to send the results, say that Tooling sends them and point at `docs/pmc-email.txt`. The one exception is answering a PMC that has written to `security@apache.org` about a delivered report — that is ordinary Security-team correspondence, not a forward.
 
-2. **Forward only on a passing assessment.** Read the assessment's `metadata.yml` `sanity_check` field (produced by `pre-forward-report-preparation`). Forward only when it is `PASS` or `PASS-with-notes`. If it is `RETURNED` (or the assessment is missing), stop: surface to the operator and escalate to ASF Tooling — do not forward a broken scan. The assessment IS the sanity gate; this SKILL does not re-run the full checklist, it confirms the recorded verdict.
+2. **Clearance is a gate, and it is about the report, not the findings.** Before telling Tooling a scan is ready, confirm in the scan directory that:
+   - `MAINTAINER-REPORT.md` exists (and `CRITICAL-CANDIDATES.md`, where the run nominated critical candidates);
+   - it was rendered by `maintainer-report-plain-language` — an un-rendered report is unreadable by its audience;
+   - its fact-preservation verdict is clean (`report-verification.json` beside the assessment: no `missing`, no `altered`, no `invented`).
 
-3. **Extract identity from the scan, not from memory.** PMC slug, repo, branch, and scan date come from the scan bundle's `metadata.yml` (`project`, `repo`, `head_sha`, `scan_date`; branch defaults to the repo's default branch unless the scan pinned one). These drive the subject line and the tracker cells.
+   A report that fails any of these does not go out. Surface it and route back to [`pre-forward-report-preparation`](../pre-forward-report-preparation/SKILL.md). This is the last gate before a document reaches a PMC, and the failures it catches are invisible to the person receiving it.
 
-4. **Recipients — designated PMC recipients + the PMC's own security channel + Security + Tooling, all `@apache.org`-rooted.**
-   - **To:** the PMC's designated scan-result recipients — the `@apache.org` addresses from the original `[GLASSWING]` request ("send results to …"), i.e. the people who were supposed to be informed.
-   - **Cc:** exactly three:
-     1. `security@apache.org` — the Security-team audit trail.
-     2. `private@tooling.apache.org` — the ASF Tooling audit trail.
-     3. **the PMC's own security channel (the "PMC team Cc")** — the PMC's own `security@<pmc>.apache.org` team **if the PMC runs one**, else its `private@<pmc>.apache.org` list. This loops the PMC's own members in on their project's pre-disclosure findings so they can coordinate the fix on their own list — as was done for Apache APISIX (which has no `security@` team, so the forward Cc'd `private@apisix.apache.org`).
+3. **Extract identity from the scan, not from memory.** Repo URL, branch, full commit SHA and clone date come from `PROVENANCE.md` in the scan directory; the run's execution detail is in `METHODOLOGY.md`. **Glasswing scan directories have no `metadata.yml`** — that file belongs to the older `scans/mythos/` layout and reaching for it here is the most likely way to get the identity wrong.
 
-     Determine the PMC team Cc **deterministically**, never by guessing: run `uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <slug>` and take its `team_cc` field (it reads security-site `project-coordinates.json`, the authoritative record of which PMCs have registered a `security@<pmc>` alias). The tracker's `PMC team Cc` column caches the same value (populated by `sheets-writer backfill-security-cc`); cross-check the two and if they disagree, the cache is stale — re-run the backfill and use the live `whimsy-lookup` value.
+4. **`Forwarded scan to PMC` records when *Tooling* sent it, not when we cleared it.** Never set it on clearance. The evidence that a delivery happened is the message on the Tooling list, not our intention to release.
 
-     Still do **not** Cc the primary/backup contacts individually, or `markpub@apache.org` — Marketing & Publicity is a body consultation contact named in the template, not a recipient of the findings.
+5. **Ponymail must be authenticated to resolve the permalink.** Run `mcp__ponymail__auth_status`; if it reports "Not authenticated", `mcp__ponymail__login` first — the private `tooling` list is not readable anonymously. If ponymail cannot be authenticated, record the permalink as pending and surface a one-line note rather than blocking the tracker write. (The ponymail MCP blocks `security@apache.org` entirely, so always resolve via `private@tooling.apache.org`.)
 
-   **Every** To/Cc address must end in `@apache.org` or `@<pmc>.apache.org` (the PMC team Cc is `security@<pmc>.apache.org` or `private@<pmc>.apache.org` — both satisfy this). Scan results are pre-disclosure vulnerability candidates; `@apache.org` rooting is the cheapest verification the recipient is still an ASF member entitled to see them. If the request's stated destination contains a non-`@apache.org` address, surface the conflict — do not silently substitute; a committer can forward their `@apache.org` address to a personal inbox on their side.
+6. **Refresh the derived tabs — MANDATORY, not optional.** After the tracker writes, run `sheets-writer build-status-tab`. A delivery is **not** recorded until the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist reflect it. Do this after every delivery, every time.
 
-5. **Draft via the `forward-draft` tool — never the claude.ai Gmail connector.** The email has attachments and is PMC-facing (in the operator's name), so it must be plain-text with real links and no tracking. Use [`tools/forward_draft/`](../../../tools/forward_draft/) (`forward-draft create …`), which builds a `multipart/mixed` draft (plain-text body + the two attachments) via the OAuth Gmail API and leaves it **UNSENT**. Do **not** use `mcp__claude_ai_Gmail__create_draft` (it rewrites links / adds tracking and can't attach files). The operator reviews the draft in Gmail and presses Send.
-
-6. **Draft + confirm before creating the draft.** Render the full plan — To / Cc / Subject / body / the two attachment paths + sizes / the assessment's headline (VALID count + sanity verdict) — and wait for explicit "yes" / "send" / "go" before running `forward-draft create` live. (`forward-draft create --dry-run` builds + validates without touching the network — use it in the plan.)
-
-7. **After the operator sends, record it in the tracker — including the tooling-list ponymail permalink.** Hand off to `frontier-model-preparation-update` to write:
-   - `Date scan received` — the scan bundle's commit date in the archive (when ASF Tooling delivered it — not today).
-   - `Forwarded scan to PMC` — today's date (when the operator clicked Send).
-   - the **tooling-list ponymail permalink** of the sent message — `private@tooling.apache.org` is Cc'd, so the forward lands in the ASF Tooling list archive; resolve its `https://lists.apache.org/thread/<tid>` permalink via ponymail (see procedure step 13). Record it in the results-thread ponymail cell (`Scan delivery thread (ponymail)` / `Notes` if no dedicated column exists).
-   - the draft id + scan-id in `Notes` so the next sweep sees a complete record.
-
-   This SKILL does not write to the spreadsheet directly.
-
-   **Also record the per-scan status in the Scan Queue tab** via `sheets-writer scan-queue-set` for the scanned repo — the `Scan N` block: `When scanned` (the scan's `scan_date`), `Model send thread (ponymail)` (the forward's tooling-list permalink from step 12), `When report sent` (today), `Commit hash` (the scanned `head_sha`). These per-scan cells are carried over across `build-status-tab` refreshes keyed by (Repo, Branch/tag), so they persist.
-
-   **Then refresh the derived tabs — MANDATORY, not optional.** Run `sheets-writer build-status-tab` so the PMC shows Delivered/forwarded-closed across the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist (it also carries over the Scan Queue per-scan cells just written). A forward is **not complete** until this refresh has run. Do it after **every** forward (i.e. after all reports in a batch are sent), every time.
-
-8. **Ponymail must be authenticated to resolve the permalink.** Before the post-send permalink lookup, run `mcp__ponymail__auth_status`; if it reports "Not authenticated", `mcp__ponymail__login` first (the private `tooling` list is not readable anonymously). If ponymail can't be authenticated, don't block the forward — record the permalink as pending and surface a one-line note so a later sweep can fill it. (Note: the ponymail MCP blocks `security@apache.org` entirely, so resolve via the `private@tooling.apache.org` list, not the Security list.)
-
-9. **Program-cost confidentiality + publicity guidance live in the template body.** The email must not disclose the program's cost mechanics (the $1M credit value, per-MTok pricing, seat/provisioning). ASF Tooling, the program name, Mythos / Mythos 5, Anthropic, and Claude are all nameable. The template also carries the **attribution + publicity** guidance (don't describe the program's capabilities/models/methods in advisories; the attribution wording; consult Marketing & Publicity) — keep those paragraphs verbatim.
+7. **Programme confidentiality still applies to anything we write.** No cost mechanics (credit value, per-token pricing, seat/provisioning) in tracker notes, replies or summaries. In public, these are "security scans" or "Claude security scans"; the methodology in the reports stays PMC-confidential.
 
 ## Inputs the SKILL needs
 
 | Input | Source |
 | --- | --- |
-| Scan bundle | `apache/tooling-agents-private/scans/mythos/<project>/<scan-id>/` (zip the scan-id directory for the attachment) |
-| Assessment `.md` + sanity verdict | `apache/tooling-agents-private/pre-forward-results/mythos/<project>/<scan-id>/assessment.md` (+ its `metadata.yml` `sanity_check`) |
-| PMC slug / repo / branch / scan date | The scan bundle's `metadata.yml` (`project`, `repo`, `head_sha`, `scan_date`) |
-| Designated scan-result recipients (the To: list) | The PMC row's `Report recipients` cell (falls back to the original `[GLASSWING]` request's "send results to …" list) |
-| PMC team Cc (the PMC's own security channel) | `whimsy-lookup pmc-security-info <slug>` → `team_cc` (authoritative), cross-checked against the tracker's `PMC team Cc` column cache |
-| Primary + backup PMC contacts (for the `<NAMES HERE>` first-names in the body) | The PMC sheet's `Contact Person` + `Backup contact` |
-| `Date scan requested` (pre-condition) | The PMC sheet — must be filled; `Date scan received` / `Forwarded scan to PMC` blank |
+| Scan directory | `apache/tooling-agents-private/scans/glasswing/<repo>/<scan-id>/` |
+| Report + critical candidates | `MAINTAINER-REPORT.md`, `CRITICAL-CANDIDATES.{json,md}` (present only when the run nominated critical candidates) |
+| Fact-preservation verdict | `report-verification.json` beside the assessment in `pre-forward-results/` |
+| Repo / branch / commit / clone date | `PROVENANCE.md` in the scan directory (**not** `metadata.yml` — it does not exist here) |
+| Findings + verdicts, for the Scan Results row | `TRIAGE.{json,md}` — the authoritative verdict record; the report is generated from it |
+| Delivery evidence + permalink | The `private@tooling.apache.org` list thread, subject `[ASF CLAUDE SECURITY SCAN] - <repo>` |
+| `Date scan requested` (pre-condition) | The PMC sheet — must be filled |
 
-If the assessment is missing, its verdict is `RETURNED`, the recipient list is missing, or the scan `metadata.yml` is unreadable — stop and surface the gap.
+If `MAINTAINER-REPORT.md` is missing, the verification verdict is unclean or absent, or `PROVENANCE.md` is unreadable — stop and surface the gap.
 
-## Attachment preparation
+## What ASF Tooling sends (reference only — we do not write it)
 
-1. **Clone/refresh** `apache/tooling-agents-private` (clean tree; reaching the private repo over `gh`/git needs the keychain — bypass the sandbox with the loud banner per the user's rule).
-2. **Zip the scan bundle**: `zip -r -j <scan-id>.zip scans/mythos/<project>/<scan-id>/` (or keep the directory structure with `-r` without `-j` — operator preference; default to a flat zip of the bundle files). Name the zip `<scan-id>.zip`. Write it under `$TMPDIR` (not the job tmp dir — Bash can't write there).
-3. **Copy the assessment** `pre-forward-results/mythos/<project>/<scan-id>/assessment.md` to `$TMPDIR/pre-forward-assessment-<scan-id>.md` (the `pre-forward-assessment-` prefix names it clearly for the PMC and distinguishes it from the scan `.zip`).
-4. Both files become `--attach` arguments to `forward-draft create`.
+Recorded here so the delivery can be recognised on the list and its permalink resolved, **not** as a template to fill. The authoritative copy is `docs/pmc-email.txt` in the archive; if it and this section disagree, the archive wins.
 
-## Email template
+- **From** `vp-tooling@apache.org`, **Reply-to** `private@tooling.apache.org`.
+- **To** `private@<project>.apache.org`, `private@tooling.apache.org`, `security@apache.org`.
+- **Subject** `[ASF CLAUDE SECURITY SCAN] - <short repo name>`.
+- **One attachment**, `scan-<project>-<date>.zip`, holding the full artefact set plus `FAQ.md`.
+- The body points the PMC at `MAINTAINER-REPORT.md` first, lists the critical vulnerabilities inline, names `TRIAGE.md` and `PATCHES.md`, and routes critical findings through `cveprocess.apache.org`.
+- Signed by ASF Tooling and ASF Security jointly.
 
-**Subject**: `[GLASSWING] ASVS Tooling security scan results <PMC> <repository>/<branch> <YYYY-MM-DD>`
-(e.g. `[GLASSWING] ASVS Tooling security scan results Apache APISIX apisix-ingress-controller/main 2026-07-15`)
-
-**To**: the PMC's designated scan-result recipients (the `@apache.org` addresses from the request).
-
-**Cc**: `security@apache.org`, `private@tooling.apache.org`, **and the PMC team Cc** (the PMC's own `security@<pmc>.apache.org` team if it runs one, else its `private@<pmc>.apache.org` list — from `whimsy-lookup pmc-security-info`'s `team_cc`). (Not the primary/backup contacts individually, and not `markpub@apache.org`.)
-
-**Attachments**: `<scan-id>.zip` (the scan bundle) and `pre-forward-assessment-<scan-id>.md` (the assessment).
-
-**Body** (plain text — `<NAMES HERE>` are the To: recipients' first names; adjust the sign-off if a different operator sends):
-
-```text
-Hello <NAMES HERE>,
-
-Attached is the security scan with ASVS using Glasswing Mythos5 - the tooling
-team ran it as part of our scanning effort. It's been re-validated with
-adversarial review against the security threat/model you have - and the
-assessment with likely dispositions are also attached.
-
-The report includes a list of vulnerabilities with severity: we recommend that
-you look at all of them to determine if those are actual vulnerabilities, a
-hardening fix to be treated as a normal issue, or a false positive to be
-ignored. The automated dispositions might guide you with that, but your
-assessment is what counts - the dispositions should help you to do it quickly.
-
-The VALID issues are the ones you should pay special attention to - but we
-encourage you to take a look at all - even hardening opportunities - if you
-have time.
-
-<DECISION SECTION — include ONLY when the assessment records ≥1 MODEL-GAP; omit entirely otherwise. See "Items needing a PMC decision" below.>
-
-Since this is the first time ASF runs such scans, we need your help - please
-provide feedback on the results received.
-
-We also ask that you not describe the program's capabilities, models, or
-methods in greater detail in advisories.
-
-Attribution advisories should read:
-
-"[Apache <project> researcher or team] in collaboration with Claude and
-Anthropic Research"
-
-Consult with Marketing & Publicity about any other public statements. We may
-provide additional guidance in the future.
-
-Best,
-
-Jarek
-
-Contacts:
-
-Security: security@apache.org
-Tooling: private@tooling.apache.org
-Marketing and Publicity: markpub@apache.org
-```
-
-Plain text; no marketing flourish; links verbatim (no tracking). The findings and dispositions are in the attachments — do not inline them in the body.
-
-### Items needing a PMC decision (the `<DECISION SECTION>` placeholder)
-
-The one deliberate exception to "don't inline findings" (hard rule 1): when the assessment records **`MODEL-GAP`** findings — dispositions that hinge on a trust boundary the project's model doesn't state, so only the PMC/model-owner can rule — surface them in the body as an explicit decision ask, because a ruling buried in the attachment is easy to miss and it blocks a clean disposition. Inline only the **decision needed**, never the finding's exploit details (those stay in the attachment).
-
-- **Source:** the assessment's `dispositions.yml` entries with `disposition: MODEL-GAP` (equivalently the `MODEL-GAP` rows in `assessment.md` and its Headline's "ruling needed" note). The count is in the assessment `metadata.yml` `model_gaps`.
-- **When `model_gaps: 0`** — omit the `<DECISION SECTION>` line entirely; no paragraph, no "none needed" filler.
-- **When `model_gaps: ≥1`** — replace the placeholder with a short paragraph: "One thing needs a decision from your side" (singular) / "A few things need decisions from your side" (plural), then for each MODEL-GAP name the finding id(s), the specific ruling required, and the model clauses in tension (spell out section numbers/properties in plain words, not just "§4.8#9"). Point to the `MODEL-GAP` rows in the attached assessment. Keep it to a few sentences per gap — it's a decision ask, not a re-statement of the finding.
-- Do **not** promote VALID / VALID-HARDENING findings into the body — those are the PMC's normal triage, already covered by the "VALID issues" paragraph. Only genuine `MODEL-GAP`s (a needed model ruling) go in the decision section.
+`security@apache.org` is a direct recipient, so the delivery lands in the Security team's own inbox — that is the normal signal to run the *after* half.
 
 ## Procedure
 
-1. **Identify the scan.** From Jarek's instruction (a project name) or a new bundle in `scans/mythos/`. Resolve to the `<project>/<scan-id>` directory. If ambiguous, list candidates and ask.
+### A. Clear the scan for release
 
-2. **Refresh the archive locally** (`git pull` on a clean clone of `apache/tooling-agents-private`; sandbox-bypass for the private-repo fetch, loud banner).
+1. **Identify the scan.** From Jarek's instruction (a project name) or a new directory in `scans/glasswing/`. Resolve to `<repo>/<scan-id>`. Where a repo has several scan directories, take the most recent unless told otherwise. If ambiguous, list candidates and ask.
 
-3. **Read the scan `metadata.yml`** — extract `project` (PMC slug), `repo`, `head_sha`, `scan_date`, and the branch (default branch unless pinned). These build the subject line and the tracker dates.
+2. **Refresh the archive locally** — `git pull` on a clean clone of `apache/tooling-agents-private`. (Reaching the private repo over `gh`/git needs the keychain: bypass the sandbox, with the loud banner per the user's rule.)
 
-4. **Confirm the assessment + its verdict.** Read `pre-forward-results/mythos/<project>/<scan-id>/metadata.yml`. If it's absent, stop and route to `pre-forward-report-preparation`. If `sanity_check` is `RETURNED`, stop and escalate to ASF Tooling. Note the assessment's headline (VALID count) for the plan. Proceed only on `PASS` / `PASS-with-notes`.
+3. **Read `PROVENANCE.md`** for repo, branch, full commit SHA and clone date. These drive the tracker cells and identify the run.
 
-5. **Pull the PMC's row** from the Mythos tracker (via the `frontier-model-preparation-status` flow or a direct Sheets read). Confirm `Scan Requested = Yes`, `Repositories submitted` non-empty, `Date scan requested` filled, `Date scan received` + `Forwarded scan to PMC` blank. Refuse on any wrong pre-condition.
+4. **Run the clearance gate** (hard rule 2): report present, rendered, verdict clean. Report the result plainly — cleared, or the specific failure and where it routes.
 
-6. **Assemble recipients** (hard rule 4). To: the designated scan-result recipients (the PMC row's `Report recipients` / the `[GLASSWING]` request). Cc: `security@apache.org` + `private@tooling.apache.org` + **the PMC team Cc**. Resolve the PMC team Cc deterministically: run `uv run --project tools/whimsy_lookup whimsy-lookup pmc-security-info <slug>` and take `team_cc` (`security@<pmc>` if the PMC runs a team, else `private@<pmc>`); cross-check it against the tracker's `PMC team Cc` column — if they differ, re-run `sheets-writer backfill-security-cc` and use the live value. Do not Cc the contacts individually or `markpub`. Verify every address is `@apache.org`/`@<pmc>.apache.org`-rooted; surface any that isn't.
+5. **Tell the operator the scan is cleared**, naming the scan directory and what Tooling will be sending. Stop there. Handing off to Tooling is the operator's action, not this SKILL's.
 
-7. **Prepare the attachments** (see "Attachment preparation"): zip the scan bundle and copy the assessment `.md` into `$TMPDIR`.
+### B. Record the delivery, once Tooling has sent it
 
-8. **Write the body** from the template (fill `<NAMES HERE>`, `<project>`; keep the attribution + publicity paragraphs verbatim) to a plain-text file in `$TMPDIR`. **Resolve the `<DECISION SECTION>` placeholder** from the assessment's `MODEL-GAP` findings (see "Items needing a PMC decision"): the assessment `metadata.yml` `model_gaps` count and the `dispositions.yml` `MODEL-GAP` entries. If `model_gaps: 0`, delete the placeholder line entirely; if `≥1`, replace it with the per-gap decision paragraph (finding id(s) + ruling needed + the model clauses in tension, in plain words), pointing at the `MODEL-GAP` rows in the attached assessment.
+6. **Confirm it actually went out.** The delivery is Cc'd to `security@apache.org`, so it is in the Security inbox; the durable evidence is the Tooling-list thread. Do not take "Tooling said they would send it" as the trigger.
 
-9. **Render the plan + dry-run.** Show To / Cc / Subject / body / the two attachment paths + sizes / the assessment headline (VALID count + sanity verdict). Run `forward-draft create … --dry-run` to validate (attachments exist, no inline HTML, sizes). Show the operator.
+7. **Resolve the ponymail permalink.** Authenticate (hard rule 5), then `mcp__ponymail__search_list` with `list=private`, `domain=tooling.apache.org`, matching the subject `[ASF CLAUDE SECURITY SCAN] - <repo>` from `vp-tooling@apache.org`. Take its `tid` and build `https://lists.apache.org/thread/<tid>`. The archive can take a minute or two to index — if it is not there yet, record the permalink as pending rather than blocking.
 
-10. **Wait for explicit approval** ("yes" / "send" / "go").
+8. **Hand off to [`frontier-model-preparation-update`](../frontier-model-preparation-update/SKILL.md)** to write:
+   - `Date scan received` — when the scan landed in the archive (its commit date there), **not** today;
+   - `Forwarded scan to PMC` — the date Tooling sent it (hard rule 4);
+   - the Tooling-list ponymail permalink from step 7;
+   - the scan-id in `Notes`, so the next sweep sees a complete record.
 
-11. **Create the draft** with `forward-draft create` (live — same args, without `--dry-run`). It builds the `multipart/mixed` draft (plain-text body + `.zip` + `.md`) via the OAuth Gmail API and prints the draft's Gmail URL. The draft is **UNSENT** — the operator reviews it in Gmail (including that both attachments are present) and presses Send.
+   This SKILL does not write to the spreadsheet directly.
 
-12. **Resolve the tooling-list ponymail permalink** (after the operator confirms they've sent). Ensure ponymail is authenticated (`mcp__ponymail__auth_status`; `mcp__ponymail__login` if not). Then `mcp__ponymail__search_list` with `list=private`, `domain=tooling.apache.org`, and the forward's subject (`[GLASSWING] ASVS Tooling security scan results …`), matching the message the operator just sent (the newest thread whose subject matches, from the operator's `@apache.org` address). Take its `tid` and build `https://lists.apache.org/thread/<tid>`. The archive may take a minute or two to index the message — if it isn't there yet, note the permalink as pending rather than blocking. Do this via the `private@tooling.apache.org` list (the Cc'd Tooling list), never `security@apache.org` (ponymail blocks it).
+9. **Record the per-scan status in the Scan Queue tab:**
 
-13. **Hand off to `frontier-model-preparation-update`** (hard rules 7 + 8) once the operator confirms they've sent: set `Date scan received` (archive commit date) + `Forwarded scan to PMC` (today) + the tooling-list ponymail permalink (from step 12) + the draft id / scan-id in `Notes`. Do not set `Forwarded scan to PMC` before the operator has actually sent.
+   ```bash
+   uv run --project tools/sheets_writer sheets-writer scan-queue-set \
+     --spreadsheet-id <id> \
+     --repo <repo URL, exactly as in the Scan Queue 'Repo' column> \
+     --branch <ref, or omit for the default-branch row> \
+     --scan 1 \
+     --when-scanned <scan date from PROVENANCE.md> \
+     --model-thread <tooling-list permalink from step 7> \
+     --when-report-sent <the date Tooling sent it> \
+     --commit <full commit SHA>
+   ```
 
-13a. **Refresh the `Scan Results` tab** so the delivered scan's numbers land in the programme's outcome view:
+   (`--dry-run` first to confirm it targets the right row and cells.) A branch-scoped scan uses that `--branch`; a multi-repo PMC runs this once per scanned repo.
 
-```bash
-uv run --project tools/sheets_writer sheets-writer build-scan-results-tab \
-    --spreadsheet-id "<id>" --archive-root ~/code/tooling-agents-private \
-    --today <YYYY-MM-DD>
-```
-
-This picks up the scan's findings total and the assessment's disposition counts + percentages automatically. It leaves the four feedback columns blank — that is correct at forward time, since the PMC has not replied yet.
-
-**When the PMC does reply, record it** with `sheets-writer scan-results-set --scan-id <the same scan id>` (`Feedback received` / `Sentiment` / `Feedback summary` / `Improvements suggested`). See [`frontier-model-preparation-run`](../frontier-model-preparation-run/SKILL.md) Step 6 for how to write those cells — in particular: read the whole reply rather than the snippet, quote the load-bearing phrase verbatim, and judge sentiment on the report rather than the politeness of the message. A courteous reply saying the findings were not worth the triage effort is `Negative`.
-
-This closes the loop the programme most needs: the scan asks PMCs for feedback explicitly ("since this is the first time ASF runs such scans, we need your help"), so the reply is the only evidence of whether the scans are worth what they cost the PMC to triage.
-
-14. **Record the per-scan status in the Scan Queue tab** (hard rule 7). Run `sheets-writer scan-queue-set` for the scanned repo and its `Scan N` block (Scan 1 for a first scan):
+10. **Refresh the `Scan Results` tab:**
 
     ```bash
-    uv run --project tools/sheets_writer sheets-writer scan-queue-set \
-      --spreadsheet-id <id> \
-      --repo <repo URL, exactly as in the Scan Queue 'Repo' column> \
-      --branch <ref, or omit for the default-branch row> \
-      --scan 1 \
-      --when-scanned <scan_date> \
-      --model-thread <tooling-list ponymail permalink from step 12> \
-      --when-report-sent <today> \
-      --commit <head_sha>
+    uv run --project tools/sheets_writer sheets-writer build-scan-results-tab \
+        --spreadsheet-id "<id>" --archive-root ~/code/tooling-agents-private \
+        --today <YYYY-MM-DD>
     ```
 
-    (`--dry-run` first to confirm it targets the right row/cells.) A repo with a branch-scoped scan uses that `--branch`; a multi-repo PMC runs this once per scanned repo.
+    It leaves the four feedback columns blank, which is correct at delivery time — the PMC has not replied yet.
 
-15. **Refresh the derived tabs — MANDATORY closing step (hard rule 7).** Run `sheets-writer build-status-tab` so the PMC shows Delivered/forwarded-closed across the Status / Completed / Timeline / Program-totals / Model-Status tabs and the dashboard gist (it carries over the Scan Queue per-scan cells from step 14). The forward is not complete until this has run — do it after every forward (after all reports in a batch are sent), every time. This is not optional.
+11. **Refresh the derived tabs — MANDATORY closing step** (hard rule 6): `sheets-writer build-status-tab`. The delivery is not recorded until this has run.
+
+### C. When the PMC replies
+
+12. **Record the feedback** with `sheets-writer scan-results-set --scan-id <the same scan id>` (`Feedback received` / `Sentiment` / `Feedback summary` / `Improvements suggested`). See [`frontier-model-preparation-run`](../frontier-model-preparation-run/SKILL.md) Step 6 for how to write those cells — read the whole reply rather than the snippet, quote the load-bearing phrase verbatim, and judge sentiment on the **report**, not on the politeness of the message. A courteous reply saying the findings were not worth the triage effort is `Negative`.
+
+    Tooling's template asks for feedback explicitly and gives `private@tooling.apache.org` as the reply-to, so some replies will not reach us directly — check the Tooling list as well as the Security inbox before recording a scan as having had no response.
+
+    This closes the loop the programme most needs: the reply is the only evidence of whether a scan was worth what it cost the PMC to triage.
 
 ## Style notes
 
-- **The body is the template; the substance is the attachments.** Don't summarise findings in the body, don't paste dispositions inline — the PMC opens the `.zip` and the `.md`.
-- **Keep the attribution + publicity paragraphs verbatim.** They are program guidance, not prose to trim.
-- **One PMC per forward.** Don't batch; don't Cc another PMC's `private@` list. A scan covering multiple repos of the same PMC is still one PMC forward (attach the relevant bundle(s)).
-- **`@apache.org` rooting is non-negotiable** on To and Cc (hard rule 4).
-- **Sign in the operator's voice.** The template signs "Jarek"; if a different Security-team member sends, adjust the sign-off before drafting.
-- **The draft is UNSENT.** `forward-draft` never sends; the human presses Send after reviewing the attachments in Gmail.
+- **We clear and we record; Tooling reports.** Any phrasing that puts the Security team in the sending seat is wrong, in the tracker as much as in an email.
+- **The gate is about the document, not the findings.** Whether a finding is real is the PMC's call and was settled upstream; whether the report is readable and faithful to its own evidence is ours.
+- **One PMC per delivery record.** A scan covering several repos of one PMC is still one delivery, with a Scan Queue row per repo.
+- **Pending beats wrong.** A permalink that is not indexed yet gets recorded as pending, never guessed.
 
-## Examples of bad forwards (avoid)
+## Examples of bad closures (avoid)
 
-- Forwarding without the assessment attached, or before `pre-forward-report-preparation` has produced it — the assessment is a required attachment and the sanity gate.
-- Forwarding a scan whose assessment verdict is `RETURNED` — that's a broken scan; escalate to ASF Tooling.
-- Pasting the findings / dispositions into the email body instead of attaching them.
-- Using `mcp__claude_ai_Gmail__create_draft` — it can't attach files and adds tracking. Use `forward-draft`.
-- Dropping any of the three required Cc addresses — `security@apache.org`, `private@tooling.apache.org`, or the **PMC team Cc** (the PMC's own `security@<pmc>`/`private@<pmc>`). Also wrong: Cc'ing `markpub@apache.org` or the primary/backup contacts individually, using a non-`@apache.org` recipient, or **guessing** the PMC team Cc instead of resolving it from `whimsy-lookup pmc-security-info` (e.g. assuming a `security@<pmc>` team exists when the PMC has none — for those you Cc `private@<pmc>`, as with APISIX).
-- Setting `Forwarded scan to PMC` before the operator has actually clicked Send.
-- Naming the program's cost mechanics ($1M value, per-MTok pricing, seat/provisioning) in the body.
+- Drafting or sending a PMC email from this SKILL, or reintroducing recipient logic. Tooling sends; `docs/pmc-email.txt` is theirs.
+- Setting `Forwarded scan to PMC` on clearance, before Tooling has actually sent.
+- Clearing a scan whose report was never rendered, or whose fact-preservation verdict was not clean — both failures are invisible to the PMC receiving it.
+- Reading `metadata.yml` for identity in a `scans/glasswing/` directory. It does not exist there; use `PROVENANCE.md`.
+- Treating a finding count from `VULN-FINDINGS` as the verdict. `TRIAGE.json` is authoritative; `VULN-FINDINGS` is pre-triage and includes items later rejected.
+- Recording a scan as having had no feedback without checking the Tooling list — the template's reply-to points there, not at us.
+- Skipping `build-status-tab`. The delivery is not recorded until the derived tabs show it.
 
 ## Provenance
 
-This SKILL completes the back half of the Frontier Model Preparation pipeline.
-Two shifts landed 2026-07-15 when the program moved in-house to ASF Tooling:
-(1) the scan and its assessment are retrieved from the `apache/tooling-agents-private` archive and delivered as **attachments** (scan `.zip` + assessment `.md`) rather than pasted verbatim into the email body;
-(2) the pre-forward **assessment is now shared** with the PMC as an advisory guide (previously internal-only) — the PMC still owns the authoritative disposition call.
-The forwarding email is drafted via the `forward-draft` OAuth helper (plain-text body + attachments, no tracking), never the claude.ai Gmail connector.
+This SKILL originally drafted and sent the PMC email itself, in the operator's name, attaching the scan bundle and the pre-forward assessment.
 
-A third shift landed 2026-07-18: the forward now **Cc's the PMC's own security channel** — its `security@<pmc>.apache.org` team when it runs one, else its `private@<pmc>.apache.org` list — in addition to the Security + Tooling audit trail. This reverses the earlier "Cc only these two" rule: the PMC's own list is the right place for the project to receive and coordinate its pre-disclosure findings (first done for Apache APISIX by Dave — APISIX has no `security@` team, so its forward Cc'd `private@apisix.apache.org`).
+That half was **retired on 2026-08-14**. ASF Tooling now delivers results directly from `vp-tooling@apache.org` using `docs/pmc-email.txt`, agreed in the archive and co-signed by both teams. The change follows the standing scope ruling: threat-model preparation is the Security team's remit, Tooling runs the scans, and Security must never be framed as running them. Reporting sits with whoever ran the scan.
 
-Cc'ing the PMC's own list was **not** in the original design — the forward's `To:` was only the individuals who volunteered as scan-result contacts in the `[GLASSWING]` request. On reflection it is worth doing, because a meaningful amount of time can pass between when those people volunteered and when a scan result is finally delivered: individuals rotate off the PMC, change roles, or simply go stale as points of contact, and a message addressed only to them can miss the project's active security audience. Routing a copy to the PMC's durable `security@<pmc>` / `private@<pmc>` channel ensures the findings reach whoever is currently responsible, not just the names captured at sign-up. (Piotr hit exactly this on the APISIX forward — he had to re-forward to `private@apisix.apache.org` by hand because the original went only to the two named contacts and no PMC-accessible list.)
+The delivery also moved to the `scans/glasswing/` layout, whose artefact set (`MAINTAINER-REPORT.md`, `TRIAGE`, `VULN-FINDINGS`, `PATCHES`, `PROVENANCE`, `METHODOLOGY`) replaced the older `scans/mythos/` bundle, and whose report is rendered and fact-checked by `maintainer-report-plain-language` before release.
 
-The PMC team Cc is resolved **deterministically** from security-site `project-coordinates.json` via `whimsy-lookup pmc-security-info` (`team_cc`), and cached per-PMC in the tracker's `PMC team Cc` column (populated by `sheets-writer backfill-security-cc`) so it is visible without a live lookup.
+`tools/forward_draft/` was built for the retired half and now has no caller in this repository.
