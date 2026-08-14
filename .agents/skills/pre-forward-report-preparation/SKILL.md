@@ -36,7 +36,13 @@ The **pre-forward assessment and report** step of the Glasswing pipeline — a d
 | Exploitability pass | no | yes |
 | Scan-currency re-check | yes (step 5.7) | yes |
 | Draft patches for CVE-worthy findings | no | yes |
-| Plain-language PMC report | short form | **full — the main deliverable** |
+| Plain-language PMC report | not produced | **full — the main deliverable** |
+
+> **There is no short-form report.** The baseline produces the internal assessment only. When a
+> report is wanted it is produced by the full pipeline and rendered by
+> `maintainer-report-plain-language` — one format and one verification contract, whether it is
+> written today or rewritten from the archive. A depth that skipped stages says so in its limits
+> section; it does not ship a thinner report shape.
 
 The max pass costs hundreds of agent dispatches and real money. It runs **only on explicit operator instruction** (hard rule 12) — never because a bundle looks interesting.
 
@@ -57,7 +63,9 @@ The max pass costs hundreds of agent dispatches and real money. It runs **only o
 
 Skip / refuse when:
 - **The project has not completed threat-model preparation** — the Mythos tracker's `Security model verified` cell for the PMC is blank (model merely nominated, or pending verification). See hard rule 2. Without a *verified* model there is no stable contract to disposition against; surface the gap and route to `frontier-model-preparation-model-verify` instead.
-- The scan bundle is missing `issues.md` or `metadata.yml` — surface the gap; there is nothing to triage.
+- **When `include-asvs-scan` is `true`,** the ASVS bundle is missing `issues.md` or
+  `metadata.yml` — surface the gap. Either drop to the pipeline as the sole source (and say so in
+  the report's limits) or stop; do not assess a bundle that is not there.
 - The `metadata.yml` `threat_model` URL is absent or unreachable — refuse and surface; an assessment without the model is just opinion, not a disposition against the contract.
 
 For "assess the pending scans", the eligible set is the **intersection** of (scans archived but not yet assessed) and (projects whose `Security model verified` is set). Projects with an archived scan but an unverified model are listed as "skipped — model not verified", not assessed.
@@ -68,16 +76,26 @@ Passed at invocation ("do the max pass on apisix, `report-steps-to-use=verify,pa
 
 | Parameter | Values | Default | What it controls |
 | --- | --- | --- | --- |
-| `include-asvs-scan` | `true` \| `false` | `true` when an ASVS bundle exists for the project, else `false` | Whether the ASVS bundle's findings enter the docket. When `true`, **every** ASVS finding is carried through every later stage (M3) — not a filtered subset. |
+| `include-asvs-scan` | `true` \| `false` | `false` | Whether the ASVS bundle's findings enter the docket. When `true`, **every** ASVS finding is carried through every later stage (M3) — not a filtered subset. |
 | `include-claude-code-scan` | `true` \| `false` | `true` | Whether to run a Claude Code Security scan (M2) and put its findings in the docket. `false` skips M0 and M2 entirely and assesses the archived bundles alone. |
 | `repository-to-scan` | `<org>/<repo>` or a local path, optionally `@<commit>` | the `repo` from the scan bundle's `metadata.yml`, at its `head_sha` | Which tree the Claude Code Security scan and every verification agent read. |
 | `report-steps-to-use` | comma-separated subset of `verify,panel,exploit,currency,patches,report` | all six | Which max-pass stages to run. |
 
 ### `include-asvs-scan`
 
-`false` is for the case where there is no ASVS bundle, or the operator wants a clean Claude Code Security read to compare against one already assessed. Record the value in `metadata.yml` either way — a report built from one source reads identically to one built from two unless the provenance says otherwise, and the funnel numbers are not comparable across the two modes.
+Off by default. The full pipeline is the primary source of findings; an ASVS bundle is an
+additional source, folded in when the operator asks — typically to compare a new read against one
+already assessed, or because the PMC was forwarded the ASVS bundle and will expect its findings
+accounted for.
 
-Setting it `false` when an ASVS bundle *does* exist is a deliberate narrowing: say so in the report's limits section, because the PMC would otherwise reasonably assume both sources were used.
+When `true`, **every** ASVS finding enters the docket and is carried through every later stage —
+not a filtered subset. Record the value in `metadata.yml` either way: a report built from one
+source reads identically to one built from two unless the provenance says otherwise, and **the
+funnel numbers are not comparable across the two modes** — a single-source funnel has no
+cross-source corroboration at any stage.
+
+Turning it on when no bundle exists is an error, not a no-op: say so rather than producing a
+report whose provenance claims a source it never read.
 
 ### `include-claude-code-scan`
 
@@ -85,7 +103,7 @@ Setting it `false` when an ASVS bundle *does* exist is a deliberate narrowing: s
 
 Skipping the scan removes the second opinion, not just a cost: the archived ASVS bundle then becomes the sole source of findings, and the report must not imply otherwise.
 
-**`include-asvs-scan` and `include-claude-code-scan` cannot both be `false`** — that leaves no findings to assess. Reject the combination rather than producing an empty report.
+**`include-claude-code-scan` may only be `false` when `include-asvs-scan` is `true`.** The scan is the default source; turning it off is the narrowing that needs justifying, and turning both off leaves nothing to assess. Reject the combination rather than producing an empty report.
 
 Record both values in `metadata.yml` as `sources_included`. A report built from one source reads identically to one built from two unless the provenance says so, and **the funnel numbers are not comparable across the two modes** — a single-source funnel has no cross-source corroboration at any stage.
 
@@ -167,6 +185,11 @@ Record the selection in `metadata.yml` as `report_steps: [...]`. A report produc
 
     **The hook does not cover prompts you build by hand.** Every leak observed to date came from hard-coding a raw archive path into an agent prompt, which never passes through `Read`. Build agent prompts from sanitized values only. Full mechanics in "The max pass" → M1.
 
+16. **A report never reaches a PMC un-rendered and unverified.** The canonical format and the
+    fact-preservation check are the last two gates before a report leaves the archive. Skipping
+    either produces a document that is either unreadable by its audience or unprovable against
+    its own evidence — and both failures are invisible to the person receiving it.
+
 ## Disposition framework
 
 Use the project model's own table when it has one. The threat-model-producer rubric (which most of these models follow) defines a **§13 triage dispositions** table — use those labels verbatim. The generic fallback set, when the model defines none:
@@ -218,7 +241,9 @@ Each assessment leaf directory holds:
 
 | File | Purpose |
 | --- | --- |
-| `REPORT-FOR-PMC.md` | **The deliverable.** Plain-language report for a non-specialist maintainer: summary, prioritised fix list with exploit scenarios and CVE-worthiness rationale, open questions, limits, pointers into the detailed bundles. Shape and voice in "The PMC report". |
+| `MAINTAINER-REPORT.md` | **The deliverable**, produced by the full pipeline and rendered by `maintainer-report-plain-language`. Filename, title, structure and voice are specified there, not here. Rewritten **in place in the scan directory**; `pre-forward-results/` references it by path and never holds a second copy. Two copies of a 90 KB report drift the moment either is revised, and nothing then says which one a PMC was sent. |
+| `CRITICAL-CANDIDATES.md` | The critical subset, where critical candidates exist. Same canonical format and the same fact-preservation gate. |
+| `report-verification.json` | Per-file fact-preservation verdict from the language pass — missing / altered / invented. Written whenever a report was rendered. |
 | `adversarial-review.md` | Per-finding verification verdicts across both scan sources, with anchor accuracy and per-scanner precision. |
 | `panel-votes.json` | Raw panel record: per-lens votes, round-1 and final code-computed tallies, who changed position and on what argument. |
 | `PANEL-REPORT.md` | The panel's narrative, written by a rapporteur that did not vote. |
@@ -560,96 +585,38 @@ One patch file per repository, generated from real edits in the pinned worktree,
 - **Do not patch a design decision.** Where the fix would change documented behaviour or break existing deployments, write the analysis and leave the call to the PMC. Flag compatibility breaks explicitly.
 - Check the newest commit first (M7) — an upstream fix may already exist, and discovering that after writing a patch wastes the work.
 
-### M9. Write the PMC report
+### M9. Write the report
 
-The main deliverable. Shape and voice are specified below.
+The main deliverable: `MAINTAINER-REPORT.md`, plus `CRITICAL-CANDIDATES.md` where critical
+candidates exist.
+
+### M10. Render it into the canonical format, and verify it
+
+Hand both files to `maintainer-report-plain-language`. It is not optional and not a polish step:
+it is what makes the report readable by the maintainer who receives it, and identical in shape to
+every other report in the archive.
+
+Its verification stage is a **gate**. A rewrite that fails fact-preservation does not ship — it is
+re-run once with the verifier's findings as input, and a second failure stops the report and
+surfaces it. Store the verdict as `report-verification.json` beside the assessment, never in the
+report itself.
 
 ## The PMC report
 
 **Audience: a maintainer who is a strong engineer and not a security specialist.** They know their codebase far better than we do, and they should not have to decode our vocabulary to use our output.
 
-### Name
+**The report is `MAINTAINER-REPORT.md`**, accompanied by `CRITICAL-CANDIDATES.md` where critical
+candidates exist. Its filename, title, structure and voice are specified by
+`maintainer-report-plain-language` and are normative there — including the TL;DR and the asks
+discipline that used to live in this section, which are now the §1 spec.
 
-Title the report, as its `#` heading and as its filename:
-
-```
-CVE Worthy Priority Issues to process by <PMC> - based on <repo> <commit>
-```
-
-**The `#` heading carries only that much.** The repository-and-commit detail goes in a `###` subtitle immediately under it:
-
-```
-# CVE Worthy Priority Issues to process by <PMC>
-
-### Based on <repo> at <commit> and <repo> at <commit>
-```
-
-`<PMC>` is the project's name as the PMC uses it (`APISIX`, `Superset`), not the repo slug. Where a bundle spans more than one repository or commit, the subtitle lists each pair — the reader must be able to tell which tree a finding refers to without opening another file — and any *other* commits the bundle touches (a second scanner at an older commit) get a line of their own beneath it.
-
-Splitting it this way keeps the title readable where titles are shown without their body — a mail subject, a directory listing, a link — while losing none of the precision that makes the report checkable.
-
-The name is doing real work: it says who owns it, that it is a prioritised subset rather than everything the scanners produced, and exactly which commit it describes. A report that outlives its commit is misleading, and the title is what stops someone reading a months-old assessment as current.
-
-**Filename: the title only, spaces to hyphens, one `.md`** — `CVE-Worthy-Priority-Issues-to-process-by-APISIX.md`. The commit detail lives in the subtitle and does not belong in the filename: it made names unwieldy, and a bundle spanning two repositories produced a filename long enough to wrap in a terminal.
-
-One report per project per bundle, overwritten in place as the assessment is revised, so links to it never rot. The subtitle is what says which commits it describes — check that first when reading an assessment you did not just generate.
-
-### Structure
-
-**0. TL;DR — first thing in the document, above everything including "What this is".**
-
-A PMC member should be able to read this alone and know whether they need to act. It carries, in this order:
-
-- **what was scanned and what came out** — raw finding count, then the number actually in front of them, with severities;
-- **the single most important finding**, in one sentence;
-- **what they have already fixed**, if anything — leading with that is both accurate and a courtesy;
-- **an explicit "what we are asking of you"** list, numbered, naming every ruling and decision required. This is the part most likely to be acted on, so it must not be inferable-only from later sections. **Item 1 is always the review-and-fix ask** — see below;
-- one line stating the document is advisory and nothing is published.
-
-Keep it short enough to read in under a minute. It is a summary, not an abstract of every section — a finding that needs a paragraph belongs below, not here.
-
-**Ask for what you need, plainly.** If two threat-model rulings and three design decisions are required, the TL;DR says so and says which findings each one decides. A report that buries its asks in section five gets the findings triaged and the questions ignored.
-
-**The first ask is always to review and fix, in priority order — never leave it implied.** Everything else in the list is secondary to it. It is easy to omit precisely because it feels obvious, and a report full of rulings and caveats can read as an academic exercise rather than a request to act. Say it directly:
-
-- **review the findings and confirm which hold** in their deployment and their reading of their own model — they may reasonably reach a different answer on any of them;
-- **fix the ones that hold, highest severity first**, with our severities offered as a starting order and explicitly theirs to override;
-- **treat anything they judge a genuine vulnerability through their normal security process**, not as a public issue.
-
-Two things this ask must **not** do. It must not set or imply a deadline, a turnaround, or a queue position — the programme makes no such promise and neither does this report. And it must not instruct: the PMC owns the authoritative call on every finding, so this is a request for their attention in an order we suggest, not a work order. Phrase it as *"we are asking you to"*, not *"you must"*.
-
-Where the PMC already has fixes in flight — merged or open PRs against the findings — say so **in the same breath**, so the ask lands as "please finish and confirm" rather than "please start".
-
-1. **What this is** — one short paragraph: who scanned, who reviewed, what the document is and is not. State plainly that it is advisory and the PMC owns the call.
-2. **Short summary** — the numbers in three sentences. How many raw findings, how many survived, how many we are actually asking them to look at. Give them permission to ignore the rest.
-3. **Fix these first** — the prioritised list, most important first. Every entry carries:
-   - what goes wrong, in one sentence;
-   - **a concrete exploit scenario** — an attacker who holds X sends Y and gets Z, with the `file:line` that makes it work;
-   - **exploitability** — `REACHABLE` / `CONDITIONAL` / `UNPROVEN`, plus the binding constraint in plain words;
-   - **why it is CVE-worthy** — which promise breaks and for whom, not a CWE number;
-   - the draft patch, if there is one.
-4. **Worth fixing, not urgent** — real defects that did not clear the bar, with one line each on why.
-5. **Gaps in your threat model, and the calls only you can make** — **mandatory, never omitted, even when empty** (say "none found"). Two kinds of item, kept apart because they need different things from the reader:
-   - **Model gaps** — every finding dispositioned `MODEL-GAP`: a real defect the model is *silent* about. State what the model does not say, not that the model is wrong. Give the specific ruling that would settle it, phrased so it can be answered yes or no. Where several findings turn on one gap, present the gap once with the findings under it — a PMC should not have to infer that seven items are one question.
-   - **Proposals that need PMC judgement** — anything where we deliberately stopped short: a fix that would change documented behaviour, a default whose safer value breaks existing deployments, a severity that hinges on a deployment shape only they know, a patch we did not write because writing it would have settled a design decision that is theirs. Say what we would do, what it would cost, and why it is theirs to decide.
-
-   Say which way the ruling cuts. *"If yes, these five become in-scope defects and §4.8 needs a new property; if no, they close as out-of-model and `SECURITY.md` should say plainly that these gates are not security boundaries, because users will otherwise assume they are."* A gap stated without its consequences is a question the PMC has no reason to prioritise.
-
-   Where the project's own code already answers the question one way while the model is silent, **say so** — that is the strongest possible argument for an update, and it comes from their repository rather than from us.
-
-6. **What we could not settle** — findings rated `UNPROVEN`, dependencies we could not read, and the specific experiment that would resolve each.
-7. **Limits you should hold us to** — what was not executed, what depends on a dependency we could not read, where our reviewers are correlated, where this report disagrees with our own earlier passes.
-8. **Where the detail lives** — pointers into the full ASVS and Claude Code Security bundles by report name and section heading, for anyone who wants it. Keep the report readable and let the depth sit behind the pointer.
-
-### Voice
-
-- **Write for a smart non-specialist.** Prefer "an attacker who can create a route in their own namespace" to "an in-scope adversary at trust tier 2". If a term of art earns its place, define it once in the sentence that uses it.
-- **Lead with the consequence, then the mechanism.** A maintainer decides from impact and reaches for the code path second.
-- **No CWE/CVSS-speak as a substitute for explanation.** A CWE id is a cross-reference, not a reason. "Why it is CVE-worthy" must be a sentence about what an attacker gains, not a taxonomy lookup.
-- **Never imply certainty the evidence does not carry.** If nothing was executed, say so in the summary, not only in a footnote.
-- **Group by root cause, not by scanner.** Three findings that are one defect wearing three hats should be fixed once, and saying so saves the PMC real time.
-- **Own our errors in the PMC's document, not just internally.** Where an earlier revision was wrong, correct it at the top and say it was ours. Where the PMC has already fixed something, lead with that.
-- Keep the file scoped to one bundle and name it for what it contains, not for the process that made it.
+Two things the retired `CVE Worthy Priority Issues…` title was doing still get done, in the
+canonical format rather than in the filename: the repository-and-commit detail is carried as the
+`###` subtitle under the title, because a report that outlives its commit is misleading; and the
+fact that this is a prioritised subset rather than everything the scanners produced is stated in
+§1. The old name also asserted CVE-worthiness in the filename, which sits badly with the ASF
+severity rule below — the criticality call is the PMC's, so the deliverable does not pre-judge it
+in its own title.
 
 ### Hard content rules for the report
 
@@ -659,6 +626,15 @@ Where the PMC already has fixes in flight — merged or open PRs against the fin
 - **No turnaround dates or queue promises.**
 - **Pre-disclosure.** The report and its patches go to the PMC's `@apache.org` recipients through `frontier-model-preparation-forward` and nowhere else.
 - **Zero code names**, verified by grep before the file is committed — not by reading it over.
+- **Never let a CVSS number stand as the recommendation.** Wherever the report carries a score or
+  a vector string it is framed: the number came from the scanning pipeline, CVSS is a poor fit
+  for libraries and for OSS generally per the ASF Security Team's own guidance
+  (<https://security.apache.org/blog/severityrating/>), and the criticality call should be made
+  on the ASF default severity rating system — Critical / Important / Moderate / Low, reproduced
+  inline with a link to the post. Ask for that rating explicitly in the report's asks. Do **not**
+  tell the PMC that CVSS is forbidden: projects may use their own scale and some publish CVSS
+  deliberately. Do not present our severities as the answer — they are a starting order under
+  our reading of their model. Wording and placement live in `maintainer-report-plain-language`.
 
 ## Relationship to the other Glasswing skills
 
@@ -694,6 +670,9 @@ Where the PMC already has fixes in flight — merged or open PRs against the fin
 - Presenting a partial panel as if the whole bundle were verified. Record what was panelled *and* what was not.
 - Comparing a plugin bundle's finding count with a Mythos bundle's. Different methodology, different scoping, usually not ASVS-driven — the counts are not commensurable and quoting them side by side invites a false conclusion.
 - Letting a plugin review's judgment change a disposition without re-reading the cited `file:line` yourself. It is another agent's output, not ground truth.
+- Shipping a report that was never rendered into the canonical format, or one whose fact-preservation verdict was not clean.
+- Running a bulk language pass over the archive without a pilot batch, on the grounds that the format was validated on one report.
+- Reporting a bulk run as complete when directories were skipped for lack of a report file, without listing them. A silent skip reads as coverage.
 
 ## Provenance
 
