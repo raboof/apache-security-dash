@@ -17,16 +17,13 @@
 """Build the 'Scan Results' tab — one row per archived scan bundle.
 
 Per-scan outcome reporting for the Frontier Model Preparation programme: what
-was scanned, how many findings the scan produced, how the pre-forward
-assessment dispositioned them (counts + percentages), and what the PMC said
-back.
+was scanned, how many findings the scan produced, and what the PMC said back.
 
 Two classes of column, and the split is the whole design:
 
 * **Auto** columns are derived on every rebuild from the ``apache/
-  tooling-agents-private`` archive clone (``scans/mythos/**/metadata.yml`` and
-  ``pre-forward-results/mythos/**/metadata.yml``) plus the PMCs sheet. They are
-  never hand-edited; a rebuild overwrites them.
+  tooling-agents-private`` archive clone plus the PMCs sheet. They are never
+  hand-edited; a rebuild overwrites them.
 * **Carried** columns (``Feedback received``, ``Sentiment``, ``Feedback
   summary``, ``Improvements suggested``) have **no automated source** — PMC
   feedback arrives as prose on a ``[GLASSWING]`` email thread and the summary /
@@ -64,19 +61,6 @@ from sheets_writer import PMCS_SHEET, SCAN_RESULTS_SHEET
 from sheets_writer.columns import col_letter
 from sheets_writer.sheets_api import fetch_sheet_grid, get_service
 
-#: Disposition buckets, in the order the assessment framework lists them.
-DISPOSITIONS = [
-    "VALID",
-    "VALID-HARDENING",
-    "OUT-OF-MODEL",
-    "BY-DESIGN",
-    "KNOWN-NON-FINDING",
-    "MODEL-GAP",
-]
-
-#: Buckets that mean "not a defect for this project to fix".
-NOT_APPLICABLE = ["OUT-OF-MODEL", "BY-DESIGN", "KNOWN-NON-FINDING"]
-
 SCAN_RESULTS_AUTO = [
     "PMC",
     "Repo",
@@ -85,12 +69,6 @@ SCAN_RESULTS_AUTO = [
     "Scan type",
     "Model",
     "Findings (scan)",
-    "Assessed",
-    *DISPOSITIONS,
-    "VALID %",
-    "Hardening %",
-    "Not-applicable %",
-    "Sanity check",
     "Forwarded",
 ]
 
@@ -131,12 +109,10 @@ def parse_flat_yaml(text: str) -> dict:
     """Pure: parse the archive's flat ``metadata.yml`` dialect into a dict.
 
     The dialect is deliberately small — ``key: value`` lines, plus one level of
-    nesting for the ``dispositions:`` block:
+    nesting for any indented block:
 
-        findings_assessed:     93
-        dispositions:
-          VALID:               8
-          VALID-HARDENING:     82
+        project:               shiro
+        repo:                  apache/shiro
 
     Nested blocks become a sub-dict. ``[a, b]`` inline lists become a list of
     stripped strings. Everything else stays a string — callers coerce. Comments
@@ -178,13 +154,6 @@ def as_int(value, default: int = 0) -> int:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return default
-
-
-def pct(part: int, whole: int) -> str:
-    """Pure: ``part`` as a percentage of ``whole``, one decimal, or '' if whole<=0."""
-    if whole <= 0:
-        return ""
-    return f"{100.0 * part / whole:.1f}%"
 
 
 def scan_type(meta: dict) -> str:
@@ -306,50 +275,13 @@ def compose_scan_id(scan_dir: str, meta: dict) -> str:
     return "-".join(parts) if parts else os.path.basename(scan_dir)
 
 
-def assessment_dir_for(archive_root: str, scan_dir: str) -> str:
-    """Pure-ish: the ``pre-forward-results/`` path mirroring ``scan_dir``.
-
-    The assessment tree mirrors ``scans/`` exactly, so the mapping is a single
-    path-prefix swap.
-    """
-    rel = os.path.relpath(scan_dir, os.path.join(archive_root, "scans"))
-    return os.path.join(archive_root, "pre-forward-results", rel)
-
-
 def build_scan_row(
     scan_meta: dict,
-    assess_meta: dict | None,
     pmc_name: str,
     forwarded: str,
     scan_id: str,
 ) -> list:
-    """Pure: the auto-column cells for one scan bundle.
-
-    ``assess_meta`` is ``None`` when no pre-forward assessment exists yet — the
-    disposition and percentage cells then render blank and ``Sanity check``
-    reads ``NOT ASSESSED``, so an unassessed scan is visible rather than
-    looking like a zero-finding one.
-    """
-    disp = (assess_meta or {}).get("dispositions", {}) or {}
-    counts = {d: as_int(disp.get(d), 0) for d in DISPOSITIONS}
-    assessed = as_int((assess_meta or {}).get("findings_assessed"), 0)
-
-    if assess_meta is None:
-        disp_cells: list = [""] * len(DISPOSITIONS)
-        pct_cells: list = ["", "", ""]
-        sanity = "NOT ASSESSED"
-        assessed_cell: object = ""
-    else:
-        disp_cells = [counts[d] for d in DISPOSITIONS]
-        na = sum(counts[d] for d in NOT_APPLICABLE)
-        pct_cells = [
-            pct(counts["VALID"], assessed),
-            pct(counts["VALID-HARDENING"], assessed),
-            pct(na, assessed),
-        ]
-        sanity = str(assess_meta.get("sanity_check", "") or "")
-        assessed_cell = assessed
-
+    """Pure: the auto-column cells for one scan bundle."""
     models = scan_meta.get("audit_models", [])
     model = ", ".join(models) if isinstance(models, list) else str(models)
 
@@ -361,44 +293,46 @@ def build_scan_row(
         scan_type(scan_meta),
         model,
         as_int(scan_meta.get("findings_total"), 0),
-        assessed_cell,
-        *disp_cells,
-        *pct_cells,
-        sanity,
         forwarded,
     ]
 
 
 def parse_scan_results(grid: list[list[str]]) -> dict[str, list[str]]:
-    """Pure: map ``Scan ID -> previous full row`` from the existing tab.
+    """Pure: map ``Scan ID -> that row's carried (feedback) cells``.
 
-    Keyed by Scan ID because that is the archive's own stable identifier for a
-    bundle (project + repo + date + short SHA); it survives re-sorting and new
-    scans landing above a row. A tab whose header doesn't match yields ``{}``
-    (the rebuild then re-seeds the carried columns blank).
+    Keyed by Scan ID because that is the tab's stable per-bundle identifier
+    (repo + date + short SHA); it survives re-sorting and new scans landing
+    above a row.
+
+    The header is located by *name*, not by exact equality with
+    ``SCAN_RESULTS_HEADER``, and the carried cells are read at whatever offsets
+    that header puts them. PMC feedback is the only content on this tab a
+    rebuild cannot regenerate, so it has to survive the auto columns changing
+    shape — an exact-match lookup would silently drop every feedback cell the
+    first time a column was added or removed. A grid with no recognisable
+    header yields ``{}``.
     """
     if not grid:
         return {}
-    width = len(SCAN_RESULTS_HEADER)
-    header_at = -1
-    for i, row in enumerate(grid):
-        if [c.strip() for c in row[:width]] == SCAN_RESULTS_HEADER:
-            header_at = i
-            break
-    if header_at < 0:
-        return {}
-    out: dict[str, list[str]] = {}
-    for row in grid[header_at + 1 :]:
-        sid = row[SCAN_ID_COL].strip() if SCAN_ID_COL < len(row) else ""
-        if sid:
-            out[sid] = [c.strip() for c in row]
-    return out
+    for row in grid:
+        cells = [c.strip() for c in row]
+        if "Scan ID" not in cells or not all(c in cells for c in SCAN_RESULTS_CARRIED):
+            continue
+        sid_col = cells.index("Scan ID")
+        carried_cols = [cells.index(c) for c in SCAN_RESULTS_CARRIED]
+        out: dict[str, list[str]] = {}
+        for data in grid[grid.index(row) + 1 :]:
+            sid = data[sid_col].strip() if sid_col < len(data) else ""
+            if sid:
+                out[sid] = [data[j].strip() if j < len(data) else "" for j in carried_cols]
+        return out
+    return {}
 
 
-def scan_results_carried(prev_row: list[str] | None) -> list[str]:
-    """Pure: the carried (feedback) cells of a previous row, in column order."""
-    row = prev_row or []
-    return [row[j] if j < len(row) else "" for j in SCAN_RESULTS_CARRIED_COLS]
+def scan_results_carried(prev_carried: list[str] | None) -> list[str]:
+    """Pure: a row's carried (feedback) cells, padded to the carried width."""
+    row = prev_carried or []
+    return [row[i] if i < len(row) else "" for i in range(len(SCAN_RESULTS_CARRIED))]
 
 
 def normalize_repo(repo: str) -> str:
@@ -450,14 +384,6 @@ def collect_scan_rows(
             continue
         scan_id = compose_scan_id(scan_dir, scan_meta)
 
-        assess_path = os.path.join(assessment_dir_for(archive_root, scan_dir), "metadata.yml")
-        assess_meta = None
-        if os.path.exists(assess_path):
-            with open(assess_path, encoding="utf-8") as fh:
-                assess_meta = parse_flat_yaml(fh.read())
-        else:
-            anomalies.append(f"{scan_id}: no pre-forward assessment")
-
         slug = str(scan_meta.get("project", "") or "").strip().lower()
         repo_key = normalize_repo(scan_meta.get("repo", ""))
         if slug in pmc_by_slug:
@@ -471,7 +397,7 @@ def collect_scan_rows(
                 f"{repo_key!r} is in no PMC's repo list"
             )
 
-        row = build_scan_row(scan_meta, assess_meta, pmc_name, forwarded, scan_id)
+        row = build_scan_row(scan_meta, pmc_name, forwarded, scan_id)
         rows.append(row + scan_results_carried(carried.get(scan_id)))
 
     rows.sort(key=lambda r: (str(r[3]), str(r[0])), reverse=True)
@@ -479,34 +405,13 @@ def collect_scan_rows(
 
 
 def totals_row(rows: list[list]) -> list:
-    """Pure: an aggregate row across every assessed scan.
-
-    Percentages are recomputed from summed counts (not averaged across rows),
-    so a large scan weighs proportionally more than a small one.
-    """
+    """Pure: an aggregate row — scan count and total findings across the tab."""
     fi = SCAN_RESULTS_AUTO.index("Findings (scan)")
-    ai = SCAN_RESULTS_AUTO.index("Assessed")
-    d0 = SCAN_RESULTS_AUTO.index(DISPOSITIONS[0])
     findings = sum(as_int(r[fi]) for r in rows)
-    assessed = sum(as_int(r[ai]) for r in rows)
-    counts = {d: sum(as_int(r[d0 + i]) for r in rows) for i, d in enumerate(DISPOSITIONS)}
-    na = sum(counts[d] for d in NOT_APPLICABLE)
-    return [
-        f"TOTAL ({len(rows)} scans)",
-        "",
-        "",
-        "",
-        "",
-        "",
-        findings,
-        assessed,
-        *[counts[d] for d in DISPOSITIONS],
-        pct(counts["VALID"], assessed),
-        pct(counts["VALID-HARDENING"], assessed),
-        pct(na, assessed),
-        "",
-        "",
-    ] + [""] * len(SCAN_RESULTS_CARRIED)
+    cells: list = [""] * len(SCAN_RESULTS_AUTO)
+    cells[0] = f"TOTAL ({len(rows)} scans)"
+    cells[fi] = findings
+    return cells + [""] * len(SCAN_RESULTS_CARRIED)
 
 
 def find_scan_results_row(grid: list[list[str]], scan_id: str) -> int | None:
@@ -634,7 +539,7 @@ def cmd_build_scan_results_tab(args: argparse.Namespace) -> int:
     tab.row(
         [
             "Auto columns are rebuilt from the tooling-agents-private archive "
-            "(scans/mythos + pre-forward-results). The four feedback columns have no "
+            "(scans/glasswing + scans/mythos). The four feedback columns have no "
             "automated source: they are written by 'scan-results-set' and carried over "
             "on every rebuild, keyed by Scan ID."
         ]

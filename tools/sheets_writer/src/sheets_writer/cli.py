@@ -213,7 +213,7 @@ def build_parser() -> argparse.ArgumentParser:
         "build-scan-results-tab",
         help=(
             "Rebuild the 'Scan Results' tab from the tooling-agents-private archive: "
-            "one row per scans/mythos bundle with findings, pre-forward dispositions "
+            "one row per archived scan bundle with findings "
             "(counts + percentages), sanity verdict and forwarded date. The four "
             "feedback columns are carried over, keyed by Scan ID."
         ),
