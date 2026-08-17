@@ -18,6 +18,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+
 from sheets_writer.scan_results import (
     COL_WIDTHS,
     DISPOSITIONS,
@@ -28,12 +31,16 @@ from sheets_writer.scan_results import (
     SCAN_RESULTS_HEADER,
     as_int,
     build_scan_row,
+    compose_scan_id,
+    find_scan_dirs,
     find_scan_results_row,
+    load_scan_meta,
     normalize_repo,
     parse_flat_yaml,
     parse_scan_results,
     pct,
     pmc_cell,
+    scan_date_from_dirname,
     scan_results_carried,
     scan_type,
     totals_row,
@@ -318,3 +325,103 @@ class TestProseFormatting:
     def test_widths_are_valid_column_indices(self):
         for i in COL_WIDTHS:
             assert 0 <= i < len(SCAN_RESULTS_HEADER)
+
+
+class TestGlasswingBundles:
+    """Glasswing bundles carry no metadata.yml — identity comes from TRIAGE.json."""
+
+    @staticmethod
+    def _bundle(tmp_path, repo, stamp, target, commit, total):
+        d = tmp_path / "scans" / "glasswing" / repo / stamp
+        d.mkdir(parents=True)
+        (d / "TRIAGE.json").write_text(
+            json.dumps(
+                {
+                    "triage_context": {"target": target, "commit": commit},
+                    "summary": {"total": total},
+                }
+            )
+        )
+        return str(d)
+
+    def test_finds_glasswing_bundles_without_metadata_yml(self, tmp_path):
+        self._bundle(tmp_path, "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 253)
+        assert len(find_scan_dirs(str(tmp_path))) == 1
+
+    def test_still_finds_mythos_metadata_bundles(self, tmp_path):
+        d = tmp_path / "scans" / "mythos" / "shiro" / "shiro-2026-07-17-cde5990"
+        d.mkdir(parents=True)
+        (d / "metadata.yml").write_text(SHIRO_SCAN)
+        assert find_scan_dirs(str(tmp_path)) == [str(d)]
+
+    def test_missing_tree_is_skipped_not_raised(self, tmp_path):
+        assert find_scan_dirs(str(tmp_path)) == []
+
+    def test_meta_derived_from_triage_json(self, tmp_path):
+        d = self._bundle(tmp_path, "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb683e412", 253)
+        m = load_scan_meta(d)
+        assert m["repo"] == "apache/nuttx"
+        assert m["project"] == "nuttx"
+        assert m["scan_date"] == "2026-08-11"
+        assert m["findings_total"] == 253
+        assert m["scan_kind"] == "Glasswing"
+
+    def test_metadata_yml_wins_when_present(self, tmp_path):
+        d = tmp_path / "scans" / "glasswing" / "shiro" / "s"
+        d.mkdir(parents=True)
+        (d / "metadata.yml").write_text(SHIRO_SCAN)
+        (d / "TRIAGE.json").write_text(json.dumps({"triage_context": {"target": "wrong/repo"}}))
+        assert load_scan_meta(str(d))["repo"] == "apache/shiro"
+
+    def test_unreadable_bundle_yields_empty_meta(self, tmp_path):
+        d = tmp_path / "scans" / "glasswing" / "x" / "s"
+        d.mkdir(parents=True)
+        (d / "TRIAGE.json").write_text("{not json")
+        assert load_scan_meta(str(d)) == {}
+
+    def test_glasswing_is_not_labelled_asvs(self, tmp_path):
+        d = self._bundle(tmp_path, "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 1)
+        assert scan_type(load_scan_meta(d)) == "Glasswing"
+
+
+class TestComposeScanId:
+    """Batch-shared timestamps must not collapse distinct repos into one row."""
+
+    def test_composed_from_repo_date_and_sha(self):
+        meta = {"repo": "apache/nuttx", "scan_date": "2026-08-11", "commit": "5dafb683e412ce2"}
+        assert compose_scan_id("/a/scans/glasswing/nuttx/20260811T231034Z", meta) == (
+            "nuttx-2026-08-11-5dafb68"
+        )
+
+    def test_same_batch_timestamp_yields_distinct_ids(self):
+        """17 repos share 20260811T043305Z in the archive; basenames would collide."""
+        stamp = "20260811T043305Z"
+        a = compose_scan_id(
+            f"/a/scans/glasswing/arrow/{stamp}",
+            {"repo": "apache/arrow", "scan_date": "2026-08-11", "commit": "aaaaaaa1"},
+        )
+        b = compose_scan_id(
+            f"/a/scans/glasswing/nuttx/{stamp}",
+            {"repo": "apache/nuttx", "scan_date": "2026-08-11", "commit": "bbbbbbb2"},
+        )
+        assert a != b
+        assert os.path.basename(f"/a/scans/glasswing/arrow/{stamp}") == os.path.basename(
+            f"/a/scans/glasswing/nuttx/{stamp}"
+        )
+
+    def test_falls_back_to_dir_repo_when_meta_bare(self):
+        assert compose_scan_id("/a/scans/glasswing/hop/20260811T042420Z", {}) == ("hop-2026-08-11")
+
+    def test_date_recovered_from_dirname_when_meta_lacks_it(self):
+        meta = {"repo": "apache/hop", "commit": "deadbeefcafe"}
+        assert compose_scan_id("/a/scans/glasswing/hop/20260811T042420Z", meta) == (
+            "hop-2026-08-11-deadbee"
+        )
+
+
+class TestScanDateFromDirname:
+    def test_parses_stamp(self):
+        assert scan_date_from_dirname("20260811T231034Z") == "2026-08-11"
+
+    def test_non_stamp_yields_blank(self):
+        assert scan_date_from_dirname("shiro-2026-07-17-cde5990") == ""
