@@ -157,6 +157,7 @@ def render_report(header: Header, body: str, entry: Entry, artifacts: list[str])
         f"pmc:         {entry.pmc or '-'}",
         f"status:      {entry.status}",
         f"disposition: {entry.disposition or '-'}",
+        f"assessed by: {entry.assessment_model or '-'}",
         f"reporter:    {entry.reporter_name or '-'}",
         f"labels:      {', '.join(entry.labels) if entry.labels else '(none)'}",
         f"attachments: {att_line}",

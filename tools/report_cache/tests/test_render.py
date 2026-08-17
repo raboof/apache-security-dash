@@ -102,7 +102,11 @@ def test_render_report_merges_metadata_and_body():
         }
     )
     entry = Entry(
-        path="spark/2026-05-24-ssrf", subject="SSRF", pmc="spark", status=Status.DOWNLOADED
+        path="spark/2026-05-24-ssrf",
+        subject="SSRF",
+        pmc="spark",
+        status=Status.DOWNLOADED,
+        assessment_model="Claude Opus 4.7",
     )
 
     out = render_report(header, "The body.\n", entry, ["summary.md"])
@@ -112,6 +116,7 @@ def test_render_report_merges_metadata_and_body():
     assert "From:       Jane Reporter <jane@example.com>" in out
     assert "pmc:         spark" in out
     assert "status:      downloaded" in out
+    assert "assessed by: Claude Opus 4.7" in out
     assert "attachments: poc.html (text/html, 2.0 KB)" in out
     assert "artifacts:   summary.md" in out
     # metadata block, then a separator, then the verbatim body
