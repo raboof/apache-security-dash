@@ -22,6 +22,7 @@ from whimsy_lookup.pmc_guess import (
     mail_list,
     pmc_for,
     security_link,
+    slugs_delivered_from_addresses,
     slugs_from_addresses,
     slugs_from_domains,
 )
@@ -119,6 +120,57 @@ def test_slugs_from_addresses_drops_non_committee_hosts():
 def test_slugs_from_addresses_dedupes_preserving_order():
     text = "tomcat@tomcat.apache.org and users@tomcat.apache.org and x@kafka.apache.org"
     assert slugs_from_addresses(text, KNOWN) == ["tomcat", "kafka"]
+
+
+# --- slugs_delivered: recipients that actually reach a PMC's security list ---
+
+
+def test_slugs_delivered_own_security_list():
+    # tomcat runs its own security@ list (specialized contact), so being
+    # addressed there is delivery.
+    assert slugs_delivered_from_addresses(["security@tomcat.apache.org"], KNOWN, COORDINATES) == [
+        "tomcat"
+    ]
+
+
+def test_slugs_delivered_private_list():
+    # kafka has no security team of its own; its private@ list is the contact.
+    assert slugs_delivered_from_addresses(["private@kafka.apache.org"], KNOWN, COORDINATES) == [
+        "kafka"
+    ]
+    # ...and a PMC with no coordinates entry falls back to private@ just the same.
+    assert slugs_delivered_from_addresses(["private@hc.apache.org"], KNOWN, COORDINATES) == [
+        "httpcomponents"
+    ]
+
+
+def test_slugs_delivered_ignores_bare_security_alias_without_a_list():
+    # kafka's security@kafka.apache.org is not backed by a list (it has no
+    # security team), so addressing it is not delivery even though the host
+    # resolves the PMC.
+    assert slugs_delivered_from_addresses(["security@kafka.apache.org"], KNOWN, COORDINATES) == []
+    # ant likewise falls back to private@, so its security@ alias does not count.
+    assert slugs_delivered_from_addresses(["security@ant.apache.org"], KNOWN, COORDINATES) == []
+
+
+def test_slugs_delivered_preserves_order_and_dedupes():
+    addresses = [
+        "security@tomcat.apache.org",
+        "private@kafka.apache.org",
+        "security@tomcat.apache.org",
+    ]
+    assert slugs_delivered_from_addresses(addresses, KNOWN, COORDINATES) == ["tomcat", "kafka"]
+
+
+def test_slugs_delivered_case_insensitive():
+    assert slugs_delivered_from_addresses(["Security@Tomcat.Apache.Org"], KNOWN, COORDINATES) == [
+        "tomcat"
+    ]
+
+
+def test_slugs_delivered_empty_and_non_committee():
+    assert slugs_delivered_from_addresses([], KNOWN, COORDINATES) == []
+    assert slugs_delivered_from_addresses(["security@apache.org"], KNOWN, COORDINATES) == []
 
 
 def test_guess_prefers_address_over_token():

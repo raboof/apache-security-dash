@@ -146,6 +146,29 @@ def slugs_from_domains(domains: Iterable[str], committees: dict) -> list[str]:
     return out
 
 
+def slugs_delivered_from_addresses(
+    addresses: Iterable[str], committees: dict, coordinates: dict
+) -> list[str]:
+    """Committee slugs a report was actually *delivered* to via ``addresses``.
+
+    :func:`slugs_from_domains` guesses which PMC a report is *meant* for from its recipient hosts,
+    while this function checks which PMC security contact was actually reached.
+
+    ``addresses`` are the report's recipient addr-specs (To + Cc).
+    Order follows :func:`slugs_from_domains`;
+    the result is deduplicated.
+    """
+    recipients = [a.lower() for a in addresses if a]
+    wanted = set(recipients)
+    domains = [addr.split("@", 1)[1] for addr in recipients if "@" in addr]
+    delivered: list[str] = []
+    for slug in slugs_from_domains(domains, committees):
+        pmc = pmc_for(slug, committees, coordinates)
+        if pmc.internal_security_contact.lower() in wanted:
+            delivered.append(slug)
+    return delivered
+
+
 def slugs_from_addresses(text: str, committees: dict) -> list[str]:
     """Committee slugs for the apache.org mailing-list hosts appearing in free ``text``.
 

@@ -91,6 +91,7 @@ jobs:
           - sheets_writer
           - model_pr
           - populate_cache
+          - report_cache
           - inbox_manager
         # Single supported interpreter. Widen this list to re-introduce a
         # cross-version matrix; nothing else in the workflow needs to change.
