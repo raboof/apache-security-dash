@@ -283,7 +283,7 @@ def send_reply(inbox, original, uid, pmc, body_md, entry):
 def draft_artifact(entry: Entry | None, name: str) -> str:
     """The text of a triage-assess draft artifact for ``entry``, or ``""`` when absent.
 
-    triage-assess writes ``summary.md`` / ``model.md`` / ``note.md`` / ``reason.md`` into
+    triage-assess writes ``summary.md`` / ``note.md`` / ``reason.md`` into
     the bundle through ``report-cache put-artifact``; here they pre-fill the forward /
     receipt / reject the operator previews. A missing artifact (an interactive report with
     no draft) reads as ``""`` so the template keeps its empty-marker behaviour and the
@@ -298,9 +298,10 @@ def accept_message(inbox, original, uid, pmc, entry, committees, coordinates):
     """Forward to the PMC + reporter receipt.
 
     Prompts for the PMC when it could not be guessed.
-    The forward pre-fills triage-assess's drafted ``summary.md`` / ``model.md`` (and the
-    receipt's ``note.md``), or the forward-duplicate template when the entry records a
-    ``duplicate_ponymail_link``; the operator reviews and can edit at the preview.
+    The forward pre-fills triage-assess's drafted ``summary.md`` and the entry's
+    ``assessment_model`` (and the receipt's ``note.md``), or the forward-duplicate
+    template when the entry records a ``duplicate_ponymail_link``; the operator
+    reviews and can edit at the preview.
     Returns True if sent.
     """
     if pmc is None:
@@ -313,7 +314,7 @@ def accept_message(inbox, original, uid, pmc, entry, committees, coordinates):
         print("not forwarded - no recipient\n")
         return False
     summary = draft_artifact(entry, "summary.md")
-    model = draft_artifact(entry, "model.md")
+    model = (entry.assessment_model or "") if entry else ""
     duplicate_of = str(entry.duplicate_ponymail_link or "") if entry else ""
     forward_md = email_utils.fill_forward_template(
         pmc, original, summary, model, TRIAGER_NAME, duplicate_of=duplicate_of

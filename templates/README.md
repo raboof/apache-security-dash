@@ -11,9 +11,9 @@ template, fills every marker, and **drops any line whose marker is still empty**
 The markers fall into two groups by where their *value* comes from:
 
 1. **Content** - authored by the model during `triage-assess` and stored in the report-cache bundle:
-   the free-text fragments `summary.md` / `note.md` / `reason.md` and the model id `model.md`,
+   the free-text fragments `summary.md` / `note.md` / `reason.md`,
    all written with `report-cache put-artifact`,
-   plus the `duplicate_ponymail_link` index field set with `report-cache set`.
+   plus the `assessment_model` and `duplicate_ponymail_link` index fields set with `report-cache set`.
    `triage-assess` renders nothing; it only supplies these values.
 2. **Identity / PMC / infra** - derived by `inbox_manager` from the PMC
    coordinates, the live message, and the operator identity.
@@ -33,7 +33,7 @@ render literally if something goes wrong; the renderer matches `\<marker>` and
 | --- | --- | --- | --- | --- |
 | `<summary>` | forward, forward-duplicate | `summary.md` | the model's concise PMC summary (finding / code verification / scope assessment) | required |
 | `<reason>` | reject | `reason.md` | why the report is out of scope (the model's wording, or the PMC's prior reason for a known non-issue) | required |
-| `<model>` | forward, forward-duplicate | `model.md` artifact | the AI model that wrote the summary (for the disclaimer line) | required |
+| `<model>` | forward, forward-duplicate | `assessment_model` index field | the AI model that wrote the summary (for the disclaimer line) | required |
 | `<duplicate>` | forward-duplicate | `duplicate_ponymail_link` index field | link to the still-open original report this one duplicates | required for this template |
 | `<note>` | receipt, receipt-specialized | `note.md` | optional extra paragraph to the reporter | line dropped |
 
