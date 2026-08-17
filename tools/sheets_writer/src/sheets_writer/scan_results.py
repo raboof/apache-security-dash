@@ -35,14 +35,28 @@ Two classes of column, and the split is the whole design:
   Queue tab carries its per-scan tracking block, and are written by
   ``scan-results-set``.
 
-Only ``scans/mythos/`` is enumerated. Sibling ensembles in the archive (e.g.
-``scans/opus-sonnet-haiku/``) and ``failed-scans/`` are deliberately **out of
+``scans/glasswing/`` is the delivery tree and is enumerated; ``scans/mythos/``
+is still read when present (the older layout). Sibling ensembles in the archive
+(e.g. ``scans/experiments/``) and ``failed-scans/`` are deliberately **out of
 scope** for this tab — they are not part of the delivery pipeline.
+
+Two bundle layouts coexist and both are supported:
+
+* **mythos** — a flat ``metadata.yml`` carries every identity field.
+* **glasswing** — there is **no** ``metadata.yml``; identity comes from
+  ``TRIAGE.json`` (``triage_context.target`` / ``.commit``, ``summary.total``)
+  plus the ``<repo>/<YYYYMMDDTHHMMSSZ>`` directory layout.
+
+Scan ID is composed as ``<repo>-<YYYY-MM-DD>-<sha7>``, never the bundle
+directory's basename. Glasswing scans run in fleet batches that share one
+timestamp — 17 repos sit under ``20260811T043305Z`` — so a basename key would
+collapse those rows into one and cross-wire their carried PMC feedback.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -174,13 +188,17 @@ def pct(part: int, whole: int) -> str:
 
 
 def scan_type(meta: dict) -> str:
-    """Pure: the human-facing scan-type label, e.g. ``ASVS L3``.
+    """Pure: the human-facing scan-type label, e.g. ``ASVS L3`` or ``Glasswing``.
 
-    Only ASVS runs exist today; the level comes from ``asvs_level``. A bundle
-    with no level still reports ``ASVS`` rather than blank, so a future
-    non-ASVS scan type shows up as an obvious anomaly instead of silently
-    inheriting this label.
+    A bundle that names its own kind (``scan_kind``) reports that verbatim —
+    that is how glasswing bundles, which are not ASVS runs, avoid inheriting
+    the ASVS label. Otherwise the label is ASVS with the ``asvs_level`` suffix
+    when one is recorded; a bundle with no level still reports ``ASVS`` rather
+    than blank, so an unrecognised scan type shows up as an obvious anomaly.
     """
+    kind = str(meta.get("scan_kind", "") or "").strip()
+    if kind:
+        return kind
     level = str(meta.get("asvs_level", "") or "").strip()
     return f"ASVS {level}".strip() if level else "ASVS"
 
@@ -191,18 +209,101 @@ def pmc_cell(row: list[str], idx: dict[str, int], name: str) -> str:
     return row[c].strip() if c is not None and c < len(row) else ""
 
 
-def find_scan_dirs(archive_root: str) -> list[str]:
-    """Impure (filesystem): every ``scans/mythos/**`` bundle dir, sorted.
+#: Scan trees walked, in order. Both layouts are delivery-pipeline trees; other
+#: siblings under ``scans/`` are out of scope (see the module docstring).
+SCAN_TREES = ["glasswing", "mythos"]
 
-    A bundle is any directory directly containing a ``metadata.yml``. Sibling
-    ensembles under ``scans/`` are not walked — see the module docstring.
+#: Files that mark a directory as a scan bundle. ``metadata.yml`` is the mythos
+#: layout; glasswing bundles have no metadata file and are identified by their
+#: triage output instead.
+BUNDLE_MARKERS = ("metadata.yml", "TRIAGE.json")
+
+
+def find_scan_dirs(archive_root: str) -> list[str]:
+    """Impure (filesystem): every scan-bundle dir under the delivery trees, sorted.
+
+    A bundle is any directory directly containing one of ``BUNDLE_MARKERS``.
+    Missing trees are skipped rather than raising, so an archive carrying only
+    one layout enumerates cleanly.
     """
-    base = os.path.join(archive_root, "scans", "mythos")
     found: list[str] = []
-    for dirpath, _dirnames, filenames in os.walk(base):
-        if "metadata.yml" in filenames:
-            found.append(dirpath)
+    for tree in SCAN_TREES:
+        base = os.path.join(archive_root, "scans", tree)
+        if not os.path.isdir(base):
+            continue
+        for dirpath, _dirnames, filenames in os.walk(base):
+            if any(m in filenames for m in BUNDLE_MARKERS):
+                found.append(dirpath)
     return sorted(found)
+
+
+def scan_date_from_dirname(name: str) -> str:
+    """Pure: ``YYYY-MM-DD`` from a ``YYYYMMDDTHHMMSSZ`` bundle dirname, else ''."""
+    stamp = name.strip()
+    if len(stamp) >= 8 and stamp[:8].isdigit():
+        return f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}"
+    return ""
+
+
+def load_scan_meta(scan_dir: str) -> dict:
+    """Impure (filesystem): a bundle's identity dict, whichever layout it uses.
+
+    A ``metadata.yml`` is authoritative when present (mythos layout). Otherwise
+    the fields downstream needs are derived from ``TRIAGE.json`` and the
+    ``<repo>/<stamp>`` directory layout, and the bundle is labelled
+    ``Glasswing`` so it does not inherit the ASVS scan-type label.
+
+    Returns ``{}`` for a directory carrying neither, which the caller reports
+    as an anomaly rather than crashing the whole rebuild.
+    """
+    meta_path = os.path.join(scan_dir, "metadata.yml")
+    if os.path.exists(meta_path):
+        with open(meta_path, encoding="utf-8") as fh:
+            return parse_flat_yaml(fh.read())
+
+    triage_path = os.path.join(scan_dir, "TRIAGE.json")
+    if not os.path.exists(triage_path):
+        return {}
+    try:
+        with open(triage_path, encoding="utf-8") as fh:
+            triage = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+    ctx = triage.get("triage_context") or {}
+    summary = triage.get("summary") or {}
+    target = str(ctx.get("target", "") or "")
+    repo_dir = os.path.basename(os.path.dirname(scan_dir))
+    findings = summary.get("total")
+    if findings is None:
+        findings = len(triage.get("findings") or [])
+    return {
+        "project": repo_dir,
+        "repo": target or repo_dir,
+        "commit": str(ctx.get("commit", "") or ""),
+        "scan_date": scan_date_from_dirname(os.path.basename(scan_dir)),
+        "findings_total": findings,
+        "scan_kind": "Glasswing",
+    }
+
+
+def compose_scan_id(scan_dir: str, meta: dict) -> str:
+    """Pure-ish: the tab's stable key, ``<repo>-<YYYY-MM-DD>-<sha7>``.
+
+    Never the bundle basename: glasswing fleet batches share one timestamp
+    across many repos, so a basename key would merge unrelated scans into a
+    single row and carry one repo's PMC feedback onto another's. Each component
+    is omitted when unknown, and a bundle yielding none of them falls back to
+    the directory path relative to ``scans/`` — still unique, just uglier.
+    """
+    repo = normalize_repo(meta.get("repo", "")) or os.path.basename(os.path.dirname(scan_dir))
+    name = repo.split("/")[-1] if repo else ""
+    date = str(meta.get("scan_date", "") or "")[:10] or scan_date_from_dirname(
+        os.path.basename(scan_dir)
+    )
+    sha = str(meta.get("commit", "") or meta.get("head_sha", "") or "")[:7]
+    parts = [p for p in (name, date, sha) if p]
+    return "-".join(parts) if parts else os.path.basename(scan_dir)
 
 
 def assessment_dir_for(archive_root: str, scan_dir: str) -> str:
@@ -340,9 +441,14 @@ def collect_scan_rows(
     rows: list[list] = []
     anomalies: list[str] = []
     for scan_dir in find_scan_dirs(archive_root):
-        scan_id = os.path.basename(scan_dir)
-        with open(os.path.join(scan_dir, "metadata.yml"), encoding="utf-8") as fh:
-            scan_meta = parse_flat_yaml(fh.read())
+        scan_meta = load_scan_meta(scan_dir)
+        if not scan_meta:
+            anomalies.append(
+                f"{os.path.relpath(scan_dir, archive_root)}: no metadata.yml and no "
+                f"readable TRIAGE.json — bundle skipped"
+            )
+            continue
+        scan_id = compose_scan_id(scan_dir, scan_meta)
 
         assess_path = os.path.join(assessment_dir_for(archive_root, scan_dir), "metadata.yml")
         assess_meta = None
@@ -482,10 +588,11 @@ def cmd_build_scan_results_tab(args: argparse.Namespace) -> int:
     from sheets_writer.status import _ensure_sheet, _Tab, _write_tab
 
     archive_root = os.path.expanduser(args.archive_root)
-    if not os.path.isdir(os.path.join(archive_root, "scans", "mythos")):
+    trees = [t for t in SCAN_TREES if os.path.isdir(os.path.join(archive_root, "scans", t))]
+    if not trees:
         print(
-            f"No scans/mythos/ under {archive_root!r}. Pass --archive-root pointing at "
-            "an apache/tooling-agents-private clone.",
+            f"No scans/{{{','.join(SCAN_TREES)}}}/ under {archive_root!r}. Pass "
+            "--archive-root pointing at an apache/tooling-agents-private clone.",
             file=sys.stderr,
         )
         return 2
