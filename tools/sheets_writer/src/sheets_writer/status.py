@@ -72,7 +72,7 @@ LEGEND_ENTRIES = [
     ("Pre-flight — model nominated, pending verification", NOMINATED_COLOR),
     ("Ready — model verified, awaiting operator submit", STATE_COLOR["Ready"]),
     ("Submitted — sent to ASF Tooling, awaiting results", STATE_COLOR["Submitted"]),
-    ("Triaging — results back, pre-forward sanity check", STATE_COLOR["Triaging"]),
+    ("Triaging — results back from ASF Tooling", STATE_COLOR["Triaging"]),
     ("Delivered — forwarded to PMC", STATE_COLOR["Delivered"]),
     ("Rejected — PMC declined an agent-readable model", MODEL_COLOR["Rejected"]),
 ]

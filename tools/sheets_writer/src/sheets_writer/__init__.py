@@ -91,7 +91,7 @@ SCAN_QUEUE_SHEET = "Scan Queue"
 # sheet on every build-status-tab refresh.
 MODEL_STATUS_SHEET = "Model Status"
 # Per-scan outcome view: one row per archived scan bundle under
-# scans/mythos/. Auto columns (identity, findings, pre-forward dispositions +
+# the archive scan trees. Auto columns (identity, findings +
 # percentages, sanity verdict, forwarded date) are rebuilt from the
 # tooling-agents-private archive clone by build-scan-results-tab; the four
 # feedback columns have no automated source and are carried over on rebuild,

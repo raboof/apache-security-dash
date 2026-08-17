@@ -23,7 +23,6 @@ import os
 
 from sheets_writer.scan_results import (
     COL_WIDTHS,
-    DISPOSITIONS,
     PROSE_COLS,
     SCAN_RESULTS_AUTO,
     SCAN_RESULTS_CARRIED,
@@ -38,7 +37,6 @@ from sheets_writer.scan_results import (
     normalize_repo,
     parse_flat_yaml,
     parse_scan_results,
-    pct,
     pmc_cell,
     scan_date_from_dirname,
     scan_results_carried,
@@ -111,15 +109,6 @@ class TestNumericHelpers:
         assert as_int("abc") == 0
         assert as_int("", 5) == 5
 
-    def test_pct(self):
-        assert pct(8, 93) == "8.6%"
-        assert pct(0, 10) == "0.0%"
-        assert pct(1, 3) == "33.3%"
-
-    def test_pct_guards_zero_denominator(self):
-        assert pct(0, 0) == ""
-        assert pct(5, -1) == ""
-
 
 class TestScanType:
     def test_level_included(self):
@@ -128,12 +117,14 @@ class TestScanType:
     def test_missing_level_still_labelled(self):
         assert scan_type({}) == "ASVS"
 
+    def test_declared_kind_wins(self):
+        assert scan_type({"scan_kind": "Glasswing", "asvs_level": "L3"}) == "Glasswing"
+
 
 class TestBuildScanRow:
     def _row(self):
         return build_scan_row(
             parse_flat_yaml(SHIRO_SCAN),
-            parse_flat_yaml(SHIRO_ASSESS),
             "Apache Shiro",
             "2026-07-18",
             "shiro-2026-07-17-cde5990",
@@ -149,34 +140,15 @@ class TestBuildScanRow:
         assert get("Scan type") == "ASVS L3"
         assert get("Model") == "mythos-5"
         assert get("Findings (scan)") == 93
-        assert get("Assessed") == 93
-        assert get("VALID") == 8
-        assert get("VALID-HARDENING") == 82
-        assert get("OUT-OF-MODEL") == 3
-        assert get("Sanity check") == "PASS-with-notes"
         assert get("Forwarded") == "2026-07-18"
-
-    def test_percentages(self):
-        r = self._row()
-        get = lambda name: r[SCAN_RESULTS_AUTO.index(name)]  # noqa: E731
-        assert get("VALID %") == "8.6%"
-        assert get("Hardening %") == "88.2%"
-        # not-applicable = OUT-OF-MODEL + BY-DESIGN + KNOWN-NON-FINDING = 3
-        assert get("Not-applicable %") == "3.2%"
 
     def test_row_width_matches_auto_header(self):
         assert len(self._row()) == len(SCAN_RESULTS_AUTO)
 
-    def test_unassessed_scan_is_visible_not_zeroed(self):
-        """No assessment must not read as 'assessed, zero findings'."""
-        r = build_scan_row(parse_flat_yaml(SHIRO_SCAN), None, "Apache Shiro", "", "sid")
-        get = lambda name: r[SCAN_RESULTS_AUTO.index(name)]  # noqa: E731
-        assert get("Sanity check") == "NOT ASSESSED"
-        assert get("Assessed") == ""
-        assert get("VALID") == ""
-        assert get("VALID %") == ""
-        # the scan's own finding count is still reported
-        assert get("Findings (scan)") == 93
+    def test_no_assessment_columns_remain(self):
+        """The pre-forward assessment is retired; its columns must be gone."""
+        for gone in ("Assessed", "Sanity check", "VALID", "VALID %", "Not-applicable %"):
+            assert gone not in SCAN_RESULTS_AUTO
 
 
 class TestCarryOver:
@@ -209,11 +181,69 @@ class TestCarryOver:
 
     def test_missing_row_yields_blanks_not_error(self):
         assert scan_results_carried(None) == [""] * len(SCAN_RESULTS_CARRIED)
-        assert scan_results_carried(["short"]) == [""] * len(SCAN_RESULTS_CARRIED)
 
-    def test_header_mismatch_yields_empty_map(self):
-        """A tab whose header drifted must re-seed blank, not misattribute feedback."""
+    def test_short_input_is_padded_not_discarded(self):
+        """A truncated row keeps the feedback it does have.
+
+        Sheets omits trailing empty cells, so a row whose later feedback
+        columns were never filled comes back short. Padding preserves the
+        earlier cells; blanking the whole thing would throw away real feedback.
+        """
+        assert scan_results_carried(["2026-07-20"]) == ["2026-07-20", "", "", ""]
+
+    def test_unrecognisable_header_yields_empty_map(self):
+        """A grid with no Scan ID / feedback columns must re-seed blank."""
         assert parse_scan_results([["Totally", "Different"], ["a", "b"]]) == {}
+
+    def test_feedback_survives_auto_column_changes(self):
+        """The auto columns may change shape; PMC feedback cannot be regenerated.
+
+        Carry-over locates the header and the carried columns by NAME, so a tab
+        written by an older build -- with extra auto columns that no longer
+        exist -- still yields its feedback rather than silently dropping it.
+        """
+        legacy_header = [
+            "PMC",
+            "Repo",
+            "Scan ID",
+            "Scan date",
+            "Scan type",
+            "Model",
+            "Findings (scan)",
+            "Assessed",
+            "VALID",
+            "Sanity check",
+            "Forwarded",
+            *SCAN_RESULTS_CARRIED,
+        ]
+        grid = [
+            ["Scan Results"],
+            legacy_header,
+            [
+                "Apache Shiro",
+                "apache/shiro",
+                "sid-1",
+                "",
+                "",
+                "",
+                "93",
+                "93",
+                "8",
+                "PASS",
+                "2026-07-18",
+                "2026-07-20",
+                "Negative",
+                "descriptions unreadable",
+                "shorter reports",
+            ],
+        ]
+        got = parse_scan_results(grid)
+        assert scan_results_carried(got["sid-1"]) == [
+            "2026-07-20",
+            "Negative",
+            "descriptions unreadable",
+            "shorter reports",
+        ]
 
     def test_empty_grid(self):
         assert parse_scan_results([]) == {}
@@ -224,47 +254,23 @@ class TestCarryOver:
 
 
 class TestTotals:
-    def test_totals_sum_counts_and_recompute_percentages(self):
-        a = build_scan_row(
-            parse_flat_yaml(SHIRO_SCAN), parse_flat_yaml(SHIRO_ASSESS), "A", "", "s1"
-        )
-        b = build_scan_row(
-            parse_flat_yaml(SHIRO_SCAN), parse_flat_yaml(SHIRO_ASSESS), "B", "", "s2"
-        )
-        t = totals_row([a, b])
-        get = lambda name: t[SCAN_RESULTS_AUTO.index(name)]  # noqa: E731
-        assert get("Findings (scan)") == 186
-        assert get("Assessed") == 186
-        assert get("VALID") == 16
-        # percentages recomputed from summed counts, not averaged
-        assert get("VALID %") == "8.6%"
+    def _row(self, pmc, sid):
+        return build_scan_row(parse_flat_yaml(SHIRO_SCAN), pmc, "", sid)
+
+    def test_totals_sum_findings(self):
+        t = totals_row([self._row("A", "s1"), self._row("B", "s2")])
+        assert t[SCAN_RESULTS_AUTO.index("Findings (scan)")] == 186
         assert t[0] == "TOTAL (2 scans)"
 
     def test_totals_width_matches_full_header(self):
-        a = build_scan_row(
-            parse_flat_yaml(SHIRO_SCAN), parse_flat_yaml(SHIRO_ASSESS), "A", "", "s1"
-        )
-        assert len(totals_row([a])) == len(SCAN_RESULTS_HEADER)
+        assert len(totals_row([self._row("A", "s1")])) == len(SCAN_RESULTS_HEADER)
 
-    def test_totals_ignores_unassessed_rows_in_percentages(self):
-        assessed = build_scan_row(
-            parse_flat_yaml(SHIRO_SCAN), parse_flat_yaml(SHIRO_ASSESS), "A", "", "s1"
-        )
-        un = build_scan_row(parse_flat_yaml(SHIRO_SCAN), None, "B", "", "s2")
-        t = totals_row([assessed, un])
-        get = lambda name: t[SCAN_RESULTS_AUTO.index(name)]  # noqa: E731
-        assert get("Findings (scan)") == 186  # both scans' raw findings count
-        assert get("Assessed") == 93  # only the assessed one
-        assert get("VALID %") == "8.6%"
+    def test_totals_of_nothing(self):
+        assert totals_row([])[0] == "TOTAL (0 scans)"
 
 
 def test_header_is_auto_plus_carried():
     assert SCAN_RESULTS_HEADER == SCAN_RESULTS_AUTO + SCAN_RESULTS_CARRIED
-
-
-def test_all_dispositions_are_columns():
-    for d in DISPOSITIONS:
-        assert d in SCAN_RESULTS_AUTO
 
 
 class TestNormalizeRepo:
