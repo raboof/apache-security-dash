@@ -3,7 +3,7 @@ name: frontier-model-preparation-run
 description: >-
   Umbrella orchestration SKILL for the Frontier Model Preparation scan pipeline —
   the periodic "run a full sweep across the program" entrypoint.
-  Performs a read-only sweep across all four input surfaces (Gmail [GLASSWING] threads, the Mythos tracker spreadsheet's PMCs sheet, GitHub PRs the Security team has opened on PMC repos, ASF Tooling scan results landing in the `apache/tooling-agents-private` archive) and produces a single action list — per-PMC, classified by where each engagement sits in the pipeline (new request, awaiting PMC reply, model-verify pending, ready to submit, submitted to ASF Tooling, results back, forwarded, etc.).
+  Performs a read-only sweep across all four input surfaces (Gmail programme threads — subject-prefixed `[GLASSWING]` or `[ASF CLAUDE SECURITY SCAN]`, both live — the Mythos tracker spreadsheet's PMCs sheet, GitHub PRs the Security team has opened on PMC repos, ASF Tooling scan results landing in the `apache/tooling-agents-private` archive) and produces a single action list — per-PMC, classified by where each engagement sits in the pipeline (new request, awaiting PMC reply, model-verify pending, ready to submit, submitted to ASF Tooling, results back, forwarded, etc.).
   The user picks what to act on;
   this SKILL never writes —
   it hands off to frontier-model-preparation-response, frontier-model-preparation-model-verify, frontier-model-preparation-update, frontier-model-preparation-submit, frontier-model-preparation-forward, or frontier-model-preparation-status for actual work.
@@ -171,7 +171,7 @@ go straight to `frontier-model-preparation-response`).
    the verdict must come from `get_thread`, never from the search snippet.
 
    **Corollary — `is:unread` is NOT a safe proxy for "awaiting us".**
-   It is tempting to shortcut the per-thread resolution with `subject:GLASSWING is:unread`,
+   It is tempting to shortcut the per-thread resolution with `(subject:GLASSWING OR subject:"ASF CLAUDE SECURITY SCAN") is:unread`,
    on the theory that an unprocessed PMC reply is unread.
    It is not reliable:
    the operator reads mail in the Gmail UI,
@@ -227,7 +227,25 @@ Rule of thumb: anything past a one-liner with no `!` goes in a file.
 
 ### Step 1 — Email sweep
 
-Search Gmail for `subject:GLASSWING OR subject:Glasswing`.
+**Programme subject prefixes — single source of truth.**
+The programme has used **two** subject prefixes over its life and **both are live**:
+older engagements sit under `[GLASSWING]`, newer ones under `[ASF CLAUDE SECURITY SCAN]`.
+A sweep that searches only one prefix silently drops every engagement filed under the other —
+and drops it *invisibly*, because the sweep still returns a full-looking action list.
+Every Gmail query in this SKILL — the thread search below, the changed-set search in the cache step, draft enumeration, and the `is:unread` hints — uses this same set:
+
+```
+subject:GLASSWING OR subject:"ASF CLAUDE SECURITY SCAN"
+```
+
+**Quote the multi-word prefix — the quotes are load-bearing.**
+Gmail's `subject:` operator binds to a single token,
+so an unquoted `subject:ASF CLAUDE SECURITY SCAN` parses as `subject:ASF` **AND** a free-text body search for `CLAUDE SECURITY SCAN`.
+That returns a wrong set that looks entirely plausible — some real threads, plus unrelated mail that merely mentions the words.
+Keep the double quotes in every query.
+Gmail matching is case-insensitive and tokenises on `[`/`]`, so one spelling per prefix is enough and the brackets need not appear in the query.
+
+Search Gmail for the prefix set above.
 
 **Paginate to exhaustion — never stop at the first page.**
 `mcp__claude_ai_Gmail__search_threads` caps each page at `pageSize=50` and returns a `nextPageToken` whenever more threads exist.
@@ -236,7 +254,7 @@ accumulate the returned thread IDs,
 and if the response carries a `nextPageToken`, re-issue with that token —
 repeat until the token is empty.
 After any page returns 50 results, **assume there is a next page until the empty-token response proves otherwise**.
-The program already exceeds 100 FRONTIER MODEL PREPARATION threads (≈106 across 3 pages as of 2026-06-01),
+The program already exceeds 100 FRONTIER MODEL PREPARATION threads (≈106 across 3 pages as of 2026-06-01, and that count predates the `[ASF CLAUDE SECURITY SCAN]` prefix — the combined set is larger and needs more pages, not fewer),
 so a single 50-thread page is a fraction of the set.
 A sweep that classifies only the first page produces *complete spreadsheet-derived state but incomplete email-direction state* —
 PMCs whose thread sorts onto page 2+ look quiet when they may in fact be awaiting our reply (the 2026-06-01 sweep missed APISIX, Thrift, Hop, Directory, and Grails this way).
@@ -246,7 +264,7 @@ For each thread (across all pages), classify into one of these buckets:
 
 | Bucket | Signal |
 | --- | --- |
-| **New `[GLASSWING]` request** | Subject matches `[GLASSWING] <PMC>:` and the PMC isn't yet in the spreadsheet as `Scan Requested = Yes`. |
+| **New programme request** | Subject matches `[GLASSWING] <PMC>:` **or** `[ASF CLAUDE SECURITY SCAN] <PMC>:` and the PMC isn't yet in the spreadsheet as `Scan Requested = Yes`. Both prefixes mean the same thing for classification — do not treat the newer prefix as a different kind of engagement. |
 | **Reply on existing request thread** | We've already replied at least once (`SENT` label present in thread); a *newer* message exists from the PMC after our last reply. |
 | **Reply we haven't acted on** | Same as above but our last action (Gmail draft or sheet write) is older than the most recent PMC message. |
 | **Pure announcement-thread chatter** | A reply to the original `[IMPORTANT][SECURITY]` announcement that isn't substantive (just "+1", "interesting", etc.). Log and skip. |
@@ -289,9 +307,12 @@ there is nothing new to read.
 Exploit that:
 
 1. **Cache file:** `~/.cache/asf-security/glasswing/thread-state.json` (sandbox-writable; create the dir if missing).
-   Shape: `{ "last_sweep": "<ISO8601>", "threads": { "<tid>": <record above> } }`.
+   Shape: `{ "last_sweep": "<ISO8601>", "prefixes": ["GLASSWING", "ASF CLAUDE SECURITY SCAN"], "threads": { "<tid>": <record above> } }`.
 2. **Load** the cache at sweep start (empty `{}` on first run).
-3. **Find the changed set** with a search: `mcp__claude_ai_Gmail__search_threads` with `query="subject:GLASSWING after:YYYY/MM/DD"`, where the date is `last_sweep` minus a 1-day safety buffer.
+2b. **Compare the cache's `prefixes` against the current prefix set (Step 1). If they differ — or the field is absent — discard the incremental path for this sweep and do a cold full enumeration** (the unbounded thread search at the top of Step 1, paginated to exhaustion), then write the current prefix set into the cache.
+   **This is mandatory and it is not optional tidying.** The changed-set search in the next step is bounded by `after:<last_sweep>`, so it only ever returns threads that gained a message *recently*. A prefix newly added to the sweep has threads that are **older than `last_sweep`** and have not moved since; the incremental search will never return them, the cache has no entry for them, and they will be missing from the action list on every subsequent sweep — permanently, and with no error. A cold pass on the first sweep after a prefix change is the only thing that pulls them in. The same applies if a prefix is ever removed or renamed.
+3. **Find the changed set** with a search: `mcp__claude_ai_Gmail__search_threads` with `query="(subject:GLASSWING OR subject:\"ASF CLAUDE SECURITY SCAN\") after:YYYY/MM/DD"`, where the date is `last_sweep` minus a 1-day safety buffer.
+   **Parenthesise the prefix alternation.** Gmail binds `OR` tighter than the implicit `AND` with `after:`, so an unparenthesised `subject:GLASSWING OR subject:"ASF CLAUDE SECURITY SCAN" after:...` applies the date filter to only the second branch and returns the *entire* `[GLASSWING]` history on every sweep — slow, and it masks the bug because the result set looks generously large rather than short.
    Every `thread_id` it returns is a thread that gained ≥1 message since the last sweep (new PMC requests show up here too).
    **This search paginates too** —
    if the response carries a `nextPageToken`, loop on it until empty (a busy week can exceed 50 changed threads).
@@ -314,7 +335,7 @@ Note: `get_thread` here is **MINIMAL** — you only need direction, not bodies.
 Fetch `FULL_CONTENT` only later, in the per-task SKILL, when you actually draft a reply to a specific thread.
 
 **Draft-folder enumeration** (mandatory — see hard rule 6).
-After the thread sweep, call `mcp__claude_ai_Gmail__list_drafts` with `query="subject:GLASSWING"` and `pageSize=50` and capture the result as `{thread_id, draft_id, draft_subject}` for each returned row —
+After the thread sweep, call `mcp__claude_ai_Gmail__list_drafts` with `query="subject:GLASSWING OR subject:\"ASF CLAUDE SECURITY SCAN\""` and `pageSize=50` and capture the result as `{thread_id, draft_id, draft_subject}` for each returned row —
 **paginating on `nextPageToken` until empty**, same as the thread search (a backlog of unsent drafts can exceed one page).
 This is the *only* trustworthy signal that a draft is still pending in Drafts vs. already sent —
 session memory of "I created draft X earlier in this session" is not evidence (the operator may have manually clicked Send between draft-create and sweep).
@@ -478,7 +499,7 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 
 | Classification | Definition | Next action |
 | --- | --- | --- |
-| `new-request-untouched` | Inbound `[GLASSWING]` request exists; no row in the sheet for that PMC yet, or the row has no `Request date`. | Run `frontier-model-preparation-response` gates 1–4. |
+| `new-request-untouched` | Inbound `[GLASSWING]` **or** `[ASF CLAUDE SECURITY SCAN]` request exists; no row in the sheet for that PMC yet, or the row has no `Request date`. | Run `frontier-model-preparation-response` gates 1–4. |
 | `pmc-reply-awaiting-action` | PMC has sent a newer message than our last reply / sheet write. | Read the new message; run `frontier-model-preparation-response` if it raises questions; run `frontier-model-preparation-model-verify` if they nominated a model; run `frontier-model-preparation-update` if it confirms scope / dates. |
 | `draft-pending-manual-send` | A Gmail draft exists in Drafts for this PMC's thread that the operator hasn't sent yet. **Detection signal: `list_drafts` (Step 1) returned a draft on this thread — not session memory of having created one.** | Surface for operator action — the operator reviews in the Gmail UI and clicks Send. No SKILL re-invocation needed. |
 | `awaiting-pmc-reply` | We've replied last; nothing new from PMC. **Confirm via the thread's latest message having a `SENT` label, and confirm no draft is pending in `list_drafts` output.** | Wait; nothing to do unless time-overdue (see below). |
@@ -628,7 +649,7 @@ Output format:
 
 The PMCs sheet has one column dedicated to **direct** lists-apache.org thread permalinks:
 
-- `PMC thread (ponymail)` — the `[GLASSWING]` request thread between the Security team and the PMC.
+- `PMC thread (ponymail)` — the programme request thread between the Security team and the PMC (subject prefixed `[GLASSWING]` or `[ASF CLAUDE SECURITY SCAN]`, depending on when the engagement started).
 
 The cell should only ever contain a `https://lists.apache.org/thread/<tid>` URL — a direct permalink to the actual thread.
 **No fallback or "starter" URLs.**
@@ -643,14 +664,15 @@ Procedure:
 2. For each PMC row where `PMC thread (ponymail)` is blank (or where it currently contains a non-permalink URL from an older sync run):
 
    - Call `mcp__ponymail__search_list` with `list=private`, `domain=<pmc>.apache.org`, `subject=FRONTIER MODEL PREPARATION`, `emails_only=true` (and a `timespan` covering the period since the original announcement to bound the search).
-   - From the results, find the thread whose subject matches `[GLASSWING] <PMC>:` (or its forwarded / replied variants — e.g. Fineract has a "Fwd:" subject line) and whose first message's `from` matches the PMC contact recorded in the sheet's `Contact Person` cell.
+   - From the results, find the thread whose subject matches `[GLASSWING] <PMC>:` **or** `[ASF CLAUDE SECURITY SCAN] <PMC>:` (or their forwarded / replied variants — e.g. Fineract has a "Fwd:" subject line) and whose first message's `from` matches the PMC contact recorded in the sheet's `Contact Person` cell.
+     If both prefixes turn up a thread for the same PMC, prefer the one whose first message's `from` and date line up with the sheet's `Contact Person` / `Request date`; surface the ambiguity in the action list rather than guessing.
    - Read the thread's `tid` from the result.
      Construct `https://lists.apache.org/thread/<tid>`.
    - Write back via `frontier-model-preparation-update` `apply`.
 
    Note: the ponymail MCP **blocks `security@apache.org`** entirely (restricted-list policy),
    so we always resolve PMC threads via the PMC's own `private@<pmc>` list —
-   the original `[GLASSWING]` request is CC'd there,
+   the original request — under either prefix — is CC'd there,
    so the thread is in that archive too.
 
 3. If a thread can't be found despite ponymail auth being active, leave the cell blank and surface the row in the action list under a "ponymail thread not yet indexed" note.
@@ -680,7 +702,7 @@ Run it whenever Step 2.5 found archive movement (a new scan, a new assessment) o
 The auto columns are rebuilt from the archive every time; the four feedback columns are **carried over keyed by Scan ID** and are never clobbered by a rebuild.
 
 **Recording PMC feedback (this is the part only the sweep can do).**
-`Feedback received` / `Sentiment` / `Feedback summary` / `Improvements suggested` have no automated source — they are the sweep's read of what the PMC actually said on the `[GLASSWING]` results thread.
+`Feedback received` / `Sentiment` / `Feedback summary` / `Improvements suggested` have no automated source — they are the sweep's read of what the PMC actually said on the programme results thread (either subject prefix).
 When a delivered scan gets a substantive reply, write it with:
 
 ```bash
@@ -712,7 +734,7 @@ An unanswered *ask* is a question or request they're waiting on us to act on.
 Procedure:
 
 1. Take every in-flight thread whose true-latest message is the PMC's (`awaiting = us`, resolved per Step 1 / hard rule 7 — **never** off the search snippet).
-2. Cross-check with a live `mcp__claude_ai_Gmail__search_threads` on `subject:GLASSWING is:unread` as a *hint* only (per hard rule 7's corollary, `is:unread` misses read-but-unanswered messages, so it narrows but never bounds the set).
+2. Cross-check with a live `mcp__claude_ai_Gmail__search_threads` on `(subject:GLASSWING OR subject:"ASF CLAUDE SECURITY SCAN") is:unread` as a *hint* only (per hard rule 7's corollary, `is:unread` misses read-but-unanswered messages, so it narrows but never bounds the set).
 3. Read each candidate's latest message and classify the ask:
    - **Unanswered ask** — a question or request awaiting our reply/action → surface it.
    - **No ask** — bare ack / thanks / courtesy → not surfaced (note in passing).
