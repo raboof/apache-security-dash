@@ -37,7 +37,8 @@ Two invariants hold the design together:
   It never opens `report.md`, `index.json`, or a file under the bundle directory by path.
   The storage format is `report-cache`'s secret; the agent sees text.
 - Reads never mutate.
-  The only writers are the triage verbs (`move` / `set` / `classify`) and `put-artifact`.
+  The only writers are the triage verbs (`move` / `set` / `classify`)
+  and `put-artifact` / `remove-artifact`.
   `index.json` is the single source of truth for triage state,
   and nothing outside `report-cache` writes it,
   which is why there is no "reindex": the index is never out of step with a second copy.
@@ -126,6 +127,18 @@ This is how triage-assess deposits `summary.md`, `reason.md`, `draft-reply.md`, 
 
 `<name>` is a free-form but safe filename:
 a plain relative name, no path separators or traversal, resolved inside the bundle only.
+
+### `remove-artifact <id> <name>`
+
+Delete a triage artifact a prior pass wrote.
+This is for a flipped decision:
+an assessor that drafted `summary.md` for a forward and then re-decides to decline
+drops the stale draft here,
+so `inbox-manager` never pre-fills a send preview from an artifact
+that no longer matches the disposition.
+The reserved report files (`report.md`, `raw.eml`) are refused,
+and removing an artifact that does not exist is an error,
+so a typo cannot pass for a cleanup.
 
 ### `move` / `set` / `classify`
 

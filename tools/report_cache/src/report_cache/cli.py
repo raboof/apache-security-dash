@@ -58,8 +58,10 @@ bundle without knowing the storage format:
 
   get-attachment:  render one attachment (text / html / pdf) to text.
 
-  get-artifact / put-artifact:  read or write a triage artifact file in the
-        bundle (e.g. ``summary.md``, ``reason.md``), for triage-assess.
+  get-artifact / put-artifact / remove-artifact:  read, write or delete a triage
+        artifact file in the bundle (e.g. ``summary.md``, ``reason.md``), for
+        triage-assess. ``remove-artifact`` is for a flipped decision: a draft
+        that no longer applies must not linger to pre-fill a send preview.
         In-process callers can use ``report_cache.artifacts`` directly instead of the CLI.
 
 Operates only on the local cache; never talks to a mailbox, never sends.
@@ -461,6 +463,18 @@ def cmd_put_artifact(cache: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_remove_artifact(cache: Path, args: argparse.Namespace) -> int:
+    idx = index.load(cache)
+    _mid, entry = find_entry(idx, args.id)
+    name = _safe_name(args.name)
+    if name in artifacts.RESERVED:
+        raise SystemExit(f"{name!r} is a reserved bundle file, not an artifact.")
+    if not artifacts.remove_artifact(cache / entry.path, name):
+        raise SystemExit(f"no artifact {name!r} in {entry.path}/")
+    print(f"removed {entry.path}/{name}")
+    return 0
+
+
 def _add_label_args(parser: argparse.ArgumentParser) -> None:
     """Shared label-composition + direct-label options for `set` and `classify`.
 
@@ -562,6 +576,12 @@ def main() -> int:
         "--from", dest="from_file", help="Read the content from this file (default: stdin)"
     )
 
+    p_rmart = sub.add_parser(
+        "remove-artifact", help="Delete a triage artifact (e.g. after flipping a decision)"
+    )
+    p_rmart.add_argument("id", help="Message-ID (prefix ok) or bundle leaf name")
+    p_rmart.add_argument("name", help="Artifact filename in the bundle")
+
     args = ap.parse_args()
     handlers = {
         "move": cmd_move,
@@ -572,6 +592,7 @@ def main() -> int:
         "get-attachment": cmd_get_attachment,
         "get-artifact": cmd_get_artifact,
         "put-artifact": cmd_put_artifact,
+        "remove-artifact": cmd_remove_artifact,
     }
     return handlers[args.command](args.cache_dir, args)
 

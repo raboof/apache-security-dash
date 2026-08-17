@@ -21,10 +21,12 @@ A bundle is a directory under ``report-cache/``: the report itself
 (``report.md`` plus the verbatim ``raw.eml``) and any *triage artifacts* the
 skills write beside it (``summary.md``, ``note.md``, ``reason.md``, ...).
 
-These are the programmatic counterpart of the ``get-artifact`` / ``put-artifact`` CLI verbs.
+These are the programmatic counterpart of the ``get-artifact`` / ``put-artifact`` /
+``remove-artifact`` CLI verbs.
 
 The reserved report files are never treated as artifacts:
-:func:`list_artifacts` skips them and :func:`write_artifact` refuses to overwrite them.
+:func:`list_artifacts` skips them, and :func:`write_artifact` / :func:`remove_artifact`
+refuse to touch them.
 Every name is a single filename confined to the bundle (no separators, no traversal).
 """
 
@@ -71,3 +73,19 @@ def write_artifact(bundle_dir: Path, name: str, content: str) -> Path:
     path = bundle_dir / safe
     path.write_text(content, encoding="utf-8")
     return path
+
+
+def remove_artifact(bundle_dir: Path, name: str) -> bool:
+    """Delete triage artifact ``name``; ``True`` if it existed, ``False`` when absent.
+
+    Refuses the reserved bundle files, like :func:`write_artifact`, so a flipped
+    triage decision can only ever drop a draft, never the report itself.
+    """
+    safe = safe_name(name)
+    if safe in RESERVED:
+        raise ValueError(f"{safe!r} is a reserved bundle file, not an artifact.")
+    try:
+        (bundle_dir / safe).unlink()
+    except FileNotFoundError:
+        return False
+    return True

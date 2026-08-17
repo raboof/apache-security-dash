@@ -38,6 +38,20 @@ def test_write_returns_the_path(tmp_path):
     assert artifacts.write_artifact(tmp_path, "note.md", "x").read_text() == "x"
 
 
+# --- removal ----------------------------------------------------------------
+
+
+def test_remove_deletes_an_existing_artifact(tmp_path):
+    artifacts.write_artifact(tmp_path, "summary.md", "stale draft\n")
+    assert artifacts.remove_artifact(tmp_path, "summary.md") is True
+    assert artifacts.read_artifact(tmp_path, "summary.md") is None
+
+
+def test_remove_absent_artifact_is_false(tmp_path):
+    # The soft miss mirrors read_artifact's None; the CLI turns it into an error.
+    assert artifacts.remove_artifact(tmp_path, "summary.md") is False
+
+
 # --- listing ----------------------------------------------------------------
 
 
@@ -65,12 +79,22 @@ def test_unsafe_names_are_rejected(tmp_path, bad):
         artifacts.read_artifact(tmp_path, bad)
     with pytest.raises(ValueError, match="unsafe name"):
         artifacts.write_artifact(tmp_path, bad, "x")
+    with pytest.raises(ValueError, match="unsafe name"):
+        artifacts.remove_artifact(tmp_path, bad)
 
 
 @pytest.mark.parametrize("name", ["report.md", "raw.eml"])
 def test_write_refuses_reserved_names(tmp_path, name):
     with pytest.raises(ValueError, match="reserved"):
         artifacts.write_artifact(tmp_path, name, "clobber")
+
+
+@pytest.mark.parametrize("name", ["report.md", "raw.eml"])
+def test_remove_refuses_reserved_names(tmp_path, name):
+    (tmp_path / name).write_text("the report itself")
+    with pytest.raises(ValueError, match="reserved"):
+        artifacts.remove_artifact(tmp_path, name)
+    assert (tmp_path / name).read_text() == "the report itself"
 
 
 def test_safe_name_returns_a_plain_name_unchanged(tmp_path):

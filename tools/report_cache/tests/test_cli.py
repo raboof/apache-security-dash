@@ -389,3 +389,26 @@ def test_artifact_name_rejects_traversal(tmp_path):
     make_bundle(tmp_path, mid="<t@h>", slug="t")
     with pytest.raises(SystemExit, match="unsafe name"):
         cli.cmd_get_artifact(tmp_path, _ns(id="t", name="../escape"))
+
+
+def test_remove_artifact_deletes_a_stale_draft(tmp_path, capsys, monkeypatch):
+    make_bundle(tmp_path, mid="<rm@h>", slug="rm")
+    monkeypatch.setattr("sys.stdin", io.StringIO("the summary\n"))
+    cli.cmd_put_artifact(tmp_path, _ns(id="rm", name="summary.md"))
+    capsys.readouterr()
+    cli.cmd_remove_artifact(tmp_path, _ns(id="rm", name="summary.md"))
+    assert "removed" in capsys.readouterr().out
+    assert not (bundle_dir_of(tmp_path, "<rm@h>") / "summary.md").exists()
+
+
+def test_remove_artifact_errors_when_absent(tmp_path):
+    make_bundle(tmp_path, mid="<rma@h>", slug="rma")
+    with pytest.raises(SystemExit, match="no artifact"):
+        cli.cmd_remove_artifact(tmp_path, _ns(id="rma", name="summary.md"))
+
+
+def test_remove_artifact_rejects_reserved_name(tmp_path):
+    make_bundle(tmp_path, mid="<rmr@h>", slug="rmr")
+    with pytest.raises(SystemExit, match="reserved"):
+        cli.cmd_remove_artifact(tmp_path, _ns(id="rmr", name="report.md"))
+    assert (bundle_dir_of(tmp_path, "<rmr@h>") / "report.md").exists()
