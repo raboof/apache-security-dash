@@ -109,7 +109,7 @@ Before spawning assessors:
   This SKILL never touches them: `inbox_manager` is the sole renderer and applies them at send time.
   See `templates/README.md` for the marker contract:
   this SKILL supplies the content values
-  (the `summary.md` / `reason.md` / `note.md` / `model.md` artifacts plus the `duplicate_ponymail_link` index field);
+  (the `summary.md` / `reason.md` / `note.md` artifacts plus the `assessment_model` and `duplicate_ponymail_link` index fields);
   `inbox_manager` fills those plus the identity / PMC / infra markers and drops any line whose marker stays empty.
 - **`email-classification/` archive** (a worktree of the `email-classification` branch, created automatically by `archive_lookup.py` if missing):
   per-PMC archive of every previously triaged report's tag, one `.json` per report under `<pmc>/`, `zzz-non-issue/<pmc>/`, `zzz-resolved/<pmc>/`, or `archive/.../<pmc>/`.
@@ -151,10 +151,12 @@ Do not judge similarity based **only** on tags.
 The content of the reports (affected component, class, and method, plus the vulnerability class (CWE))
 should also be similar.
 
-If you spot a duplicate, set its label and ponymail link in the triaging metadata, using:
+If you spot a duplicate, file the report under the original's label and record the original's
+Ponymail link in the triaging metadata, using:
 
   ```bash
-  report-cache set <id> --duplicate-label "<the original's label>" \
+  report-cache set <id> --add-label "<the original's label>" \
+      --remove-label "<this report's active label>" \
       --duplicate-ponymail-link "<original's ponymail thread url>"
   ```
 
@@ -231,12 +233,12 @@ contribution channels: the `reject.md` template's closing paragraph already says
 
 ```bash
 report-cache put-artifact <id> summary.md --from <file>
-echo <assessor model> | report-cache put-artifact <id> model.md   # the assessor's model id
-report-cache set <id> --status assessed --disposition forward
+report-cache set <id> --status assessed --disposition forward \
+    --assessment-model "<the assessor's model id>"
 ```
 
-`model.md` holds the id of the model that wrote the summary; `inbox_manager` renders it into the AI
-disclaimer line (`<model>` marker). Add an optional extra paragraph for the reporter's receipt with
+`assessment_model` holds the id of the model that wrote the summary; `inbox_manager` renders it into
+the AI disclaimer line (`<model>` marker). Add an optional extra paragraph for the reporter's receipt with
 `report-cache put-artifact <id> note.md --from note.md`.
 
 The summary for the PMC should be **concise**: duplicating the security report serves no purpose.
@@ -285,14 +287,15 @@ $A/archive_lookup.py --pmc <pmc> --keywords "<words>"        # prior reports for
 $RC list --status classified                                 # the work queue
 $RC show <id>                                                # read one report
 $RC put-artifact <id> summary.md --from summary.md          # forward: the PMC summary
-echo "<model>" | $RC put-artifact <id> model.md      # forward: the assessor's model id
 $RC put-artifact <id> note.md --from note.md                # optional reporter receipt note
-$RC set <id> --status assessed --disposition forward        # forward
+$RC set <id> --status assessed --disposition forward \
+    --assessment-model "<model id>"                          # forward (the model the disclaimer credits)
 $RC put-artifact <id> reason.md --from reason.md            # decline: the reject reason
 $RC set <id> --status assessed --disposition decline \
     --collection zzz-non-issue --pmc <pmc> --keywords "<kw>" \
     --remove-label "<pmc>/<active label>"                    # decline (non-issue)
-$RC set <id> --duplicate-label "<label>" --duplicate-ponymail-link "<url>"  # a duplicate
+$RC set <id> --add-label "<the original's label>" --remove-label "<active label>" \
+    --duplicate-ponymail-link "<url>"                        # a duplicate
 ```
 
 `archive_lookup.py` creates the `email-classification/` worktree on first run if missing,
@@ -306,8 +309,9 @@ the archive's `from`/`to`/`message_id` fields must not leak into reporter-facing
 
 Every report this SKILL touches ends at `status: assessed` with one of:
 
-- `disposition: forward` - `summary.md` + `model.md` written (plus `note.md` when there is a reporter
-  note); `duplicate_ponymail_link` / `duplicate_label` recorded when it is a duplicate.
+- `disposition: forward` - `summary.md` written (plus `note.md` when there is a reporter note) and
+  `assessment_model` set; `duplicate_ponymail_link` recorded, and the original's label filed, when it
+  is a duplicate.
 - `disposition: decline` - `reason.md` written (false-positive / hardening), `zzz-non-issue/` collection
   label added.
 
