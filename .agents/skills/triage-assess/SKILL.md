@@ -241,6 +241,10 @@ report-cache set <id> --status assessed --disposition forward \
 the AI disclaimer line (`<model>` marker). Add an optional extra paragraph for the reporter's receipt with
 `report-cache put-artifact <id> note.md --from note.md`.
 
+If you flip a decision after drafting (a forward becomes a decline, or the reverse),
+delete the drafts that no longer apply with `report-cache remove-artifact <id> <name>`:
+a stale artifact would otherwise pre-fill the operator's send preview.
+
 The summary for the PMC should be **concise**: duplicating the security report serves no purpose.
 A long summary is worse than no summary. It should contain:
 
@@ -288,6 +292,7 @@ $RC list --status classified                                 # the work queue
 $RC show <id>                                                # read one report
 $RC put-artifact <id> summary.md --from summary.md          # forward: the PMC summary
 $RC put-artifact <id> note.md --from note.md                # optional reporter receipt note
+$RC remove-artifact <id> summary.md                          # flipped decision: drop a stale draft
 $RC set <id> --status assessed --disposition forward \
     --assessment-model "<model id>"                          # forward (the model the disclaimer credits)
 $RC put-artifact <id> reason.md --from reason.md            # decline: the reject reason
