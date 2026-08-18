@@ -390,7 +390,7 @@ def _reply_envelope(original):
     if original["Cc"]:
         msg["Cc"] = original["Cc"]
     msg["Bcc"] = "ASF Security <security@apache.org>"
-    subject = str(original["Subject"] or "")
+    subject = _header_value(original["Subject"])
     msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
     mid = original["Message-ID"]
     if mid:
