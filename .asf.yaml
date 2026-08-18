@@ -24,6 +24,7 @@ github:
 # Route every GitHub notification stream to the private commits list.
 #
 # This block only takes effect on the default branch (main).
+
 notifications:
   commits: commits-private@security.apache.org
   issues: commits-private@security.apache.org
