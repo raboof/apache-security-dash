@@ -48,6 +48,22 @@ report.md (Gmail data) is never rewritten - all triage state lives in the index.
         ``--security-model-source`` / ``--security-model-link`` record the PMC's
         security-model URLs (machine-readable source, human-readable page).
 
+The agent-facing read / artifact verbs (see contract.md) let the agent work a
+bundle without knowing the storage format:
+
+  list / show:  read the cache without changing it.
+        ``list`` enumerates bundles (filter by ``--status`` / ``--pmc`` /
+        ``--disposition``); ``show`` prints one report - merged metadata, body,
+        and the attachment / artifact listing.
+
+  get-attachment:  render one attachment (text / html / pdf) to text.
+
+  get-artifact / put-artifact / remove-artifact:  read, write or delete a triage
+        artifact file in the bundle (e.g. ``summary.md``, ``reason.md``), for
+        triage-assess. ``remove-artifact`` is for a flipped decision: a draft
+        that no longer applies must not linger to pre-fill a send preview.
+        In-process callers can use ``report_cache.artifacts`` directly instead of the CLI.
+
 Operates only on the local cache; never talks to a mailbox, never sends.
 ``<id>`` matches an index entry by RFC Message-ID (a unique prefix works) or by
 the bundle's leaf directory name.
@@ -70,14 +86,16 @@ import sys
 from enum import StrEnum
 from pathlib import Path
 
-from report_cache import index
+from report_cache import artifacts, index
 from report_cache.index import Disposition, Entry, Status
+from report_cache.render import UnsupportedAttachment, format_size, render_attachment, render_report
 from report_cache.report_md import BUNDLE_FILE, Header
 from report_cache.report_md import read as read_report
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CACHE = REPO_ROOT / "report-cache"
 UNSORTED = "_unsorted"
+ATTACHMENTS_DIR = "attachments"
 
 
 class WaitingFor(StrEnum):
@@ -180,6 +198,23 @@ def report_date(header: Header) -> str:
     if header.date is None:
         raise SystemExit("report.md has no Date header; cannot derive the report date.")
     return header.date.date().isoformat()
+
+
+def _safe_name(name: str) -> str:
+    """``artifacts.safe_name``, but reporting a CLI error rather than a ``ValueError``."""
+    try:
+        return artifacts.safe_name(name)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def _report_day(cache: Path, entry: Entry) -> str | None:
+    """The report's yyyy-mm-dd from its report.md Date, or None if unreadable."""
+    try:
+        header, _ = read_report(cache / entry.path / BUNDLE_FILE)
+    except (OSError, ValueError):
+        return None
+    return header.date.date().isoformat() if header.date else None
 
 
 def _move_entry(
@@ -345,6 +380,101 @@ def cmd_classify(cache: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_list(cache: Path, args: argparse.Namespace) -> int:
+    idx = index.load(cache)
+    rows = []
+    for _mid, entry in idx.items():
+        if args.status and str(entry.status) != args.status:
+            continue
+        if args.pmc and entry.pmc != args.pmc:
+            continue
+        if args.disposition and str(entry.disposition or "") != args.disposition:
+            continue
+        rows.append((entry, _report_day(cache, entry)))
+    rows.sort(key=lambda r: (r[1] or "", r[0].path), reverse=True)
+    if not rows:
+        print("(no matching bundles)")
+        return 0
+    print(f"{'id':<24}  {'date':<10}  {'pmc':<14}  {'status':<10}  {'disp':<8}  subject")
+    for entry, day in rows:
+        disp = str(entry.disposition or "-")
+        subject = (entry.subject or "")[:50]
+        print(
+            f"{Path(entry.path).name[:24]:<24}  {(day or '-'):<10}  {(entry.pmc or '-'):<14}  "
+            f"{str(entry.status):<10}  {disp:<8}  {subject}"
+        )
+    return 0
+
+
+def cmd_show(cache: Path, args: argparse.Namespace) -> int:
+    idx = index.load(cache)
+    _mid, entry = find_entry(idx, args.id)
+    bundle_dir = cache / entry.path
+    header, body = read_report(bundle_dir / BUNDLE_FILE)
+    print(render_report(header, body, entry, artifacts.list_artifacts(bundle_dir)))
+    return 0
+
+
+def cmd_get_attachment(cache: Path, args: argparse.Namespace) -> int:
+    idx = index.load(cache)
+    _mid, entry = find_entry(idx, args.id)
+    bundle_dir = cache / entry.path
+    name = _safe_name(args.name)
+    path = bundle_dir / ATTACHMENTS_DIR / name
+    if not path.is_file():
+        raise SystemExit(f"no attachment {name!r} in {entry.path}/{ATTACHMENTS_DIR}/")
+    header, _ = read_report(bundle_dir / BUNDLE_FILE)
+    content_type = next(
+        (a.content_type for a in (header.attachments or []) if a.filename == name), None
+    )
+    try:
+        print(render_attachment(path, content_type))
+    except UnsupportedAttachment as exc:
+        print(
+            f"(unsupported attachment type {exc.content_type or '?'}, "
+            f"{format_size(path.stat().st_size)} at {ATTACHMENTS_DIR}/{name})"
+        )
+    return 0
+
+
+def cmd_get_artifact(cache: Path, args: argparse.Namespace) -> int:
+    idx = index.load(cache)
+    _mid, entry = find_entry(idx, args.id)
+    name = _safe_name(args.name)
+    text = artifacts.read_artifact(cache / entry.path, name)
+    if text is None:
+        raise SystemExit(f"no artifact {name!r} in {entry.path}/")
+    print(text, end="")
+    return 0
+
+
+def cmd_put_artifact(cache: Path, args: argparse.Namespace) -> int:
+    idx = index.load(cache)
+    _mid, entry = find_entry(idx, args.id)
+    # Validate the name before consuming stdin, so a bad name is not read into.
+    name = _safe_name(args.name)
+    if name in artifacts.RESERVED:
+        raise SystemExit(f"{name!r} is a reserved bundle file; choose another name.")
+    content = (
+        Path(args.from_file).read_text(encoding="utf-8") if args.from_file else sys.stdin.read()
+    )
+    path = artifacts.write_artifact(cache / entry.path, name, content)
+    print(f"wrote {path.relative_to(cache)} ({len(content)} chars)")
+    return 0
+
+
+def cmd_remove_artifact(cache: Path, args: argparse.Namespace) -> int:
+    idx = index.load(cache)
+    _mid, entry = find_entry(idx, args.id)
+    name = _safe_name(args.name)
+    if name in artifacts.RESERVED:
+        raise SystemExit(f"{name!r} is a reserved bundle file, not an artifact.")
+    if not artifacts.remove_artifact(cache / entry.path, name):
+        raise SystemExit(f"no artifact {name!r} in {entry.path}/")
+    print(f"removed {entry.path}/{name}")
+    return 0
+
+
 def _add_label_args(parser: argparse.ArgumentParser) -> None:
     """Shared label-composition + direct-label options for `set` and `classify`.
 
@@ -421,8 +551,49 @@ def main() -> int:
     )
     _add_label_args(p_classify)
 
+    p_list = sub.add_parser("list", help="Enumerate bundles (filter by status / pmc / disposition)")
+    p_list.add_argument("--status", choices=statuses, help="Only this lifecycle status")
+    p_list.add_argument("--pmc", help="Only this PMC slug")
+    p_list.add_argument("--disposition", choices=dispositions, help="Only this disposition")
+
+    p_show = sub.add_parser(
+        "show", help="Print a report: metadata + body + attachment/artifact list"
+    )
+    p_show.add_argument("id", help="Message-ID (prefix ok) or bundle leaf name")
+
+    p_getatt = sub.add_parser("get-attachment", help="Render an attachment to text")
+    p_getatt.add_argument("id", help="Message-ID (prefix ok) or bundle leaf name")
+    p_getatt.add_argument("name", help="Attachment filename under the bundle's attachments/")
+
+    p_getart = sub.add_parser("get-artifact", help="Print a triage artifact a prior pass wrote")
+    p_getart.add_argument("id", help="Message-ID (prefix ok) or bundle leaf name")
+    p_getart.add_argument("name", help="Artifact filename in the bundle")
+
+    p_putart = sub.add_parser("put-artifact", help="Write a triage artifact into the bundle")
+    p_putart.add_argument("id", help="Message-ID (prefix ok) or bundle leaf name")
+    p_putart.add_argument("name", help="Artifact filename (a plain name, no path)")
+    p_putart.add_argument(
+        "--from", dest="from_file", help="Read the content from this file (default: stdin)"
+    )
+
+    p_rmart = sub.add_parser(
+        "remove-artifact", help="Delete a triage artifact (e.g. after flipping a decision)"
+    )
+    p_rmart.add_argument("id", help="Message-ID (prefix ok) or bundle leaf name")
+    p_rmart.add_argument("name", help="Artifact filename in the bundle")
+
     args = ap.parse_args()
-    handlers = {"move": cmd_move, "set": cmd_set, "classify": cmd_classify}
+    handlers = {
+        "move": cmd_move,
+        "set": cmd_set,
+        "classify": cmd_classify,
+        "list": cmd_list,
+        "show": cmd_show,
+        "get-attachment": cmd_get_attachment,
+        "get-artifact": cmd_get_artifact,
+        "put-artifact": cmd_put_artifact,
+        "remove-artifact": cmd_remove_artifact,
+    }
     return handlers[args.command](args.cache_dir, args)
 
 
