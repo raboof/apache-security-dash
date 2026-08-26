@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 
+from sheets_writer import scan_results
 from sheets_writer.scan_results import (
     COL_WIDTHS,
     PROSE_COLS,
@@ -431,3 +432,97 @@ class TestScanDateFromDirname:
 
     def test_non_stamp_yields_blank(self):
         assert scan_date_from_dirname("shiro-2026-07-17-cde5990") == ""
+
+
+# --- repo-directory resolution (Repositories sheet fallback) ---------------
+
+REPOS_GRID = [
+    ["Repository URL", "Repository Name", "PMC Slug", "Criticality Score (%)"],
+    ["https://github.com/apache/camel-k", "camel-k", "camel", "44.9%"],
+    ["https://github.com/apache/commons-vfs", "commons-vfs", "commons", ""],
+    ["", "pekko-http", "pekko", "51.3%"],
+    ["https://github.com/apache/orphan", "orphan", "", ""],
+]
+
+
+def test_build_repo_directory_maps_url_and_name_forms():
+    d = scan_results.build_repo_directory(REPOS_GRID)
+    assert d["apache/camel-k"] == "camel"
+    assert d["apache/commons-vfs"] == "commons"
+    # falls back to Repository Name when the URL cell is blank
+    assert d["apache/pekko-http"] == "pekko"
+    # a row with no PMC slug contributes nothing
+    assert "apache/orphan" not in d
+
+
+def test_build_repo_directory_tolerates_missing_sheet():
+    assert scan_results.build_repo_directory([]) == {}
+    assert scan_results.build_repo_directory([["Repository Name"]]) == {}
+
+
+def test_repo_directory_resolves_scan_whose_project_is_a_repo_name(tmp_path):
+    """A scan keyed by repo name resolves to its PMC via the Repositories sheet.
+
+    This is the 2026-08-26 anomaly class: the archive keys scans by repo
+    (``camel-k``) while the tracker keys by PMC slug (``camel``), so 147 of
+    241 scans were emitted with a bare repo name and an anomaly note.
+    """
+    scan_dir = tmp_path / "scans" / "glasswing" / "camel-k" / "20260811T042439Z"
+    scan_dir.mkdir(parents=True)
+    (scan_dir / "metadata.yml").write_text(
+        "project: camel-k\nrepo: apache/camel-k\nscan_date: 2026-08-11\n"
+    )
+
+    pmc_by_slug = {"camel": ("Apache Camel", "2026-08-17")}
+    directory = scan_results.build_repo_directory(REPOS_GRID)
+
+    rows, anomalies = scan_results.collect_scan_rows(str(tmp_path), pmc_by_slug, {}, {}, directory)
+    assert anomalies == []
+    assert rows[0][0] == "Apache Camel"
+
+
+def test_unknown_repo_still_emitted_with_anomaly(tmp_path):
+    scan_dir = tmp_path / "scans" / "glasswing" / "mystery" / "20260811T000000Z"
+    scan_dir.mkdir(parents=True)
+    (scan_dir / "metadata.yml").write_text(
+        "project: mystery\nrepo: apache/mystery\nscan_date: 2026-08-11\n"
+    )
+    rows, anomalies = scan_results.collect_scan_rows(
+        str(tmp_path),
+        {"camel": ("Apache Camel", "")},
+        {},
+        {},
+        scan_results.build_repo_directory(REPOS_GRID),
+    )
+    assert len(rows) == 1  # never silently dropped
+    assert len(anomalies) == 1
+    assert "mystery" in anomalies[0]
+
+
+def test_repo_directory_indexes_bare_repo_names():
+    """The archive records ``repo`` unqualified ("camel-k"), not "apache/camel-k".
+
+    Indexing only the owner-qualified form was the reason the first fix for the
+    147-anomaly run changed nothing: the lookup key never matched.
+    """
+    d = scan_results.build_repo_directory(REPOS_GRID)
+    assert d["apache/camel-k"] == "camel"
+    assert d["camel-k"] == "camel"
+
+
+def test_bare_repo_name_in_metadata_resolves(tmp_path):
+    scan_dir = tmp_path / "scans" / "glasswing" / "camel-k" / "20260811T042439Z"
+    scan_dir.mkdir(parents=True)
+    # note: bare ``repo``, exactly as the live archive writes it
+    (scan_dir / "metadata.yml").write_text(
+        "project: camel-k\nrepo: camel-k\nscan_date: 2026-08-11\n"
+    )
+    rows, anomalies = scan_results.collect_scan_rows(
+        str(tmp_path),
+        {"camel": ("Apache Camel", "2026-08-17")},
+        {},
+        {},
+        scan_results.build_repo_directory(REPOS_GRID),
+    )
+    assert anomalies == []
+    assert rows[0][0] == "Apache Camel"

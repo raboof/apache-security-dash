@@ -353,11 +353,52 @@ def normalize_repo(repo: str) -> str:
     return "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
 
 
+def build_repo_directory(repos_grid: list[list[str]]) -> dict[str, str]:
+    """Pure: normalised ``owner/name`` -> PMC slug, from the Repositories sheet.
+
+    The Repositories sheet maps every public github.com/apache repo to its
+    owning PMC, so it resolves scans of repos no PMC listed explicitly in its
+    ``Repositories requested`` / ``submitted`` cells — which is most of the
+    archive, because Tooling scans beyond the enrolled set.
+    """
+    if not repos_grid:
+        return {}
+    idx = {h.strip(): i for i, h in enumerate(repos_grid[0])}
+    url_i = idx.get("Repository URL")
+    name_i = idx.get("Repository Name")
+    slug_i = idx.get("PMC Slug")
+    if slug_i is None or (url_i is None and name_i is None):
+        return {}
+    out: dict[str, str] = {}
+    for row in repos_grid[1:]:
+        slug = (row[slug_i] if slug_i < len(row) else "").strip().lower()
+        if not slug:
+            continue
+        ref = ""
+        if url_i is not None and url_i < len(row):
+            ref = row[url_i].strip()
+        if not ref and name_i is not None and name_i < len(row):
+            ref = f"apache/{row[name_i].strip()}"
+        key = normalize_repo(ref)
+        if not key:
+            continue
+        out.setdefault(key, slug)
+        # The archive frequently records ``repo`` as a bare name ("camel-k")
+        # rather than "apache/camel-k", so index the unqualified form too.
+        # Unambiguous here: every row in this sheet is a github.com/apache repo,
+        # and one org cannot hold two repos of the same name.
+        bare = key.split("/")[-1]
+        if bare != key:
+            out.setdefault(bare, slug)
+    return out
+
+
 def collect_scan_rows(
     archive_root: str,
     pmc_by_slug: dict[str, tuple[str, str]],
     carried: dict[str, list[str]],
     pmc_by_repo: dict[str, tuple[str, str]] | None = None,
+    repo_directory: dict[str, str] | None = None,
 ) -> tuple[list[list], list[str]]:
     """Impure (filesystem): all Scan Results data rows + any anomalies found.
 
@@ -386,15 +427,19 @@ def collect_scan_rows(
 
         slug = str(scan_meta.get("project", "") or "").strip().lower()
         repo_key = normalize_repo(scan_meta.get("repo", ""))
+        _dir = repo_directory or {}
+        directory_slug = _dir.get(repo_key, "") or _dir.get(slug, "")
         if slug in pmc_by_slug:
             pmc_name, forwarded = pmc_by_slug[slug]
         elif pmc_by_repo and repo_key in pmc_by_repo:
             pmc_name, forwarded = pmc_by_repo[repo_key]
+        elif directory_slug in pmc_by_slug:
+            pmc_name, forwarded = pmc_by_slug[directory_slug]
         else:
             pmc_name, forwarded = slug, ""
             anomalies.append(
                 f"{scan_id}: project {slug!r} is not a PMC slug and repo "
-                f"{repo_key!r} is in no PMC's repo list"
+                f"{repo_key!r} is in no PMC's repo list nor the Repositories sheet"
             )
 
         row = build_scan_row(scan_meta, pmc_name, forwarded, scan_id)
@@ -527,12 +572,20 @@ def cmd_build_scan_results_tab(args: argparse.Namespace) -> int:
                 pmc_by_repo.setdefault(key, entry)
 
     try:
+        repos_grid = fetch_sheet_grid(service, args.spreadsheet_id, "Repositories")
+    except Exception:
+        repos_grid = []
+    repo_directory = build_repo_directory(repos_grid)
+
+    try:
         prev = fetch_sheet_grid(service, args.spreadsheet_id, SCAN_RESULTS_SHEET)
     except Exception:
         prev = []
     carried = parse_scan_results(prev)
 
-    rows, anomalies = collect_scan_rows(archive_root, pmc_by_slug, carried, pmc_by_repo)
+    rows, anomalies = collect_scan_rows(
+        archive_root, pmc_by_slug, carried, pmc_by_repo, repo_directory
+    )
 
     tab = _Tab()
     tab.row([f"Scan Results — {len(rows)} scan(s) — rebuilt {args.today}"], bold=True)
