@@ -37,7 +37,7 @@ jobs:
   # without path-filtering the whole workflow (see the note above).
   changes:
     name: detect test-relevant changes
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/tag=security
     permissions:
       contents: read
     outputs:
@@ -78,7 +78,7 @@ jobs:
     name: ${{ matrix.project }} (py${{ matrix.python-version }})
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/tag=security
     permissions:
       contents: read
     strategy:
@@ -131,7 +131,7 @@ jobs:
     name: tests-ok
     if: always()
     needs: [changes, pytest]
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/tag=security
     permissions: {}
     steps:
       - name: Require the matrix to pass (or be skipped)
