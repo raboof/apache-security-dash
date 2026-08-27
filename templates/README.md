@@ -10,10 +10,11 @@ template, fills every marker, and **drops any line whose marker is still empty**
 
 The markers fall into two groups by where their *value* comes from:
 
-1. **Content** - authored by the model during `triage-assess` and stored in the
-   report-cache bundle: the free-text fragments `summary.md` / `note.md` /
-   `reason.md`, plus the scalar `model` / `duplicate_of` in the `report.md`
-   front-matter. `triage-assess` renders nothing; it only supplies these values.
+1. **Content** - authored by the model during `triage-assess` and stored in the report-cache bundle:
+   the free-text fragments `summary.md` / `note.md` / `reason.md` and the model id `model.md`,
+   all written with `report-cache put-artifact`,
+   plus the `duplicate_ponymail_link` index field set with `report-cache set`.
+   `triage-assess` renders nothing; it only supplies these values.
 2. **Identity / PMC / infra** - derived by `inbox_manager` from the PMC
    coordinates, the live message, and the operator identity.
 
@@ -32,8 +33,8 @@ render literally if something goes wrong; the renderer matches `\<marker>` and
 | --- | --- | --- | --- | --- |
 | `<summary>` | forward, forward-duplicate | `summary.md` | the model's concise PMC summary (finding / code verification / scope assessment) | required |
 | `<reason>` | reject | `reason.md` | why the report is out of scope (the model's wording, or the PMC's prior reason for a known non-issue) | required |
-| `<model>` | forward, forward-duplicate | `model` front-matter | the AI model that wrote the summary (for the disclaimer line) | required |
-| `<duplicate>` | forward-duplicate | `duplicate_of` front-matter | link to the still-open original report this one duplicates | required for this template |
+| `<model>` | forward, forward-duplicate | `model.md` artifact | the AI model that wrote the summary (for the disclaimer line) | required |
+| `<duplicate>` | forward-duplicate | `duplicate_ponymail_link` index field | link to the still-open original report this one duplicates | required for this template |
 | `<note>` | receipt, receipt-specialized | `note.md` | optional extra paragraph to the reporter | line dropped |
 
 ### Identity / PMC / infra (derived by `inbox_manager` at send)
@@ -72,9 +73,9 @@ to put there.
   ("based on the project's security model, this behaviour does not appear to
   be a vulnerability:") and the `<reason>` block still read correctly. Keep
   any future `<model link>` reference on a droppable line of its own.
-- **Adding a marker.** Decide where its *value* comes from: model-authored text
-  -> a bundle fragment or front-matter scalar that `triage-assess` writes (and
-  that `inbox_manager` reads in `fill_*_template`); anything derived from the
-  PMC, the live message, or the operator -> add it to `fill_markers`. Either
-  way `inbox_manager` does the substitution. Put it on its own line if it should
-  disappear when empty.
+- **Adding a marker.** Decide where its *value* comes from:
+  model-authored text -> a bundle artifact or index field that `triage-assess` writes through the `report-cache` CLI
+  (and that `inbox_manager` reads in `fill_*_template`);
+  anything derived from the PMC, the live message, or the operator -> add it to `fill_markers`.
+  Either way `inbox_manager` does the substitution.
+  Put it on its own line if it should disappear when empty.
