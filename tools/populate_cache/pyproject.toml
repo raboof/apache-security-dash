@@ -47,9 +47,9 @@ dependencies = [
     "dotenv",
     # HTML-email -> Markdown conversion for the bundle body (email_utils.py).
     "markdownify",
-    # report.md front-matter (de)serialisation (report_md.py).
-    "pyyaml",
-    # Authoritative committee-info slug set for tier-1 PMC routing (pmc.py).
+    # report.md / index.json storage: Header + Entry + the PMC guess (cli.py).
+    "report-cache",
+    # Committee-info mapping (slug -> entry) for PMC routing (pmc.py).
     "whimsy-lookup",
 ]
 
@@ -64,6 +64,7 @@ populate-cache = "populate_cache.cli:main"
 "Issues" = "https://github.com/apache/security/issues"
 
 [tool.uv.sources]
+report-cache = { path = "../report_cache", editable = true }
 whimsy-lookup = { path = "../whimsy_lookup", editable = true }
 
 [tool.hatch.build.targets.wheel]

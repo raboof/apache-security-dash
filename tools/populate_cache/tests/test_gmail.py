@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from populate_cache.gmail import resolve_labels, thread_heads
+from populate_cache.gmail import MessageMeta, resolve_labels, thread_heads
 
 
 def test_gmail_root_and_no_references_are_heads():
@@ -27,11 +27,11 @@ def test_gmail_root_and_no_references_are_heads():
         {"id": "E", "threadId": "A"},  # forward in A's thread (has References) -> dropped
     ]
     metadata = {
-        "A": {"references": ""},
-        "B": {"references": "<parent@a>"},
-        "C": {"references": "<external@elsewhere>"},
-        "D": {"references": ""},
-        "E": {"references": "<parent@a>"},
+        "A": MessageMeta(has_references=False),
+        "B": MessageMeta(has_references=True),
+        "C": MessageMeta(has_references=True),
+        "D": MessageMeta(has_references=False),
+        "E": MessageMeta(has_references=True),
     }
     assert thread_heads(messages, metadata) == ["A", "C", "D"]
 
@@ -42,13 +42,13 @@ def test_order_preserved():
         {"id": "Y", "threadId": "Z"},
         {"id": "X", "threadId": "X"},
     ]
-    metadata = {"Z": {}, "Y": {"references": "<z@x>"}, "X": {}}
+    metadata = {"Z": MessageMeta(), "Y": MessageMeta(has_references=True), "X": MessageMeta()}
     assert thread_heads(messages, metadata) == ["Z", "X"]
 
 
 def test_reply_with_references_and_merged_thread_dropped():
     messages = [{"id": "B", "threadId": "A"}]
-    metadata = {"B": {"references": "<a@x>"}}
+    metadata = {"B": MessageMeta(has_references=True)}
     assert thread_heads(messages, metadata) == []
 
 

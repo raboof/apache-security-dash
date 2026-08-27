@@ -31,6 +31,7 @@ bytes parse with the same ``email`` machinery the IMAP path used.
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass, field
 from os import getenv
 
 from dotenv import load_dotenv
@@ -91,15 +92,15 @@ def connect():
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
-def list_messages(service, label: str = "INBOX", query: str | None = None) -> list[dict]:
-    """All messages in ``label`` (most-recent first) as ``{id, threadId}`` dicts.
+def list_messages(service, query: str | None = None) -> list[dict]:
+    """All INBOX messages (most-recent first) as ``{id, threadId}`` dicts.
 
     ``query`` is an optional Gmail search expression (e.g. ``newer_than:30d``)
     to narrow the scan.
     """
     out: list[dict] = []
     messages = service.users().messages()
-    request = messages.list(userId=_ME, labelIds=[label], q=query, maxResults=_PAGE)
+    request = messages.list(userId=_ME, labelIds=["INBOX"], q=query, maxResults=_PAGE)
     while request is not None:
         response = request.execute()
         out.extend(response.get("messages", []))
@@ -107,26 +108,45 @@ def list_messages(service, label: str = "INBOX", query: str | None = None) -> li
     return out
 
 
-def thread_heads(messages: list[dict], metadata: dict[str, dict]) -> list[str]:
+@dataclass(frozen=True)
+class MessageMeta:
+    """The header + label fields ``fetch_metadata`` pulls for one message id.
+
+    A metadata-only projection of a Gmail message (no body):
+    the headers the head-detection / dedup / skip pass needs, plus the label ids.
+    An id whose metadata fetch failed is an all-default instance.
+    """
+
+    message_id: str = ""
+    subject: str = ""
+    sender: str = ""  # the ``From`` header ("from" is a keyword)
+    has_references: bool = False  # head detection only needs presence, not the value
+    received: list[str] = field(default_factory=list)
+    label_ids: list[str] = field(default_factory=list)
+
+
+def thread_heads(messages: list[dict], metadata: dict[str, MessageMeta]) -> list[str]:
     """The ids of messages that start a thread (heads), order preserved.
 
     A message is a head when either:
 
-    * it is the Gmail thread root (``id == threadId``) - this keeps a standalone
-      reply whose parent is not in this mailbox, which forms its own thread; or
-    * it has no ``References`` header - a fresh message that Gmail nonetheless
-      merged into an existing thread by subject (so ``id != threadId``), e.g. a
-      recurring ``Currently open security reports for <pmc>`` mail.
+    * it is the Gmail thread root (``id == threadId``):
+      this keeps a standalone reply whose parent is not in this mailbox,
+    * or it has no ``References`` header:
+      a fresh message that Gmail nonetheless merged into an existing thread by subject.
 
-    Genuine replies and forwards (``id != threadId`` *and* a ``References``
-    header) are dropped. ``References`` is used rather than ``In-Reply-To``
+    Genuine replies and forwards (``id != threadId`` *and* a ``References`` header) are dropped.
+    ``References`` is used rather than ``In-Reply-To``
     because forwards carry ``References`` but often omit ``In-Reply-To``.
-    ``metadata`` is the mapping returned by :func:`fetch_metadata`.
+
+    The root test is Gmail's own threading heuristic, and it deliberately over-keeps:
+    a reply Gmail could not thread (a parent in Spam or a rewritten subject)
+    becomes a root of its own.
     """
     out: list[str] = []
     for message in messages:
-        info = metadata.get(message["id"], {})
-        if message["id"] == message["threadId"] or not info.get("references"):
+        info = metadata.get(message["id"], MessageMeta())
+        if message["id"] == message["threadId"] or not info.has_references:
             out.append(message["id"])
     return out
 
@@ -135,41 +155,44 @@ def thread_heads(messages: list[dict], metadata: dict[str, dict]) -> list[str]:
 _META_HEADERS = ["Message-Id", "Subject", "From", "References", "Received"]
 
 
-def _parse_metadata(response: dict) -> dict:
+def _parse_metadata(response: dict) -> MessageMeta:
     """Pull the headers + label ids we care about out of a metadata response."""
-    info = {
-        "message_id": "",
-        "subject": "",
-        "from": "",
-        "references": "",
-        "received": [],
-        "label_ids": response.get("labelIds", []) or [],
-    }
+    message_id = subject = sender = ""
+    has_references = False
+    received: list[str] = []
     for header in response.get("payload", {}).get("headers", []):
         name = header.get("name", "").lower()
         value = header.get("value", "")
         if name == "message-id":
-            info["message_id"] = value
+            message_id = value
         elif name == "subject":
-            info["subject"] = value
+            subject = value
         elif name == "from":
-            info["from"] = value
+            sender = value
         elif name == "references":
-            info["references"] = value
+            has_references = bool(value)
         elif name == "received":
-            info["received"].append(value)
-    return info
+            received.append(value)
+    return MessageMeta(
+        message_id=message_id,
+        subject=subject,
+        sender=sender,
+        has_references=has_references,
+        received=received,
+        label_ids=response.get("labelIds", []) or [],
+    )
 
 
-def fetch_metadata(service, ids: list[str]) -> dict[str, dict]:
+def fetch_metadata(service, ids: list[str]) -> dict[str, MessageMeta]:
     """Map each Gmail id to its parsed metadata headers (no message body).
 
     A batched ``format=metadata`` pass does the bulk of the work; any id the
     batch drops (transient errors are not retried inside a batch) is re-fetched
     individually with retries, so coverage is reliable - a dropped id must never
-    silently bypass the automation skips. An id that still fails maps to ``{}``.
+    silently bypass the automation skips.
+    An id that still fails maps to an empty ``MessageMeta``.
     """
-    out: dict[str, dict] = {}
+    out: dict[str, MessageMeta] = {}
     messages = service.users().messages()
 
     def _collect(request_id, response, exception):
@@ -195,8 +218,8 @@ def fetch_metadata(service, ids: list[str]) -> dict[str, dict]:
                 userId=_ME, id=gmail_id, format="metadata", metadataHeaders=_META_HEADERS
             ).execute(num_retries=3)
             out[gmail_id] = _parse_metadata(response)
-        except Exception:  # noqa: BLE001 - a failed id maps to {} (kept, not skipped)
-            out[gmail_id] = {}
+        except Exception:  # noqa: BLE001 - a failed id maps to MessageMeta() (kept, not skipped)
+            out[gmail_id] = MessageMeta()
     return out
 
 

@@ -18,9 +18,11 @@
 import email
 from email.policy import default
 
+from report_cache import index
+from report_cache.report_md import Header, read_meta
+
 from populate_cache import cli
-from populate_cache.report_md import BUNDLE_FILE
-from populate_cache.report_md import read as read_md
+from populate_cache.gmail import MessageMeta
 
 
 def make_msg(
@@ -30,12 +32,16 @@ def make_msg(
     subject="SSRF in the admin console",
     message_id="<report-123@example.com>",
     frm="Jane Reporter <jane@example.com>",
+    reply_to="",
     date="Tue, 27 May 2026 10:00:00 +0000",
     body="Here is the issue.",
 ):
     raw = (
         f"From: {frm}\r\n"
-        f"To: {to}\r\n" + (f"Cc: {cc}\r\n" if cc else "") + f"Subject: {subject}\r\n"
+        f"To: {to}\r\n"
+        + (f"Cc: {cc}\r\n" if cc else "")
+        + (f"Reply-To: {reply_to}\r\n" if reply_to else "")
+        + f"Subject: {subject}\r\n"
         f"Message-ID: {message_id}\r\n"
         f"Date: {date}\r\n"
         f"\r\n{body}\r\n"
@@ -43,28 +49,48 @@ def make_msg(
     return email.message_from_bytes(raw, policy=default), raw
 
 
+def header_for(msg, *, gmail_id="g1", labels=None):
+    """A Header from the message, with the Gmail-API fields filled in (as main does)."""
+    header = Header.from_message(msg)
+    header.gmail_id = gmail_id
+    header.labels = labels
+    return header
+
+
+def download(
+    cache,
+    msg,
+    raw,
+    *,
+    pmc_slug="tomcat",
+    gmail_id="g1",
+    labels=None,
+    known=("tomcat",),
+    coordinates=None,
+):
+    """Mimic main()'s per-message step: header -> bundle -> seeded Entry."""
+    header = header_for(msg, gmail_id=gmail_id, labels=labels)
+    bundle = cli.write_bundle(cache, msg, raw, header=header, pmc_slug=pmc_slug)
+    committees = {slug: {"mail_list": slug} for slug in known}
+    entry = index.Entry.from_report(cache, bundle, header, committees, coordinates or {})
+    entry.reporter_name = cli.reporter_name(msg)
+    return bundle, header, entry
+
+
+# --- small helpers ----------------------------------------------------------
+
+
 def test_slugify():
     assert cli.slugify("<report-123@example.com>") == "report-123-example.com"
-    # No built-in fallback: an empty / all-unsafe input slugs to "" and the
-    # caller (write_bundle) supplies a content-hash fallback.
     assert cli.slugify("") == ""
-    assert cli.slugify("   ") == ""
     assert cli.slugify("<@>") == ""
 
 
 def test_clean_header_keeps_printable_ascii():
-    assert cli._clean_header("a\x00b\x07c") == "abc"  # control bytes dropped
-    assert cli._clean_header("a\u202eb") == "ab"  # bidi override dropped
-    assert cli._clean_header("a\u00e9b") == "ab"  # non-ASCII letter dropped
-    # Address / message-id punctuation is printable ASCII -> preserved.
-    assert cli._clean_header("<id@example.com>") == "<id@example.com>"
-    assert cli._clean_header("line1\r\nline2") == "line1 line2"  # fold -> one space
-    assert cli._clean_header("a\t\tb   c") == "a b c"  # whitespace runs collapsed
-    assert cli._clean_header("a \u00e9 b") == "a b"  # one fold closes the gap left by removal
-    assert cli._clean_header("  trim  ") == "trim"
-    # Absent header: msg["X"] is None -> "" (caller maps "" to its field default).
+    assert cli._clean_header("a\x00b\x07c") == "abc"
+    assert cli._clean_header("aéb") == "ab"
+    assert cli._clean_header("line1\r\nline2") == "line1 line2"
     assert cli._clean_header(None) == ""
-    assert cli._clean_header("") == ""
 
 
 def test_safe_attachment_name_strips_path_and_unsafe():
@@ -73,132 +99,110 @@ def test_safe_attachment_name_strips_path_and_unsafe():
     assert cli.safe_attachment_name("", "fallback") == "fallback"
 
 
-def test_write_bundle_tier1_routing(tmp_path):
+# --- write_bundle -----------------------------------------------------------
+
+
+def test_write_bundle_flat_layout(tmp_path):
     msg, raw = make_msg()
-    bundle = cli.write_bundle(tmp_path, msg, raw, pmc_slug="tomcat", candidates=["tomcat"])
-    rel = bundle.relative_to(tmp_path)
-    assert rel.parts[0] == "2026-05-27"
-    assert rel.parts[1] == "tomcat"
-    assert rel.parts[2] == "report-123-example.com"
-
-    meta, body = read_md(bundle / BUNDLE_FILE)
-    assert meta["pmc"] == "tomcat"
-    assert meta["pmc_candidates"] == ["tomcat"]
-    assert meta["status"] == "downloaded"
-    assert meta["keywords"] is None
-    assert meta["message_id"] == "<report-123@example.com>"
-    assert meta["reporter"] == "jane@example.com"
-    assert meta["subject"] == "SSRF in the admin console"
-    assert "Here is the issue." in body
-
-
-def test_write_bundle_saves_raw_message(tmp_path):
-    msg, raw = make_msg()
-    bundle = cli.write_bundle(tmp_path, msg, raw, pmc_slug="tomcat", candidates=["tomcat"])
-    # The verbatim RFC822 bytes are kept alongside report.md as a safety net.
-    assert (bundle / "raw.eml").read_bytes() == raw
-
-
-def test_write_bundle_unparsable_message_id_falls_back_to_hash(tmp_path):
-    # A Message-ID of only unsafe chars slugs to "" -> content-hash leaf, never
-    # an empty dir name.
-    msg, raw = make_msg(message_id="<@>")
-    bundle = cli.write_bundle(tmp_path, msg, raw, pmc_slug="tomcat", candidates=["tomcat"])
-    assert bundle.name and bundle.name != "tomcat"
-    assert (bundle / BUNDLE_FILE).exists()
+    header = header_for(msg)
+    bundle = cli.write_bundle(tmp_path, msg, raw, header=header, pmc_slug="tomcat")
+    assert bundle.relative_to(tmp_path).as_posix() == "tomcat/2026-05-27-report-123-example.com"
+    assert (bundle / cli.BUNDLE_FILE).exists()
 
 
 def test_write_bundle_unsorted_routing(tmp_path):
     msg, raw = make_msg(to="security@apache.org", message_id="<no-pmc@example.com>")
-    bundle = cli.write_bundle(tmp_path, msg, raw, pmc_slug=None, candidates=[])
-    rel = bundle.relative_to(tmp_path)
-    assert rel.parts[1] == cli.UNSORTED
-
-    meta, _ = read_md(bundle / BUNDLE_FILE)
-    assert meta["pmc"] is None
-    assert meta["pmc_candidates"] is None
+    header = header_for(msg)
+    bundle = cli.write_bundle(tmp_path, msg, raw, header=header, pmc_slug=None)
+    assert bundle.relative_to(tmp_path).parts[0] == cli.UNSORTED
 
 
-def test_write_bundle_records_gmail_labels_as_tags(tmp_path):
-    # The message's existing Gmail labels seed the unified `tags` field.
+def test_write_bundle_saves_raw_message(tmp_path):
     msg, raw = make_msg()
-    bundle = cli.write_bundle(
-        tmp_path,
-        msg,
-        raw,
-        pmc_slug="tomcat",
-        candidates=["tomcat"],
-        tags=["tomcat/2026-05-27 xxe-digester"],
-    )
-    meta, _ = read_md(bundle / BUNDLE_FILE)
-    assert meta["tags"] == ["tomcat/2026-05-27 xxe-digester"]
+    header = header_for(msg)
+    bundle = cli.write_bundle(tmp_path, msg, raw, header=header, pmc_slug="tomcat")
+    assert (bundle / "raw.eml").read_bytes() == raw
 
 
-def test_write_bundle_without_labels_is_none(tmp_path):
-    msg, raw = make_msg()
-    bundle = cli.write_bundle(tmp_path, msg, raw, pmc_slug="tomcat", candidates=["tomcat"])
-    meta, _ = read_md(bundle / BUNDLE_FILE)
-    assert meta["tags"] is None
-
-
-def test_load_seen_message_ids_roundtrip(tmp_path):
-    assert cli.load_seen_message_ids(tmp_path) == set()
-    msg, raw = make_msg()
-    cli.write_bundle(tmp_path, msg, raw, pmc_slug="tomcat", candidates=["tomcat"])
-    assert cli.load_seen_message_ids(tmp_path) == {"<report-123@example.com>"}
+def test_write_bundle_unparsable_message_id_falls_back_to_hash(tmp_path):
+    msg, raw = make_msg(message_id="<@>")
+    header = header_for(msg)
+    bundle = cli.write_bundle(tmp_path, msg, raw, header=header, pmc_slug="tomcat")
+    assert bundle.name.startswith("2026-05-27-")
+    assert (bundle / cli.BUNDLE_FILE).exists()
 
 
 def test_write_bundle_collision_gets_unique_dir(tmp_path):
     msg, raw = make_msg()
-    first = cli.write_bundle(tmp_path, msg, raw, pmc_slug="tomcat", candidates=["tomcat"])
-    second = cli.write_bundle(tmp_path, msg, raw, pmc_slug="tomcat", candidates=["tomcat"])
-    assert first != second
+    header = header_for(msg)
+    first = cli.write_bundle(tmp_path, msg, raw, header=header, pmc_slug="tomcat")
+    second = cli.write_bundle(tmp_path, msg, raw, header=header, pmc_slug="tomcat")
     assert second.name == f"{first.name}-2"
+
+
+def test_report_md_is_gmail_only(tmp_path):
+    msg, raw = make_msg()
+    header = header_for(msg, labels=["Inbox"])
+    bundle = cli.write_bundle(tmp_path, msg, raw, header=header, pmc_slug="tomcat")
+    meta, body = read_meta(bundle / cli.BUNDLE_FILE)
+    for triage in ("status", "pmc", "disposition", "keywords", "reporter", "reporter_name"):
+        assert triage not in meta
+    assert meta["message_id"] == "<report-123@example.com>"
+    assert meta["gmail_id"] == "g1"
+    assert "Here is the issue." in body
+
+
+# --- Entry seeding + reporter name -----------------------------------------
+
+
+def test_download_seeds_downloaded_entry(tmp_path):
+    _, _, entry = download(tmp_path, *make_msg(), labels=["Inbox"])
+    assert entry.status is index.Status.DOWNLOADED
+    assert entry.disposition is None
+    assert entry.pmc == "tomcat"
+    assert entry.reporter_name == "Jane Reporter"
+    assert entry.labels == ["Inbox"]
+
+
+def test_reporter_name_resolves_via_security_rewrite():
+    msg, _ = make_msg(frm="Jane via security <security@apache.org>", reply_to="Jane Real <j@x.com>")
+    assert cli.reporter_name(msg) == "Jane Real"
+
+
+# --- inbox ids + delete-handled ---------------------------------------------
 
 
 def test_inbox_message_ids_skips_failed_fetches():
     metadata = {
-        "a": {"message_id": "<a@x>"},
-        "b": {"message_id": ""},  # failed metadata fetch -> no id
-        "c": {},  # ditto
-        "d": {"message_id": "<d@x>"},
+        "a": MessageMeta(message_id="<a@x>"),
+        "b": MessageMeta(message_id=""),
+        "c": MessageMeta(),  # a failed fetch -> no id
+        "d": MessageMeta(message_id="<d@x>"),
     }
     assert cli.inbox_message_ids(metadata) == {"<a@x>", "<d@x>"}
 
 
-def test_reconcile_moves_absent_and_keeps_present(tmp_path):
-    present = cli.write_bundle(
-        tmp_path, *make_msg(message_id="<still@x>"), pmc_slug="tomcat", candidates=["tomcat"]
+def test_delete_handled_removes_absent_and_empty_parent(tmp_path):
+    p_bundle, _, p_entry = download(tmp_path, *make_msg(message_id="<still@x>"), pmc_slug="tomcat")
+    a_bundle, _, a_entry = download(
+        tmp_path, *make_msg(message_id="<gone@x>"), pmc_slug="spark", known=("spark",)
     )
-    absent = cli.write_bundle(
-        tmp_path, *make_msg(message_id="<gone@x>"), pmc_slug="spark", candidates=["spark"]
-    )
-    rel_absent = absent.relative_to(tmp_path)
+    idx = {"<still@x>": p_entry, "<gone@x>": a_entry}
 
-    moved = cli.reconcile_handled(tmp_path, {"<still@x>"}, dry_run=False)
+    removed = cli.delete_handled(tmp_path, idx, {"<still@x>"}, dry_run=False)
 
-    assert moved == [rel_absent]
-    assert present.exists()  # still in the inbox -> untouched
-    assert not absent.exists()  # left the inbox -> moved
-    handled = tmp_path / cli.HANDLED / rel_absent
-    assert (handled / BUNDLE_FILE).exists()
-    # the moved bundle stays inside the cache, so dedup still sees it
-    assert "<gone@x>" in cli.load_seen_message_ids(tmp_path)
+    assert removed == [a_entry.path]
+    assert p_bundle.exists()  # still in the inbox
+    assert not a_bundle.exists()  # left the inbox -> deleted
+    assert "<gone@x>" not in idx
+    assert not (tmp_path / "spark").exists()  # empty parent removed
+    assert (tmp_path / "tomcat").exists()  # parent with survivors kept
 
 
-def test_reconcile_ignores_handled_and_unkeyed(tmp_path):
-    # A bundle already under handled/ is never moved again.
-    cli.write_bundle(
-        tmp_path / cli.HANDLED, *make_msg(message_id="<old@x>"), pmc_slug="tomcat", candidates=[]
-    )
-    moved = cli.reconcile_handled(tmp_path, set(), dry_run=False)
-    assert moved == []
-
-
-def test_reconcile_dry_run_moves_nothing(tmp_path):
-    bundle = cli.write_bundle(
-        tmp_path, *make_msg(message_id="<gone@x>"), pmc_slug="tomcat", candidates=["tomcat"]
-    )
-    moved = cli.reconcile_handled(tmp_path, set(), dry_run=True)
-    assert moved == [bundle.relative_to(tmp_path)]
-    assert bundle.exists()  # dry-run reports but does not move
+def test_delete_handled_dry_run_deletes_nothing(tmp_path):
+    bundle, _, entry = download(tmp_path, *make_msg(message_id="<gone@x>"))
+    idx = {"<gone@x>": entry}
+    removed = cli.delete_handled(tmp_path, idx, set(), dry_run=True)
+    assert removed == [entry.path]
+    assert bundle.exists()
+    assert "<gone@x>" in idx

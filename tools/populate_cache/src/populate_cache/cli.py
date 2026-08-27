@@ -17,33 +17,35 @@
 
 """Download new security reports off the Gmail inbox into ``report-cache/``.
 
-The ingest step of the triage-populate-cache SKILL. It reads the security inbox
-through the Gmail API (read-only ``gmail.readonly`` scope), and for every
-message it has not seen before writes one ``report.md`` bundle (YAML
-front-matter + plain-text body + ``attachments/``) into its dated, per-PMC
-home::
+The ingest step of the triage-populate-cache SKILL.
+It reads the security inbox through the Gmail API (read-only ``gmail.readonly`` scope),
+and for every message it has not seen before writes one bundle into its flat, per-PMC home::
 
-    report-cache/<date>/<pmc>/<message-id-slug>/      # PMC named by a
-                                                      # security@<pmc> recipient
-    report-cache/<date>/_unsorted/<message-id-slug>/  # no PMC in the headers
+    report-cache/<pmc>/<date>-<message-id-slug>/       # PMC determined from a recipient address
+    report-cache/_unsorted/<date>-<message-id-slug>/   # no (or an ambiguous) PMC in the headers
 
-PMC routing uses the *address-domain* signal only (see ``pmc.tier1_pmcs``);
-when the recipients name no project alias the bundle lands in ``_unsorted`` for
-the SKILL's labelling step to place. Bundles are written with
-``status: downloaded`` and ``keywords: null``; the SKILL later assigns the
-label, finalises the leaf name and promotes the status.
+Each bundle is a directory made of:
 
-This tool is read-only on the mailbox (the ``gmail.readonly`` scope cannot
-modify or delete mail); it only writes under ``report-cache/``. Dedup keys on
-the RFC ``Message-ID`` so a re-run never duplicates a bundle. Whether a
-downloaded message is actually a genuine, in-scope report is decided downstream
-by the triager reading the text.
+* ``report.md`` - the structured report:
+  YAML front-matter with the message's Gmail provenance (a ``report_cache.report_md.Header``),
+  then the body rendered to Markdown.
+* ``raw.eml`` - the verbatim RFC 5322 message (a safety net against parser / Markdown loss).
+* ``attachments/`` - the decoded attachments, if any.
 
-On a full inbox scan it also reconciles the cache: a report stays in the inbox
-until the team archives it, so a cached bundle whose message is no longer in the
-inbox has been handled and is moved into ``report-cache/handled/`` (keeping its
-``<date>/<pmc>/<leaf>`` path). The bundle stays inside the cache, so dedup still
-sees it; ``--no-reconcile`` turns the sweep off.
+The bundle holds only what Gmail gives us.
+A report's triage state is kept separately
+and is read and written through the ``report-cache`` tool, never by touching its store directly;
+this tool records each new download there as ``status: downloaded``,
+with an unambiguous To/Cc PMC guess.
+
+This tool is read-only on the mailbox (the ``gmail.readonly`` scope cannot modify or delete mail);
+it only writes under ``report-cache/``.
+Dedup keys on the RFC ``Message-ID`` (read from the index) so a re-run never duplicates a bundle.
+
+On a full inbox scan it also deletes handled reports:
+a report keeps its bundle only while its message sits in the inbox.
+Once the team archives the message, its bundle and triage record are removed.
+Use ``--no-delete`` to skip this step.
 
 Examples::
 
@@ -56,31 +58,28 @@ Examples::
 from __future__ import annotations
 
 import argparse
-import datetime
 import email
 import hashlib
 import re
 import shutil
 import sys
+from email.message import Message
 from email.policy import default
 from email.utils import parseaddr
 from pathlib import Path
 
-from populate_cache import email_utils, gmail, pmc, skip
-from populate_cache.report_md import BUNDLE_FILE
-from populate_cache.report_md import read as read_md
-from populate_cache.report_md import write as write_md
+from report_cache import index
+from report_cache.report_md import BUNDLE_FILE, Attachment, Header
+from report_cache.report_md import write as write_report
+from whimsy_lookup.fetch import FetchError, fetch_committee_info, fetch_security_coordinates
+
+from populate_cache import email_utils, gmail, skip
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_CACHE = REPO_ROOT / "report-cache"
 UNSORTED = "_unsorted"
-# Bundles whose message left the inbox (archived = handled by the team) are
-# moved here, preserving their <date>/<pmc>/<leaf> path, to declutter the
-# active queue while staying inside the cache so dedup still sees them.
-HANDLED = "handled"
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
-_LIST_ID = re.compile(r"<([^>]+)>")
 _WS = re.compile(r"\s+")
 _NON_HEADER = re.compile(r"[^\x20-\x7e\s]")  # non-printable ASCII, excluding whitespace
 
@@ -112,138 +111,72 @@ def unique_dir(parent: Path, slug: str) -> Path:
     return candidate
 
 
-def load_seen_message_ids(cache: Path) -> set[str]:
-    """RFC Message-IDs already in the cache, so a re-run never duplicates a
-    bundle. The stable key is the Message-ID."""
-    seen: set[str] = set()
-    for bundle in cache.rglob(BUNDLE_FILE):
-        try:
-            meta, _ = read_md(bundle)
-        except (OSError, ValueError):
-            continue
-        mid = meta.get("message_id")
-        if mid:
-            seen.add(str(mid))
-    return seen
+def inbox_message_ids(metadata: dict[str, gmail.MessageMeta]) -> set[str]:
+    """The RFC Message-IDs currently in the scanned inbox, from the metadata pass.
 
-
-def inbox_message_ids(metadata: dict[str, dict]) -> set[str]:
-    """The RFC Message-IDs currently in the scanned inbox, from the metadata
-    pass. A message whose metadata fetch failed contributes nothing (it has no
-    Message-ID), which is why reconciliation only runs on a full inbox scan."""
+    A message whose metadata fetch failed contributes nothing (it has no Message-ID),
+    which is why the delete-handled sweep only runs on a full inbox scan.
+    """
     ids: set[str] = set()
     for info in metadata.values():
-        mid = _clean_header(info.get("message_id"))
+        mid = _clean_header(info.message_id)
         if mid:
             ids.add(mid)
     return ids
 
 
-def reconcile_handled(cache: Path, inbox_ids: set[str], dry_run: bool) -> list[Path]:
-    """Move bundles whose message left the inbox into ``handled/``.
+def delete_handled(
+    cache: Path, idx: dict[str, index.Entry], inbox_ids: set[str], dry_run: bool
+) -> list[str]:
+    """Delete cached bundles whose message has left the inbox.
 
-    A report stays in the Gmail inbox until the team archives it; once archived
-    its Message-ID is no longer in ``inbox_ids``, so it has been handled. We move
-    the bundle under ``<cache>/handled/`` (keeping its ``<date>/<pmc>/<leaf>``
-    path) rather than deleting it: it stays inside the cache, so the Message-ID
-    dedup still finds it and it is never re-downloaded. Bundles already under
-    ``handled/``, and any whose Message-ID we cannot read, are left alone.
+    A report stays in the Gmail inbox until the team archives it;
+    once archived its Message-ID is no longer in ``inbox_ids``, so it has been handled.
+    We delete the bundle and drop its triage record (and remove the now-empty ``<pmc>`` directory),
+    rather than keeping a tombstone:
+    the message is gone from the inbox, so a later scan will not re-download it.
+    Mutates ``idx``.
     """
-    moved: list[Path] = []
-    for bundle_file in sorted(cache.rglob(BUNDLE_FILE)):
-        rel = bundle_file.relative_to(cache)
-        if rel.parts and rel.parts[0] == HANDLED:
+    removed: list[str] = []
+    for mid, entry in list(idx.items()):
+        if mid in inbox_ids:
             continue
-        try:
-            meta, _ = read_md(bundle_file)
-        except (OSError, ValueError):
-            continue
-        mid = _clean_header(meta.get("message_id"))
-        if not mid or mid in inbox_ids:
-            continue
-        source = bundle_file.parent
-        rel_dir = source.relative_to(cache)
-        moved.append(rel_dir)
+        removed.append(entry.path)
         if dry_run:
             continue
-        target = unique_dir(cache / HANDLED / rel_dir.parent, rel_dir.name)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source), str(target))
-    return moved
+        bundle = cache / entry.path
+        if bundle.exists():
+            shutil.rmtree(bundle)
+        parent = bundle.parent
+        if parent != cache and parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+        del idx[mid]
+    return removed
 
 
-def list_id(original) -> str | None:
-    """The list address from a List-Id header, formatted ``<security.apache.org>``;
-    None when the header is absent."""
-    raw = original["List-Id"]
-    if not raw:
-        return None
-    m = _LIST_ID.search(str(raw))
-    return f"<{m.group(1)}>" if m else None
+def reporter_name(original: Message[str, str]) -> str | None:
+    """The reporter's display name, resolving the security@ list's 'via' rewrite.
 
-
-def report_date(original) -> str:
-    """The Date header as an ISO 8601 UTC timestamp (``YYYY-MM-DDTHH:MM:SSZ``)
-    for the front-matter ``date`` field, regardless of the sender's timezone."""
-    dt = email_utils.message_datetime(original)
-    if dt is not None:
-        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    raw = original["Date"]
-    return _clean_header(raw) if raw else ""
-
-
-def date_dir(original) -> str:
-    """The ``<date>`` path segment as ``YYYY-MM-DD`` (matches the cache layout)."""
-    return email_utils.message_date(original)
-
-
-def build_meta(original, *, pmc_slug, candidates, tags) -> dict:
-    """The report.md front-matter for a Gmail-sourced report. ``ponymail_id`` /
-    ``archive_url`` are null (no archive); ``keywords`` is filled by the SKILL's
-    labelling step. ``tags`` are the message's Gmail labels - the custom triage
-    labels already on it at download (e.g. a prior ``<pmc>/<date> <keywords>``,
-    or a subject-CVE auto-label). The SKILL extends this same field as it labels,
-    and a later tool reconciles it against Gmail."""
-    reporter = email_utils.reporter_from(original) or original["From"] or ""
-    name, addr = parseaddr(str(reporter))
-    return {
-        "subject": _clean_header(original["Subject"]) or "(no subject)",
-        "reporter": addr or None,
-        "reporter_name": name or None,
-        "message_id": _clean_header(original["Message-ID"]) or None,
-        "ponymail_id": None,
-        "archive_url": None,
-        "list": list_id(original),
-        "to": _clean_header(original["To"]) or None,
-        "cc": _clean_header(original["Cc"]) or None,
-        "date": report_date(original),
-        "references": _clean_header(original["References"]) or None,
-        "attachments": [],  # filled by write_bundle
-        "pmc": pmc_slug,
-        "pmc_candidates": candidates or None,
-        "collection": None,
-        "cve": None,
-        "keywords": None,
-        "tags": tags or None,
-        "wf": None,
-        "handled": False,
-        "status": "downloaded",
-        "fetched_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-
-
-def write_bundle(cache: Path, original, raw: bytes, *, pmc_slug, candidates, tags=None) -> Path:
-    """Write one report.md bundle into
-    ``<date>/<pmc-or-_unsorted>/<message-id-slug>/``: ``report.md`` (front-matter
-    + body), ``raw.eml`` (the verbatim RFC822 message, kept as a safety net in
-    case parsing/Markdown conversion ever drops something), and ``attachments/``.
+    Seeds ``Entry.reporter_name``; the SKILL refines it from the signature.
     """
-    # The slug is the Message-ID; fall back to a content hash when it is absent
-    # or made entirely of unsafe characters (slugify would return "").
-    message_id = _clean_header(original["Message-ID"])
-    slug = slugify(message_id) or hashlib.sha1(raw).hexdigest()[:16]
-    parent = cache / date_dir(original) / (pmc_slug or UNSORTED)
-    bundle = unique_dir(parent, slug)
+    name, _ = parseaddr(str(email_utils.reporter_from(original) or ""))
+    return _clean_header(name) or None
+
+
+def write_bundle(
+    cache: Path, original: Message[str, str], raw: bytes, *, header: Header, pmc_slug: str | None
+) -> Path:
+    """Write one bundle into ``<pmc>/<date>-<message-id-slug>/`` and return its dir.
+
+    ``report.md`` (the ``Header`` + body),
+    ``raw.eml`` (the verbatim RFC822 message, a safety net against parser/Markdown loss),
+    and ``attachments/``.
+    The leaf is the Message-ID slug (a content hash when the Message-ID is absent or entirely
+    unsafe), prefixed with the report's UTC day.
+    """
+    slug = slugify(header.message_id or "") or hashlib.sha1(raw).hexdigest()[:16]
+    leaf = f"{email_utils.message_date(original)}-{slug}"
+    bundle = unique_dir(cache / (pmc_slug or UNSORTED), leaf)
     (bundle / "attachments").mkdir(parents=True, exist_ok=True)
     (bundle / "raw.eml").write_bytes(raw)
 
@@ -261,17 +194,11 @@ def write_bundle(cache: Path, original, raw: bytes, *, pmc_slug, candidates, tag
             n += 1
         target.write_bytes(data)
         att_meta.append(
-            {
-                "filename": fname,
-                "content_type": content_type,
-                "size": len(data),
-                "hash": digest,
-            }
+            Attachment(filename=fname, content_type=content_type, size=len(data), hash=digest)
         )
 
-    meta = build_meta(original, pmc_slug=pmc_slug, candidates=candidates, tags=tags)
-    meta["attachments"] = att_meta
-    write_md(bundle / BUNDLE_FILE, meta, email_utils.body_to_text(original))
+    header.attachments = att_meta
+    write_report(bundle / BUNDLE_FILE, header, email_utils.body_to_text(original))
     return bundle
 
 
@@ -288,30 +215,18 @@ def build_args(argv):
         help=f"Cache root (default: {DEFAULT_CACHE})",
     )
     ap.add_argument(
-        "--label",
-        default="INBOX",
-        help="Gmail label to sweep (default: INBOX)",
-    )
-    ap.add_argument(
         "--query",
         default=None,
-        help="Optional Gmail search to narrow the scan (e.g. 'newer_than:30d')",
+        help="Optional Gmail search to narrow the inbox scan (e.g. 'newer_than:30d')",
     )
     ap.add_argument(
-        "--limit",
-        type=int,
-        default=0,
-        help="Max new reports to download (0 = no limit)",
+        "--limit", type=int, default=0, help="Max new reports to download (0 = no limit)"
     )
+    ap.add_argument("--dry-run", action="store_true", help="Select + report, but write nothing")
     ap.add_argument(
-        "--dry-run",
+        "--no-delete",
         action="store_true",
-        help="Select + report, but write nothing to disk",
-    )
-    ap.add_argument(
-        "--no-reconcile",
-        action="store_true",
-        help="Skip moving bundles whose message left the inbox into handled/",
+        help="Skip deleting handled reports (those whose message left the inbox)",
     )
     return ap.parse_args(argv)
 
@@ -320,31 +235,44 @@ def main(argv: list[str] | None = None) -> int:
     args = build_args(argv)
     cache = args.cache_dir
 
-    known_slugs = pmc.load_known_slugs()
-    if not known_slugs:
-        print("(PMC routing degraded: committee-info unreachable, all -> _unsorted)")
+    # Both sources are required for triage and must not degrade silently:
+    # committee-info resolves recipient hosts to PMC slugs (report routing),
+    # and project-coordinates.json tells a real security@ / private@ list from a bare alias.
+    # A fetch failure aborts the run rather than misrouting.
+    try:
+        committees = fetch_committee_info()
+        coordinates = fetch_security_coordinates()
+    except FetchError as exc:
+        raise SystemExit(
+            f"Cannot reach Whimsy / security-site (triage data unavailable): {exc}"
+        ) from exc
 
     service = gmail.connect()
     label_names = gmail.label_map(service)
-    messages = gmail.list_messages(service, args.label, args.query)
-    metadata = gmail.fetch_metadata(service, [m["id"] for m in messages])
-    # Only thread heads become reports; replies belong to an already-ingested
-    # thread and are tracked by their shared label, not as separate bundles.
+    messages = gmail.list_messages(service, args.query)
+    metadata: dict[str, gmail.MessageMeta] = gmail.fetch_metadata(
+        service, [m["id"] for m in messages]
+    )
+    # Only thread heads become reports;
+    # replies belong to an already-ingested thread and are tracked by their shared label,
+    # not as separate bundles.
     heads = gmail.thread_heads(messages, metadata)
-    seen = load_seen_message_ids(cache)
 
-    # Cheap header pass: drop automation/notification heads, then dedup on
-    # Message-ID. Every surviving head is downloaded - deciding whether it is a
-    # genuine report is the SKILL's job.
+    idx = index.load(cache)
+    seen = set(idx)  # Message-IDs already cached; dedup reads the index, not report.md.
+
+    # Cheap header pass: drop automation/notification heads, then dedup on Message-ID.
+    # Every surviving head is downloaded -
+    # deciding whether it is a genuine report is the SKILL's job.
     funnel: dict[str, int] = {"reply": len(messages) - len(heads)}
     survivors: list[str] = []
     for gmail_id in heads:
-        info = metadata.get(gmail_id, {})
-        reason = skip.skip_reason(info)
+        message_meta = metadata.get(gmail_id, gmail.MessageMeta())
+        reason = skip.skip_reason(message_meta)
         if reason:
             funnel[reason] = funnel.get(reason, 0) + 1
             continue
-        message_id = _clean_header(info.get("message_id"))
+        message_id = _clean_header(message_meta.message_id)
         if message_id and message_id in seen:
             funnel["already-seen"] = funnel.get("already-seen", 0) + 1
             continue
@@ -359,25 +287,26 @@ def main(argv: list[str] | None = None) -> int:
     for gmail_id in survivors:
         raw = gmail.raw_bytes(service, gmail_id)
         original = email.message_from_bytes(raw, policy=default)
-        candidates = pmc.tier1_pmcs(f"{original['To'] or ''} {original['Cc'] or ''}", known_slugs)
-        pmc_slug = candidates[0] if candidates else None
-        tags = gmail.resolve_labels(metadata.get(gmail_id, {}).get("label_ids", []), label_names)
+        message_meta = metadata.get(gmail_id, gmail.MessageMeta())
+        labels = gmail.resolve_labels(message_meta.label_ids, label_names)
+        header = Header.from_message(original)
+        header.gmail_id = gmail_id
+        header.labels = labels
+        guess = index.guess_pmcs(header, committees)
+        pmc_slug = guess[0] if len(guess) == 1 else None
         if not args.dry_run:
-            write_bundle(
-                cache,
-                original,
-                raw,
-                pmc_slug=pmc_slug,
-                candidates=candidates,
-                tags=tags,
-            )
+            bundle = write_bundle(cache, original, raw, header=header, pmc_slug=pmc_slug)
+            entry = index.Entry.from_report(cache, bundle, header, committees, coordinates)
+            entry.reporter_name = reporter_name(original)
+            if header.message_id:
+                idx[header.message_id] = entry
         subject = _clean_header(original["Subject"])
         subj = (subject[:54] + "...") if len(subject) > 57 else subject
         _, addr = parseaddr(str(email_utils.reporter_from(original) or ""))
         rows.append(
             (
-                (slugify(_clean_header(original["Message-ID"])) or "?")[:14],
-                date_dir(original),
+                (slugify(header.message_id or "") or "?")[:14],
+                email_utils.message_date(original),
                 (addr or "?")[:24],
                 (pmc_slug or UNSORTED)[:14],
                 str(sum(1 for _ in email_utils.extract_attachments(original))),
@@ -385,30 +314,28 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
 
-    # Reconcile: a report stays in the inbox until handled, so a cached bundle
-    # whose message is no longer in the inbox has been archived = handled; move
-    # it to handled/. Only safe on a full inbox scan, where inbox_ids is the
-    # complete current inbox; a narrowed scan would wrongly "handle" everything
-    # outside the window.
-    full_scan = args.label == "INBOX" and not args.query
-    handled: list[Path] = []
-    if args.no_reconcile:
+    # Delete handled reports: a report stays in the inbox until handled,
+    # so a cached bundle whose message is no longer in the inbox has been archived = handled.
+    # Only safe on a full inbox scan, where inbox_ids is the complete current inbox;
+    # a --query-narrowed scan would wrongly "handle" everything outside the window.
+    removed: list[str] = []
+    if args.no_delete:
         pass
-    elif not full_scan:
-        print("(reconcile skipped: handled/ sweep needs a full INBOX scan, no --query)")
+    elif args.query:
+        print("(delete skipped: the handled-report sweep needs a full INBOX scan, no --query)")
     else:
-        handled = reconcile_handled(cache, inbox_message_ids(metadata), args.dry_run)
+        removed = delete_handled(cache, idx, inbox_message_ids(metadata), args.dry_run)
+
+    if not args.dry_run:
+        index.write(cache, idx)
 
     verb = "Would download" if args.dry_run else "Downloaded"
-    print(
-        f"Swept {args.label}: {len(messages)} scanned, {len(heads)} thread heads, "
-        f"{len(survivors)} new."
-    )
+    print(f"Swept INBOX: {len(messages)} scanned, {len(heads)} thread heads, {len(survivors)} new.")
     print("  funnel: " + ", ".join(f"{k}={v}" for k, v in sorted(funnel.items())))
     print(f"{verb} {len(rows)} report(s)" + ("" if args.dry_run else f" to {cache}") + ".")
-    if handled:
-        moved_verb = "Would move" if args.dry_run else "Moved"
-        print(f"{moved_verb} {len(handled)} handled report(s) (left the inbox) to {HANDLED}/.")
+    if removed:
+        removed_verb = "Would remove" if args.dry_run else "Removed"
+        print(f"{removed_verb} {len(removed)} handled report(s) (left the inbox).")
     if rows:
         print()
         print(f"  {'id':<14}  {'date':<10}  {'reporter':<24}  {'pmc':<14}  att  subject")
@@ -417,8 +344,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {r[0]:<14}  {r[1]:<10}  {r[2]:<24}  {r[3]:<14}  {r[4]:>3}  {r[5]}")
         print()
         print(
-            "Next (triage-populate-cache SKILL): label each downloaded bundle, "
-            "place the _unsorted ones, and finalise."
+            "Next (triage-populate-cache SKILL): classify each downloaded bundle "
+            "and place the _unsorted ones."
         )
     return 0
 

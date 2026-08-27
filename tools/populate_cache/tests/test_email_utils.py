@@ -18,7 +18,7 @@
 import email
 from email.policy import default
 
-from populate_cache import cli, email_utils
+from populate_cache import email_utils
 
 
 def _msg(date_header=None):
@@ -39,14 +39,7 @@ def test_message_date_normalises_to_utc():
     assert email_utils.message_date(_msg("Sat, 13 Jun 2026 12:00:00 -0000")) == "2026-06-13"
 
 
-def test_report_date_is_iso8601_utc_with_z():
-    # +0900 01:00 -> 16:00 the previous UTC day, ISO 8601 with a Z suffix.
-    assert cli.report_date(_msg("Sat, 13 Jun 2026 01:00:00 +0900")) == "2026-06-12T16:00:00Z"
-    assert cli.report_date(_msg("Sat, 13 Jun 2026 12:00:00 +0000")) == "2026-06-13T12:00:00Z"
-
-
 def test_missing_date_falls_back():
     assert email_utils.message_datetime(_msg(None)) is None
     # message_date still returns a yyyy-mm-dd (today, UTC).
     assert len(email_utils.message_date(_msg(None))) == len("2026-06-13")
-    assert cli.report_date(_msg(None)) == ""
