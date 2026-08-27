@@ -40,7 +40,7 @@ permissions: {}
 jobs:
   zizmor:
     name: zizmor static analysis
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/tag=security
     permissions:
       contents: read
     steps:

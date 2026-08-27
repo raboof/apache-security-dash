@@ -43,7 +43,7 @@ permissions: {}
 jobs:
   analyze:
     name: CodeQL Python analysis
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64/tag=security
     permissions:
       contents: read
       security-events: write
