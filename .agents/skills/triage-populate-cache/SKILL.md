@@ -3,17 +3,19 @@ name: triage-populate-cache
 description: >-
   Pull new inbound security reports from the foundation-wide `security@apache.org` Gmail inbox into the local `report-cache/`, ready for assessment.
   Two-step flow inside one skill:
-  a deterministic download tool (`populate-cache`, in `tools/populate_cache/`) reads the inbox through the read-only Gmail API, selects thread heads on objective header facts only (thread head, not an automated CVE-process / VINCE / svn notification), and writes one `report.md` bundle per message straight into its dated, per-PMC home `report-cache/<date>/<pmc>/<message-id-slug>/` (tier-1 PMC routing from a `security@<pmc>` recipient) or `report-cache/<date>/_unsorted/<message-id-slug>/`.
-  Then the agent (as part of THIS skill, with a small Haiku subagent doing the read) gives every downloaded thread head a disposition:
-  a genuine report is filed under `<date>/<pmc>/<keywords>/` via `file.py <id> --keywords "..."`;
-  a specialized-PMC report is filed the same way with no `wf` (it is in the project's hands; the downstream skill tracks it);
-  a "Currently open security reports" digest is filed under `<date>/<pmc>/digest/` and tagged with every report it lists via `--digest`;
-  a non-report (spam / phishing / marketing / bounce) is stamped `--spam` and kept in place as a tombstone.
-  Nothing is deleted, so the tool's Message-ID dedup never re-downloads a triaged message;
-  once the team archives a report out of the inbox, the next run moves its bundle into `report-cache/handled/`.
-  The tag keywords are short single words ordered most-specific to most-generic, with the hyphen-joined slug capped at 60 chars.
+  a deterministic download tool (`populate-cache`, in `tools/populate_cache/`) reads the inbox through the read-only Gmail API, selects thread heads on objective header facts only (thread head, not an automated CVE-process / VINCE / svn notification), and records each new one at `status: downloaded`.
+  Then the agent (as part of THIS skill, with a lightweight-model subagent doing the read) sorts every downloaded message into a category and records it through the `report-cache` CLI:
+  a genuine report is classified with its PMC + keywords (`report-cache classify <id> --pmc <pmc> --keywords "..."`), plus `--track-only` when it already reached the PMC's own security team (nothing for us to send);
+  a "Currently open security reports" digest gets `set --status assessed --disposition track` plus one `--add-label` per report it lists;
+  a licence-confusion message (a hacked phone, the recurring Apache-licence-versus-ASF mix-ups) gets its standing `zzz-non-issue/...` label the same way, and is never answered;
+  a mirror of a report that arrived by another path gets that report's label;
+  a dependency inquiry, which the team answers by hand, gets `set --status assessed --disposition skip` plus its `zzz-non-issue/<pmc>/aaa-dependencies` label;
+  spam and anything else get `set --status assessed --disposition skip`.
+  Dedup keys on the RFC `Message-ID`, so a triaged message is never re-downloaded;
+  once the team archives a report out of the inbox, the next run deletes its bundle and its triage record.
+  The keywords are short single words ordered where-then-what-then-which (subproject or component, vulnerability class, then whatever makes the tag unique), with the hyphen-joined slug capped at 60 chars.
   Message bytes never enter the model's context during the download - only a compact funnel + table is printed.
-  This SKILL is also the canonical reference for the `report-cache/` layout that downstream drafting and status SKILLs reuse.
+  Bundle storage and the index belong to the `report-cache` tool: this SKILL goes through its CLI and never reads or writes the layout directly.
   Use whenever the Security team says "pull new security reports", "populate the cache", "sweep the inbox", "file the inbox", "label report X", or to refresh the cache before a triage session.
   It downloads and labels;
   it does not draft, assess against the threat model, or send.
@@ -29,10 +31,14 @@ Drafting replies or forwards and reporting status are **separate downstream SKIL
 
 The skill has two halves:
 
-1. **Download** - the `populate-cache` tool reads the Gmail inbox and writes one `report.md` bundle per new thread head.
+1. **Download**: the `populate-cache` tool reads the Gmail inbox and writes one report bundle per new thread head.
    Deterministic, header-based selection only; no message bytes reach the model.
-2. **Label** - the agent reads each downloaded bundle (delegating the read to a Haiku subagent) and gives it a disposition with `file.py`:
-   file a real report, mark a non-report as spam, or label-without-assessing a specialized-PMC report.
+2. **Classify**: the agent reads each downloaded bundle (delegating the read to a
+   [lightweight, low-latency, cost-efficient](#the-lightweight-model) subagent) and:
+   * Validates or determines the PMC,
+   * Determines the keywords for the report,
+   * Determines the reporter's preferred name.
+   * Advances the status to `classified`.
 
 ## When to invoke
 
@@ -47,10 +53,10 @@ The download reads the inbox through the **read-only Gmail API** (`gmail.readonl
 OAuth2 credentials are read from the environment;
 a local `.env` in the repo root is loaded automatically:
 
-| Variable | Purpose |
-|---|---|
-| `GMAIL_READONLY_OAUTH_CLIENT_ID` | OAuth2 client id |
-| `GMAIL_READONLY_OAUTH_CLIENT_SECRET` | OAuth2 client secret |
+| Variable                             | Purpose                                            |
+|--------------------------------------|----------------------------------------------------|
+| `GMAIL_READONLY_OAUTH_CLIENT_ID`     | OAuth2 client id                                   |
+| `GMAIL_READONLY_OAUTH_CLIENT_SECRET` | OAuth2 client secret                               |
 | `GMAIL_READONLY_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (must carry `gmail.readonly`) |
 
 These are the **read-only** Gmail API token, named to stay distinct from `inbox_manager`'s **read/write** IMAP token (`GMAIL_READWRITE_OAUTH_*`), so both can share one `.env`.
@@ -61,6 +67,9 @@ no separate mailbox address is needed.
 a missing/invalid refresh token or scope is.
 
 ## Phase 1: download
+
+In this phase incoming messages are downloaded to the cache,
+using one of the commands below:
 
 ```bash
 # Ongoing: pull every new thread head not already in the cache
@@ -75,90 +84,183 @@ uv run --project tools/populate_cache populate-cache --dry-run
 
 Useful flags:
 
-| Flag | Effect |
-|------|--------|
-| `--cache-dir` | Cache root to write into (default: repo `report-cache/`) |
-| `--label` | Gmail label to sweep (default `INBOX`) |
-| `--query` | Gmail search to narrow the scan, e.g. `newer_than:30d` |
-| `--limit N` | Stop after N new downloads (handy for a quick look) |
-| `--dry-run` | Select + report, write nothing |
-| `--no-reconcile` | Skip moving handled (left-the-inbox) bundles to `handled/` |
+| Flag             | Effect                                                     |
+|------------------|------------------------------------------------------------|
+| `--cache-dir`    | Cache root to write into (default: repo `report-cache/`)   |
+| `--query`        | Gmail search to narrow the scan, e.g. `newer_than:30d`     |
+| `--limit N`      | Stop after N new downloads (handy for a quick look)        |
+| `--dry-run`      | Select + report, write nothing                             |
+| `--no-delete`    | Keep bundles whose message has left the inbox              |
 
-Only the funnel + a one-line-per-report table reach the model.
-To read a report, open its `report.md` from the cache.
+On a full scan (no `--query`) the download also deletes the bundles whose message has left the inbox:
+the team archives a report once it is handled, so the bundle and its triage record go with it.
 
-### How the download decides what to write
+Only the funnel and a one-line-per-report table reach the model.
+To read a report, use `report-cache show <id>` (below); never open the cache files directly.
 
-Selection is by objective header facts only, no content heuristics.
-The tool fetches just the metadata headers for every inbox message, keeps the **thread heads**, drops automated notifications and anything already in the cache, then fetches the full RFC822 body only for the survivors.
-The funnel, printed each run, is:
+## Phase 2: classify each downloaded message
 
-- **reply** - not a thread head.
-  A message is a head when it is the Gmail thread root (`id == threadId`) **or** has no `In-Reply-To` header (the second rule keeps a fresh mail that Gmail merged into an old thread by subject, e.g. a recurring `Currently open security reports for <pmc>` digest).
-  Replies belong to an already-ingested thread and are tracked by their shared label, not as separate bundles.
-  The team's own `Currently open security reports ...` digest is deliberately **not** skipped:
-  it is downloaded like any head and given the `digest` disposition in Phase 2 (it tells us which reports a PMC still considers open).
-- **cve-process** - CVE-process mail injected by `security-vm-he-fi.apache.org` (per the `Received` chain): CVE reservations / status churn, not a fresh report.
-- **vince** - CERT/CC VINCE notifications (`From: cert+donotreply@cert.org`).
-- **svn-commit** - SVN commit mail (`Subject:` starts `svn commit: r`).
-- **already-seen** - the RFC `Message-ID` is already a bundle in the cache (dedup); never re-downloaded.
-  **This is why nothing is deleted in Phase 2** (see below).
-- **new** - downloaded into its dated home.
+The download selects on headers alone, so it is deliberately coarse:
+what it hands over is a pile of *messages*, only some of which are new vulnerability reports.
+This phase reads each one and decides what kind of message it is,
+then records that through the `report-cache` CLI.
 
-Spam is handled by Gmail's own filtering upstream, so there is no quarantine step.
-Whether a *kept* message is a genuine, in-scope report is decided in Phase 2 by reading the text.
+List what is waiting:
 
-### Reconcile: handled reports move to `handled/`
+```bash
+uv run --project tools/report_cache report-cache list --status downloaded
+```
 
-A report stays in the inbox until the team archives it, so a cached bundle whose message is **no longer in the inbox** has been handled.
-On a full inbox scan (the default; not when `--query` or a non-`INBOX` `--label` narrows it) the download moves such bundles into `report-cache/handled/`, keeping their `<date>/<pmc>/<leaf>` path.
-They stay inside the cache, so the Message-ID dedup still sees them (never re-downloaded) and the active triage queue stops showing what is already done.
-Pass `--no-reconcile` to skip the sweep, `--dry-run` to preview it.
-This is why a bundle still sitting in the cache outside `handled/` is one that is still open in the inbox and may need triage.
+Work one message at a time.
+For each one the listing shows at `status: downloaded`:
 
-### PMC routing (tier-1 only)
+1. **Read** it.
+   Delegate the read to a **[lightweight-model](#the-lightweight-model) subagent** (it keeps raw message bytes out of the main context):
+   give it the message's `<id>` and have it return a compact proposal
+   ([schema](#the-labelling-subagent)).
+   Run one subagent per message; they are independent and can fan out in parallel.
+2. **Settle the category** from the proposal (below).
+3. **Propose**, per message: its category, its PMC, and the values that category needs.
+   Reports need keywords and reporter name,
+   the remaining categories need labels.
+   Present the proposals as a short list and **get the user's confirmation before running anything**:
+   the keywords are worth a second pair of eyes, and a wrong `skip` buries a real report.
+4. **Execute** the confirmed actions with the `report-cache` CLI ([below](#tools-available)).
 
-The PMC is taken from the **address-domain** signal only:
-a `security@<pmc>.apache.org` address among the `To`/`Cc` recipients, validated against the authoritative Whimsy committee-info slug set.
-This is the strong signal;
-weaker prose-token and product-name guesses are deliberately not applied at download time, so the tool never misfiles into the canonical tree on a weak signal.
-Anything without an address-domain hit goes to `<date>/_unsorted/`, where Phase 2 (which has the body in hand) resolves the PMC.
-If Whimsy is unreachable the slug set is empty and every report routes to `_unsorted` (the tool prints a degraded-routing notice).
+### The categories
 
-A `security@<pmc>` recipient also records the routing in the front-matter `pmc` / `pmc_candidates` fields.
+These are the kinds of message the inbox actually delivers.
+They are an open set - we extend it as new cases appear.
 
-## Phase 2: label each downloaded head
+This table is the whole definition, and the only one.
+The [labelling subagent](#the-labelling-subagent) picks a category from it and needs nothing below:
+what happens to a message once its category is settled is not the subagent's problem.
 
-The download is intentionally coarse and **never deletes**:
-every new thread head lands in the cache with `status: downloaded`, and the tool's dedup keys on the Message-ID by scanning the existing bundles.
-**Phase 2 gives each downloaded head a disposition, and the bundle stays on disk** (even a non-report) so its Message-ID is always found and it is never downloaded again.
-Deciding the disposition is this skill's job, done by the agent reading the text - not by code, and not deferred to a downstream skill.
+| Category               | What it is                                                                                | What it needs               |
+|------------------------|-------------------------------------------------------------------------------------------|-----------------------------|
+| **report**             | a genuine vulnerability report for a project                                              | keywords + reporter name    |
+| **digest**             | the team's own `Currently open security reports for <pmc>` mail                           | the covered reports' labels |
+| **license-confusion**  | a hacked phone, or one of the recurring confusions between the Apache license and the ASF | -                           |
+| **mirror**             | a notification duplicating a report that arrived by another path                          | the original's label        |
+| **spam**               | phishing, marketing, a "thank you", a bounce, a vendor blast                              | -                           |
+| **dependency-inquiry** | a question about a CVE in a *dependency* of an ASF project                                | the project its body names  |
+| **other**              | a message that fits none of the above                                                     | -                           |
 
-Work the cache one bundle at a time.
-For each bundle still at `status: downloaded` (find them with the `--dry-run` table, or `grep -rl 'status: downloaded' report-cache/`):
+### Recording a category
 
-1. **Read** the bundle.
-   Delegate the read to a **Haiku subagent** (cheap, and keeps raw message bytes out of the main context):
-   give it the bundle's `report.md`, any file under `attachments/`, and [`tag-vocabulary.yaml`](tag-vocabulary.yaml), and have it return a compact proposal (schema below).
-   Run one subagent per bundle; they are independent and can fan out in parallel.
-2. **Decide the disposition** from the proposal.
-   The dispositions are an open set we extend as new cases appear on the inbox; the ones in place today:
-   - **report** - a genuine vulnerability report for a project we triage (even a weak, duplicate, or non-issue one: those are still real reports the team answers, so they are filed and the content disposition is handled downstream).
-     File it.
-   - **specialized-pmc** - addressed to a project that runs its own security team (e.g. `security@tomcat.apache.org`).
-     **We do not assess it** - it is in the PMC's hands.
-     File it like a normal report (`--keywords`, **no** `wf` - a report in a PMC's hands has none); the downstream `triage-assess` skill recognises the specialized PMC (from `project-coordinates.json`) and only tracks it.
-   - **digest** - a `Currently open security reports for <pmc>` summary the team itself sends.
-     Not a report to assess: it lists the PMC's still-open reports, so tag it with **every one of those reports' tags** (see below) and file it with `--digest`.
-   - **non-issue (standing label)** - a known non-issue class, most often a request about a CVE in an Apache project the sender merely **depends on** (a fix/release-info inquiry, or a transitive-CVE report).
-     Not a vulnerability we assess: file it under the standing non-issue label with `--non-issue aaa-dependencies --pmc <pmc>` (tag `zzz-non-issue/<pmc>/aaa-dependencies`; see below).
-     A report we dismiss case-by-case is different: file it normally as `<pmc>/<date> <keywords>` with `--wf non-issue-feedback`, reply to the reporter, then (downstream) it is moved to `zzz-non-issue/<pmc>/<date> <keywords>`.
-   - **spam / non-report** - phishing, marketing, a "thank you" note, an automated bounce, a vendor blast.
-     Stamp it `--spam`; the bundle is kept in place as a dedup tombstone, not deleted.
-3. **Propose**, per bundle:
-   **FILE** (PMC + keywords; note if it is specialized-PMC), **DIGEST** (PMC + the covered report tags), **NON-ISSUE** (PMC + the standing label, e.g. `aaa-dependencies`), or **SPAM** (one-line reason).
-   Present the proposals as a short list and **get the user's confirmation before running anything** - filing is worth confirming so the keywords are right, and a wrong `--spam` buries a real report.
-4. **Execute** the confirmed actions with `file.py` (below).
+Only a **report** is recorded with `classify`; every other category is recorded with `set`.
+All of them pass `--status assessed`:
+`set` only advances the status when told to, so a message given a disposition but left at
+`downloaded` comes back in the queue on the next run, forever.
+
+- **report**: even a weak, duplicate, or ultimately-invalid one is still a real report the team answers,
+  so it is a report here; whether it has merit is decided downstream, not now.
+  Classify it with its PMC, keywords and reporter name:
+
+  ```bash
+  report-cache classify <id> --pmc <pmc> --keywords "<kw>" --reporter-name "<name>"
+  ```
+
+  Add `--track-only` when the report was already delivered where we would otherwise forward it,
+  so there is nothing for us to send and we only track it.
+  The rule is:
+  if the settled PMC is in the report's `delivered:` list, add `--track-only`.
+  To access the delivered list you can use:
+
+  ```bash
+  report-cache show <id> | grep ^delivered:
+  ```
+
+- **digest**: label it with **every one of the reports it lists** ([below](#the-open-reports-digest)),
+  and record that we owe nothing:
+
+  ```bash
+  report-cache set <id> --status assessed --disposition track \
+      --add-label "<label>" --add-label "<label>"
+  ```
+
+- **license-confusion**: there is no project and no reply -
+  label it and record that we owe nothing:
+
+  ```bash
+  report-cache set <id> --status assessed --disposition track \
+      --add-label "zzz-non-issue/aaa-hack or license confusion"
+  ```
+
+  The label is passed **verbatim**: it carries spaces and has no `<pmc>` segment,
+  so it cannot be composed from `--collection` / `--keywords`.
+
+- **mirror**: do not classify it as a new report ([below](#special-recipients)) -
+  give it the original's label verbatim, and record that we owe nothing:
+
+  ```bash
+  report-cache set <id> --status assessed --disposition track \
+      --add-label "<the original's label>"
+  ```
+
+- **dependency-inquiry**: **the team answers it by hand**, so the pipeline only records the class:
+
+  ```bash
+  report-cache set <id> --status assessed --disposition skip \
+      --add-label "zzz-non-issue/<pmc>/aaa-dependencies"
+  ```
+
+  The `<pmc>` is the project the **body** names, not the list it was sent to.
+
+- **spam** and **other**: nothing for the pipeline to do.
+
+  ```bash
+  report-cache set <id> --status assessed --disposition skip
+  ```
+
+  The two record identically, so the distinction survives in the proposal you confirm
+  and nowhere else - do not expect to sort on it later.
+  `skip` means *out of the skill's scope*, never *ignore*:
+  an **other** is still waiting for the team to answer it by hand.
+
+Note the two vocabularies do not line up, and should not be confused:
+a **category** is what kind of message arrived (above),
+while `--disposition` is `report-cache`'s record of what the team owes on it
+(`track` - nothing to send; `skip` - out of scope; `forward` / `decline` - decided downstream).
+
+### Tools available
+
+`<id>` is the RFC `Message-ID` (a unique prefix works) or the bundle's leaf directory name;
+`list` prints one you can pass straight back.
+
+```bash
+# Find reports with a given status
+uv run --project tools/report_cache report-cache list --status <status>
+
+# Read a report: metadata + body + its attachment / artifact listing
+uv run --project tools/report_cache report-cache show <id>
+
+# Read an attachment, rendered to text (text / markdown / html / pdf)
+uv run --project tools/report_cache report-cache get-attachment <id> <name>
+
+# Classify a report: move it under <pmc>/<date>-<keywords>, add the label, set status classified
+uv run --project tools/report_cache report-cache classify <id> --pmc <pmc> --keywords "<kw>"
+
+# Classify a report that is already in its PMC's hands: status assessed + disposition track
+uv run --project tools/report_cache report-cache classify <id> --pmc <pmc> --keywords "<kw>" --track-only
+
+# Record a category without moving the bundle (skip = not ours to act on; track = nothing to send).
+# Always advance --status too: set leaves it alone otherwise, and the message stays in the queue.
+uv run --project tools/report_cache report-cache set <id> --status assessed --disposition skip
+
+# Add labels verbatim (repeat --add-label; used for a digest's covered reports)
+uv run --project tools/report_cache report-cache set <id> --status assessed --disposition track \
+    --add-label "<label1>" --add-label "<label2>"
+
+# Label a standing non-issue class (a label, not a directory) - spelled as in the archive
+uv run --project tools/report_cache report-cache set <id> --status assessed --disposition track \
+    --add-label "zzz-non-issue/aaa-hack or license confusion"
+```
+
+Labels are recorded exactly as passed, so a standing `aaa-*` label goes through `--add-label` verbatim.
+Do not reach for `--collection`/`--keywords` to build one:
+keywords are validated as `[a-z0-9_]+`, so they cannot spell the hyphenated archive labels
+and would mint a near-duplicate class.
 
 ### The open-reports digest
 
@@ -171,7 +273,7 @@ The digest body lists each still-open report as a bullet - `* <Title> [N days]` 
 The `<Title>` is the report's email subject.
 `email-classification/<pmc>/` stores each report's `subj` and `message_id` but **not** the Ponymail thread-id, so the cross-check is **by subject**: match each digest `<Title>` to the tag file whose `subj` is the same report.
 
-Delegate this to a **Haiku subagent** (one per digest), giving it the digest bundle and `email-classification/<pmc>/`, and ask it to return the matched tag list.
+Delegate this to a **[lightweight-model](#the-lightweight-model) subagent** (one per digest), giving it the digest's `<id>` (to read with `report-cache show <id>`) and `email-classification/<pmc>/`, and ask it to return the matched tag list.
 When matching a `<Title>` to a `subj`, normalize for:
 
 - the trailing `[N days]` and a leading `Re:`;
@@ -181,33 +283,41 @@ When matching a `<Title>` to a `subj`, normalize for:
 
 Take **every** report the digest lists (all sections).
 The tag is `<pmc>/<filename-without-.json>` verbatim - it may carry a `wf ...` marker or be a standing `aaa-*` label (e.g. `dubbo/aaa-non-fwd`).
-Verify each tag is a real file under `email-classification/<pmc>/` before filing, and present the list for confirmation.
+Verify each tag is a real file under `email-classification/<pmc>/` before labelling, and present the list for confirmation.
 
-Then file the digest, passing each tag with a repeated `--tag` (prefix it with the PMC):
+Then label the digest, passing each tag with a repeated `--add-label` (prefix it with the PMC),
+and record that there is nothing for us to send:
 
    ```bash
-   .agents/skills/triage-populate-cache/file.py <id> --digest --pmc tomcat \
-       --tag "tomcat/2026-06-08 webxml tostring" \
-       --tag "tomcat/CVE-2026-50229 examples xss"
+   uv run --project tools/report_cache report-cache set <id> --status assessed --disposition track \
+       --add-label "tomcat/2026-06-08 webxml tostring" \
+       --add-label "tomcat/CVE-2026-50229 examples xss"
    ```
 
-This files the digest under `<date>/<pmc>/digest/` (`keywords: [digest]`), stamps `handled: true` (terminal - never assessed; a digest has no `wf`, it is not a report waiting for anything), and records the covered tags as the bundle's `tags`.
+Labels are stored exactly as given, so pass each tag verbatim.
+`--disposition track` is what marks the digest as needing nothing from us:
+it is the team's own summary, never a report to assess.
 The digest's Gmail message must carry each of those labels so it surfaces alongside every report it lists;
 the credentialed `inbox_manager` tool does that attach-and-archive step (see "Applying the cache labels to Gmail" below).
 If a listed report has no tag file yet (it is itself still in this download batch), label that report first.
 
-### Pre-labelled heads (`tags`)
+### Pre-labelled heads
 
-`tags` is the message's Gmail labels, seeded by the download from whatever was already on the message.
+A report's `labels` are the message's Gmail labels, seeded by the download from whatever was already on the message;
+`show` lists them.
 A pre-existing entry does **not** mean it was already triaged:
-a message still in the inbox is by definition untriaged (a handled report would have been archived and swept into `handled/`, see below).
-Gmail auto-applies some labels by **subject keyword** - most often a public CVE number.
-So a follow-up report whose subject names an already-public CVE (e.g. a fix that turned out incomplete) arrives with that CVE's existing `<pmc>/<date> <keywords>` label already in `tags`, even though it is a fresh report that needs full triage.
+a message still in the inbox is by definition untriaged (a handled report would have been archived, and its bundle deleted with it).
+Gmail auto-applies some labels by **subject keyword**: most often a public CVE number.
+So a follow-up report whose subject names an already-public CVE (e.g., a fix that turned out incomplete)
+arrives with that CVE's existing `zzz-resolved/<pmc>/<cve-number> <keywords>` label already on it,
+even though it is a fresh report that needs full triage.
 
-Treat a pre-existing `tags` entry as a **routing hint**, not a disposition:
-it tells you which prior report or CVE this one relates to, so you can reuse its PMC and align the keywords, and (downstream) cross-reference the earlier thread.
-Then triage the head normally - decide its disposition and file it like any other; `file.py` keeps the pre-existing labels and adds the assigned one.
-A head with no labels yet has `tags: null`.
+Treat a pre-existing label as a **routing hint**, not a decision:
+it tells you which prior report or CVE this one relates to,
+so you can reuse its PMC and align the keywords,
+and (downstream) cross-reference the earlier thread.
+Then triage the head normally: decide its category and classify it like any other;
+`classify` adds the assigned label and keeps the pre-existing ones.
 
 ### Special recipients
 
@@ -216,32 +326,75 @@ Do not file it as a new report: find the report it mirrors and give the mirror t
 
 Known special recipients:
 
-- **`airflow-s@noreply.github.com`** (Airflow) - a GitHub notification for the Airflow PMC's private `airflow-s/airflow-s` security-issue repo, where a PMC member re-files each inbound report.
+- **`airflow-s@noreply.github.com`** (Airflow).
+  A GitHub notification for the Airflow PMC's private `airflow-s/airflow-s` security-issue repo, where a PMC member re-files each inbound report.
   So this notification mirrors a report the reporter also sent to `security@airflow.apache.org` or `security@apache.org`.
-  Find that report by matching the subject - among the still-`downloaded` bundles, the already-filed ones, or anywhere in `email-classification/` (the original is often classified already, in any collection: active, `zzz-non-issue/`, `zzz-resolved/`, even `archive/`).
-  Apply **its** tag to the notification, reproducing it with the `file.py` mode that matches the original's collection:
-  `--keywords "<kw>" --date <date>` for an active label, or `--non-issue "<date> <kw>" --pmc airflow` for a `zzz-non-issue/...` one.
+  Find that report by matching the subject in `email-classification/<pmc>`.
+  Apply **its** tag to the notification verbatim, with `set <id> --add-label "<tag>"`,
+  and record that it needs nothing from us (`--disposition track`).
+  Labels are stored as given, so an active tag and a `zzz-non-issue/...` one are both just passed through.
   If you cannot find the original (the mirror may have arrived first, or the report went elsewhere), flag it rather than invent a tag.
 
-### Deciding PMC + keywords
+### Deciding PMC and keywords
 
-- **PMC** - confirm the tool-detected `pmc:` if the download set it from a `security@<pmc>` recipient (tier-1);
-  otherwise (an `_unsorted` bundle) read the body to determine the project (the subject/body almost always name it, e.g. "Apache Spark").
-  Use the PMC slug (`spark`, `httpd`, `commons`, …) and pass it with `--pmc`.
-- **Keywords** - short, lowercase, single-word terms capturing the issue.
+- **PMC**: confirm the PMC the report is for, based on the report content.
+  The PMC guessed in the download phase and shown by `show` is the starting point,
+  but is not always correct.
+- **Keywords**: short, lowercase, single-word terms capturing the issue.
   Each keyword must match `[a-z0-9_]+`: no `-` inside a keyword (use `_` if you must join two parts, e.g. `file_read`, not `file-read`).
-  The directory name is the hyphen-join of the keywords, so the tag's space-separated form roundtrips without ambiguity.
-  `file.py` enforces the character set and caps the hyphen-joined slug at 60 chars (long enough for a handful of words, short enough to keep paths and `ls` output legible).
-  If `file.py` rejects your keywords, drop the least informative one or shorten it.
-- **Keyword order: most specific to most generic.**
-  The first keyword is the strongest filter, so similar reports cluster by their tag prefix.
-  Concretely:
-  1. Most specific PMC subproject / component (from `per_pmc.<pmc>` in [`tag-vocabulary.yaml`](tag-vocabulary.yaml), or a global `component` entry if the project has no subproject for this surface).
-  2. The vulnerability class (`vuln_class` in the vocabulary).
-  3. Optional further narrowing: a more specific component, a `modifier`, or a CVE-vector keyword.
+  `report-cache` enforces the character set and caps the hyphen-joined slug at 60 chars
+  (long enough for a handful of words, short enough to keep paths and `ls` output legible).
+  If it rejects your keywords, drop the least informative one or shorten it.
+- **Keyword order: where, then what, then which one.**
+  This order is fixed, and it is the only place it is stated - the leading keyword is the strongest filter,
+  so similar reports cluster by their tag prefix, and a tag that leads with the wrong thing files itself
+  next to unrelated reports.
+  1. **Where it is**: the PMC's subproject (`per_pmc.<pmc>` in [`tag-vocabulary.yaml`](tag-vocabulary.yaml),
+     e.g. `compress` for Commons), or a component of the main project when the PMC has no subproject for that surface.
+  2. **What it is**: the vulnerability class (`vuln_class` in the vocabulary).
+  3. **Which one**: whatever else makes the tag unique - a narrower component, a `modifier`, a CVE-vector keyword.
 
-  Examples: `digester xxe file_read` (commons-digester XXE leading to file read), `tribes deser cluster` (Tomcat Tribes cluster-channel deserialization), `dag operator rce` (Airflow operator-templating RCE via DAG).
-  When the report is squarely about a vuln class with no meaningful subproject (e.g. a foundation-wide CVE intake), the vuln class can lead: `deser jdbc h2`.
+  The class is *not* the lead, however specific it feels:
+  `xxe` is what happened, `digester` is where, and the cache is organised by where.
+
+  Examples: `digester xxe file_read` (commons-digester XXE leading to file read),
+  `tribes deser cluster` (Tomcat Tribes cluster-channel deserialization),
+  `operator rce dag` (Airflow operator-templating RCE, reached via a DAG).
+  Each leads with the subproject, then the class, then what distinguishes it.
+
+  The exception is a report with no project surface to lead with -
+  a foundation-wide CVE intake, say - where the class has to: `deser jdbc h2`.
+
+### Deciding reporter's name
+
+`reporter_name` is **how to address the reporter**, not who they are:
+it is the name a downstream reply greets them by (`Hi <name>,`),
+so record the name they would expect to be called.
+Pass it with `--reporter-name` on `classify` (or `set`).
+
+The download seeds it from the `From` display name,
+resolving the list's `<Name> via security <security@apache.org>` rewrite through `Reply-To` when there is one.
+That seed is only a default, and for addressing someone it is often wrong:
+
+- it may be missing entirely (an address-only `From`);
+- it may be a handle, an alias, or an employer's `Last, First` formatting;
+- it may still read `<Name> via security`, if the rewrite left no `Reply-To` to recover the sender from;
+- it is usually the full name, where a reply wants only the given name.
+
+The **signature** is the better source:
+how a reporter signs off is how they want to be called.
+Prefer it over the display name whenever the two disagree.
+
+Rules of thumb:
+
+1. Record the given name the signature uses (`Jane`), not the full name (`Jane Reporter`), and never the address.
+2. Do not derive it by splitting the display name.
+   Name order is not universal, so a family-name-first `From` would yield the wrong greeting;
+   take what the signature shows.
+3. Drop a surviving `via security`: it is a DKIM-rewrite artifact, not part of anyone's name.
+4. If the report is unsigned and the display name is unusable, leave it unset rather than guess -
+   greeting someone by the wrong name is worse than not greeting them by name at all.
+   Say so in your proposal.
 
 ### Pick keywords from the established vocabulary
 
@@ -249,256 +402,121 @@ Before inventing a new keyword, consult [`tag-vocabulary.yaml`](tag-vocabulary.y
 New reports clustering under the same tag as historical ones is the whole point:
 the cache and the sibling `email-classification/` archive both become searchable by tag.
 
-The file has three sections:
+The file has these sections:
 
-- `global.vuln_class` - the lead keyword for almost every report (`rce`, `dos`, `deser`, `xss`, `ssrf`, `traversal`, `sqli`, `xxe`, `bypass`, `injection`, …).
+- `global.vuln_class` - the vulnerability class (`rce`, `dos`, `deser`, `xss`, `ssrf`, `traversal`, `sqli`, `xxe`, `bypass`, `injection`, …).
 - `global.component` - what the vuln hits (`file`, `path`, `session`, `header`, `jdbc`, `jwt`, `xml`, `yaml`, `regex`, `template`, …).
-- `global.modifier` - optional third keyword to narrow (`read`, `write`, `stored`, `reflected`, `pre_auth`, `default`, …).
+- `global.modifier` - narrowing (`read`, `write`, `stored`, `reflected`, `pre_auth`, `default`, …).
 - `per_pmc.<pmc>` - subprojects / components specific to a PMC (e.g. commons `compress`, `jexl`, `fileupload`; airflow `dag`, `operator`; tomcat `tribes`, `hpack`; logging `log4j`, `log4j2`).
+
+Which section a keyword comes from does **not** set its position:
+the order is fixed in [Deciding PMC and keywords](#deciding-pmc-and-keywords) -
+subproject or component first, the class second, the rest after.
+These sections say what a keyword *is*, not where it goes.
 
 Rules of thumb:
 
-1. **First keyword** is almost always a `vuln_class` entry.
-   If the report names a deserialization sink, use `deser` (the canonical form), not `deserialization` or `deserialize`.
-2. **Second keyword** is a `component` entry or, if the PMC has a list in `per_pmc`, an entry from there (subprojects sort the cache better than generic component words).
-3. **Third keyword** (often omitted) is a `modifier` or a narrower component pointer.
-4. If the report does not fit any existing keyword, a new one is fine -
+1. **Prefer the canonical form over a synonym.**
+   If the report names a deserialization sink, use `deser`, not `deserialization` or `deserialize`.
+2. **A `per_pmc` subproject beats a generic `component`** for the leading keyword:
+   subprojects sort the cache better than generic component words.
+   Reach for `global.component` only when the PMC has no subproject for the surface in question.
+3. If the report does not fit any existing keyword, a new one is fine -
    just make sure the form matches the existing style (single lowercase word, `_` not `-` for compounds).
-   Mention the new keyword in your filing proposal so the user can decide whether it belongs in the vocabulary file.
+   Mention the new keyword in your proposal so the user can decide whether it belongs in the vocabulary file.
 
-### The Haiku labelling subagent
+### The labelling subagent
 
-Spawn one Haiku subagent per `status: downloaded` bundle.
-Keep raw bytes out of the main context: the subagent reads the files, the main agent sees only the small proposal.
-Give the subagent the bundle path, tell it to read `report.md` (and skim `attachments/`) and `tag-vocabulary.yaml`, and to return **only** this JSON:
+Spawn one [lightweight-model](#the-lightweight-model) subagent per `status: downloaded` message.
+Keep raw bytes out of the main context: the subagent reads the message, the main agent sees only the small proposal.
+
+Give it the message's `<id>` and tell it to:
+
+- read the message with `report-cache show <id>`,
+  and any attachment worth reading with `report-cache get-attachment <id> <name>`;
+- consult [`tag-vocabulary.yaml`](tag-vocabulary.yaml) before inventing a keyword;
+- return **only** this JSON:
 
 ```json
 {
-  "is_report": true,
-  "disposition": "report",          // "report" | "specialized-pmc" | "digest" | "non-issue" | "spam"
-  "pmc": "spark",                    // slug; echo the front-matter pmc if set, else infer
-  "keywords": ["ssrf", "rest", "api"], // most-specific -> most-generic, [a-z0-9_], <=3
-  "label": null,                     // for "non-issue": the standing label leaf, e.g. "aaa-dependencies"
-  "reason": "SSRF in the REST API admin proxy"  // one line; for spam, why it is not a report
+  "category": "report",                 // one of [The categories](#the-categories)
+  "pmc": "spark",                       // slug, from the CONTENT (see below); null if none is named
+  "keywords": ["rest", "ssrf", "api"],  // report only: where, then what, then which; [a-z0-9_], <=3
+  "reporter_name": "Jane",              // report only: how to greet them, from the signature
+  "labels": [],                         // the labels that category needs, verbatim
+  "reason": "SSRF in the REST API admin proxy"  // one line: what it is, in your own words
 }
 ```
 
-For a **digest** the subagent returns `disposition: "digest"`, the `pmc` it is "for", and the listed reports (subject / CVE / reporter) under `reason` so the main agent can resolve each to its `email-classification/<pmc>/` tag;
-it does not invent keywords for a digest.
-For a **non-issue** (e.g. a CVE-in-a-dependency inquiry) it returns `disposition: "non-issue"`, the `pmc`, and `label` set to the standing leaf (`aaa-dependencies`).
+The categories are defined in [The categories](#the-categories) - that table is the whole brief.
+Which fields carry the answer depends on which one it is:
+
+| Category               | `pmc`                      | `keywords` + `reporter_name` | `labels`                    |
+|------------------------|----------------------------|------------------------------|-----------------------------|
+| **report**             | yes                        | yes                          | -                           |
+| **digest**             | the PMC it is *for*        | -                            | every listed report's label |
+| **license-confusion**  | null (no project)          | -                            | -                           |
+| **mirror**             | yes                        | -                            | the original's label        |
+| **spam**               | null                       | -                            | -                           |
+| **dependency-inquiry** | the project its body names | -                            | -                           |
+| **other**              | if its body names one      | -                            | -                           |
+
+The subagent does not compose labels it cannot know:
+a **digest**'s and a **mirror**'s come from the `email-classification/` archive,
+and the standing `zzz-non-issue/...` ones are fixed strings the main agent applies.
+Where `labels` is `-`, leave it empty.
+
+**`pmc` comes from the content, not the headers.**
+Which list a message was sent to says where it landed, not what it is about.
+Read the subject and body for the project, and treat the `pmc` that `show` reports
+(the download's guess from `To`/`Cc`) as a hint to confirm, not an answer to echo.
 
 The subagent decides nothing irreversible;
-the main agent presents the proposals, gets the user's confirmation, and runs `file.py`.
-Treat the subagent's keywords as a draft - reconcile them against the vocabulary before filing.
-
-### Helper commands
-
-```bash
-# File a genuine report (PMC auto-filled by the download for tier-1 -> omit --pmc):
-.agents/skills/triage-populate-cache/file.py <id> \
-    [--pmc <slug>] --keywords "<up to 3 single words>"
-
-# A specialized-PMC report is filed like a normal report (no wf - it is the PMC's);
-# the downstream skill recognises the specialized PMC and only tracks it.
-
-# Record what a report is waiting for with --wf (e.g. reporter, cve-allocation):
-.agents/skills/triage-populate-cache/file.py <id> \
-    --keywords "<words>" --wf reporter
-
-# Label an open-reports digest with the tag of every report it lists:
-.agents/skills/triage-populate-cache/file.py <id> --digest --pmc <slug> \
-    --tag "<pmc>/<date> <keywords>" --tag "<pmc>/CVE-... <keywords>"
-
-# File a known non-issue (e.g. a CVE-in-a-dependency inquiry) under its standing label:
-.agents/skills/triage-populate-cache/file.py <id> --non-issue aaa-dependencies --pmc <slug>
-
-# Mark a non-report as spam (kept in place as a dedup tombstone, not deleted):
-.agents/skills/triage-populate-cache/file.py <id> --spam \
-    --reason "<why it is not a report>"
-```
-
-`<id>` is the bundle's **message-id-slug directory name** or any unique prefix (the truncated id the download printed works), or the RFC Message-ID.
-Only bundles still at `status: downloaded` are matched, so a re-run never re-files an already-triaged report.
-Add `--dry-run` to preview any action.
-
-- **File** composes the label `<pmc>/<date> <keywords>` (the `cve` field replaces the date once allocated; `--wf <state>` appends ` wf <state>`) and adds it to `tags`, keeping any pre-existing Gmail labels. It renames the leaf from the message-id slug to the keyword slug, moves an `_unsorted` bundle under its `<pmc>/`, sets `collection: null` (active) and `status: filed`.
-  `handled` stays `false` until the report is actioned downstream.
-  `--wf <state>` records what the report is waiting for (see below); omit it for a report in a PMC's hands.
-- **Digest** files the bundle under `<date>/<pmc>/digest/` (`keywords: [digest]`), stamps `handled: true` (terminal, no `wf`), and records the covered report tags (each `--tag`) as the bundle's `tags`.
-  It is a status summary, never assessed.
-- **Non-issue** moves the bundle to `zzz-non-issue/<pmc>/<label>/<slug>/` and adds the label `zzz-non-issue/<pmc>/<label>` to `tags`, with `status: filed`.
-  The `<label>` leaf is verbatim (e.g. `aaa-dependencies`); not all standing labels are `aaa-` prefixed, so `--non-issue` takes the whole leaf.
-- **Spam** stamps `status: spam` and a `disposition` reason in place and sets `handled: true`.
-  The bundle is **kept** (its Message-ID stays in the cache), so the download never re-fetches it;
-  nothing is written to a separate ledger.
-
-Work one report at a time so each gets the right keywords and the right disposition.
-After a pass, no bundle is left at `status: downloaded`.
-
-## report-cache structure (canonical reference)
-
-`report-cache/` lives at the repo root and is **gitignored** (see `.gitignore`):
-cached report content, attachments, and drafts are never committed.
-Downstream SKILLs MUST follow this layout.
-
-```text
-report-cache/
-  index.json                        # WRITTEN BY file.py: Message-ID -> {path, pmc, tags, status, ...}
-                                    #   so a filed report stays findable by Message-ID after its leaf
-                                    #   is renamed. `file.py --reindex` rebuilds it from the cache.
-  <date>/<pmc>/<message-id-slug>/   # WRITTEN BY populate-cache: a downloaded,
-      report.md                     #   tier-1-routed report awaiting a label
-      raw.eml                       #   verbatim RFC822 message (safety net); moves with the bundle
-      attachments/                  #   decoded attachment bytes (md / pdf / zip / py / ...)
-          <filename>
-  <date>/_unsorted/<message-id-slug>/  # WRITTEN BY populate-cache: no PMC in the headers
-      report.md                        #   Phase 2 resolves the PMC from the body
-      attachments/
-
-  <date>/<pmc>/<keywords>/          # WRITTEN BY THIS SKILL (file.py): a filed report
-      report.md                     #   leaf renamed from the message-id slug; tag/keywords/status set
-      attachments/
-      summary.md                    # WRITTEN BY THE DRAFTING SKILL: PMC forward summary (+ note.md)
-      reason.md                     #   reject reason for the reporter push-back
-
-  <date>/<pmc>/digest/             # WRITTEN BY THIS SKILL (file.py --digest): an open-reports
-      report.md                    #   summary; keywords [digest], its tags are the covered reports' tags
-      attachments/
-
-  zzz-non-issue/<pmc>/<label>/<slug>/  # WRITTEN BY THIS SKILL (file.py --non-issue): a known
-      report.md                        #   non-issue, e.g. <label>=aaa-dependencies for a CVE-in-a-
-      attachments/                     #   dependency inquiry; tag zzz-non-issue/<pmc>/<label>
-
-  handled/<date>/<pmc>/<leaf>/     # MOVED HERE BY populate-cache: a bundle whose message left
-      report.md                    #   the inbox (archived = handled); kept for dedup, off the queue
-      attachments/
-```
-
-Every bundle also keeps `raw.eml`, the verbatim RFC822 message the download saved as a safety net; it travels with the bundle into the filed / digest / non-issue / `handled/` locations (only the top-level `<filename>` lines and `draft-*.md` are omitted from the other entries above for brevity).
-
-`index.json` maps each Message-ID to its bundle's current `path` (plus `pmc` / `tags` / `status` / `collection`).
-`file.py` upserts the entry on every disposition, so once filing renames the leaf from the message-id slug to the keyword slug the report stays findable by Message-ID - look it up rather than scanning every `report.md`.
-`file.py --reindex` rebuilds the whole index from the cache.
-
-A spam bundle stays where it was downloaded (usually `<date>/_unsorted/...`) with `status: spam`;
-it is a tombstone for dedup, not part of the triage queue.
-A bundle under `handled/` has left the inbox (the team archived it);
-it is kept only so the dedup never re-downloads it.
-
-- `<message-id-slug>` is the sanitized RFC Message-ID (`[A-Za-z0-9._-]`), the provisional leaf the download writes.
-- `<date>` is `yyyy-mm-dd` (the report's date).
-- `<pmc>` is the PMC slug (e.g. `tomcat`).
-- `<keywords>` is the hyphen-joined keyword set from the report tag (single words, ordered most-specific to most-generic, slug capped at 60 chars), the leaf after filing.
-
-A report's own triage **label** (one entry in `tags`) is composed of these parts:
-
-```text
-[archive/] [<collection>/] <pmc> / <date-or-CVE> <space-separated keywords> [wf <status>]
-```
-
-- **`<collection>`** - the prefix: omitted = active, `zzz-non-issue`, or `zzz-resolved` (no longer actionable). Held in the `collection` field (null = active).
-- **`archive/`** - an extra prefix for a label evicted from Gmail (its label limit) but kept under `email-classification/archive/`. Not a separate field; only ever present in `tags`.
-- **`<date-or-CVE>`** - the report's day (`yyyy-mm-dd`) or, once allocated, `CVE-YYYY-NNNNN` (the `cve` field).
-- **`<keywords>`** - the `keywords` field, space-separated (for a standing non-issue this is a fixed leaf like `aaa-dependencies`).
-- **`wf <status>`** - the `wf` field, appended when set.
-
-So the bundle's `collection` / `cve` / `keywords` / `wf` fields are the decomposed parts; `tags` carries the composed string(s). An active report maps to the canonical path `<date>/<pmc>/<keywords>/` (the digest's keyword is `digest`); a non-issue to `zzz-non-issue/<pmc>/<label>/`.
-
-The **`wf`** field is short for **"waiting for"** - the state a report is parked in while the team waits on something.
-A report in a PMC's hands (assessed and forwarded, or owned by a specialized PMC) has **no** `wf`.
-The common values, seen in the `email-classification` archive (where the `wf` is appended to the label filename, e.g. `… wf reporter`):
-
-- `reporter` - waiting for the reporter to respond;
-- `cve-allocation` - waiting for a CVE to be allocated;
-- `non-issue-feedback` - waiting to send the reporter the "not an issue" feedback;
-- `non-issue-docs` - a documented, by-design behaviour (non-issue);
-- `disclosure` - waiting for coordinated disclosure;
-- a fix-release **version** (e.g. `2.0.1`, `1.14.1`) - waiting for that release;
-- and a long tail (`reject`, `public-followup`, `patch`, `announcement`, …).
-
-### `report.md` front-matter schema
-
-`report.md` is the bundle's single file:
-YAML front-matter (Jekyll-style, delimited by `---` lines), then the report body (HTML parts converted to Markdown).
-
-```yaml
----
-# Provenance (written by populate-cache, treated as read-only downstream)
-subject:        # report subject
-reporter:       # From: email address
-reporter_name:  # From: display name
-message_id:     # RFC Message-ID header (the stable dedup key)
-ponymail_id:    # null (Gmail-sourced, no Ponymail archive id)
-archive_url:    # null
-list:           # List-Id, formatted <security.apache.org>, or null
-to:             # To: header (recipient routing; null if absent)
-cc:             # Cc: header (null if absent)
-date:           # original message date, ISO 8601 UTC (e.g. 2026-06-12T16:00:00Z)
-references:     # References header, or null (null == thread head)
-attachments:    # list of {filename, content_type, size, hash}
-fetched_at:     # ISO-8601 UTC download time
-
-# Routing hints (written by populate-cache from To/Cc, tier-1 only)
-pmc:            # PMC slug when a security@<pmc> recipient named it, else null
-pmc_candidates: # all PMC slugs seen in security@<pmc> recipients, or null
-
-# Triage state (set by file.py)
-tags:           # the message's Gmail labels, as a list (or null): the full COMPOSED
-                #   labels. Seeded by populate-cache with the labels already on the
-                #   message, then extended by file.py with the assigned label(s) (for a
-                #   digest, every covered report's tag). These are the cache's intent;
-                #   `inbox_manager` later attaches the ones still missing from Gmail
-                #   (see "Applying the cache labels to Gmail"). The fields below are the
-                #   decomposed parts of the bundle's own label.
-collection:     # the label PREFIX: null = active, "zzz-non-issue", "zzz-resolved"
-cve:            # the allocated CVE (CVE-YYYY-NNNNN); when set it is the label's key
-                #   instead of the date. null until a CVE is allocated (downstream).
-keywords:       # list of up to 3 single-word keywords, or null until filed
-wf:             # "waiting for" state (reporter, cve-allocation, non-issue-feedback,
-                #   non-issue-docs, disclosure, a fix-release version, ...); null when
-                #   the report is in a PMC's hands. Also appended to the composed tag.
-disposition:    # spam reason, set by `file.py --spam`; absent otherwise
-handled:        # false until the team has actioned the report
-status:         # "downloaded" -> "filed" (file.py / --digest) | "spam" (--spam);
-                #   downstream skills advance a filed report further
----
-
-<report body - the message body as Markdown, verbatim>
-```
-
-Downstream SKILLs look up a report by `message_id`, treat the provenance block as read-only, and may add their own fields (e.g. `decision`, `triager`, `drafted_at`) to the front-matter.
-
-## Why a download tool, not the MCP
-
-Reading messages through an MCP tool returns the text as tool-result content, so the model tokenizes every byte.
-This SKILL instead uses the read-only Gmail API directly from `tools/populate_cache` and writes bodies + attachments to disk;
-only the summary table is tokenized.
-The labelling read in Phase 2 is likewise delegated to a Haiku subagent so raw bytes stay out of the main context.
-The tool lives in `tools/populate_cache/` (its own `README.md` documents the Gmail API access, scopes, and skip rules);
-the message-parsing primitives there are derived from the `inbox_manager` tool.
+the main agent presents the proposals, gets the user's confirmation, and runs the `report-cache` CLI.
+Treat its keywords as a draft - reconcile them against the vocabulary before classifying -
+and its `labels` as a claim to verify, not a value to pass through unchecked.
 
 ## Authorization and privacy
 
 `security@apache.org` is foundation-private and can carry PII.
 Running this SKILL is an authorized, local-processing activity by a Security-team member who is entitled to read the list.
-The download authenticates with the read-only `gmail.readonly` scope, which cannot modify, move or delete mail.
+The download authenticates with the read-only `gmail.readonly` scope, which cannot modify, move, or delete mail.
 Report content stays in the gitignored `report-cache/` and is never committed.
 Keep the working copy on a machine appropriate for the content.
 
 ## Applying the cache labels to Gmail
 
-`file.py` writes the labels a bundle should carry into its `tags`, but it never touches Gmail (the download/label half of the pipeline is read-only).
-The credentialed **`inbox_manager`** tool is what reconciles `tags` onto the live message: when it processes a bundle (a `drafted-forward` / `drafted-reply` forward or reply, a `tracked` report, a `digest`, or a standing non-issue) it fetches the message's current Gmail labels, offers the operator the set present in `tags` but **missing from Gmail**, and on confirmation adds them and archives the message (drops `\Inbox`).
+`report-cache` records the labels a report should carry, but it never touches Gmail (the download/label half of the pipeline is read-only).
+The credentialed **`inbox_manager`** tool is what reconciles them onto the live message: when it processes a report (a forward or reply, a tracked report, a digest, or a standing non-issue) it fetches the message's current Gmail labels, offers the operator the recorded set that is **missing from Gmail**, and on confirmation adds them and archives the message (drops `\Inbox`).
 
-This is what puts every covered report's label on a **digest** message (its `tags` is that whole set, often a dozen-plus labels, none of which Gmail has yet), and what applies a report's own `<pmc>/<date> <keywords>` label when it is forwarded, replied to, or tracked.
-Because the attach is driven off `tags`, getting the digest's `--tag` list right here is what makes the digest surface alongside each report it lists.
+This is what puts every covered report's label on a **digest** message (its label set is that whole list, often a dozen-plus, none of which Gmail has yet), and what applies a report's own `<pmc>/<date> <keywords>` label when it is forwarded, replied to, or tracked.
+Because the attach is driven off the recorded labels, getting the digest's `--add-label` list right here is what makes the digest surface alongside each report it lists.
 
-After `inbox_manager` archives a message, the next `populate-cache` run's reconcile sweeps the bundle into `report-cache/handled/`.
+After `inbox_manager` archives a message, the next full `populate-cache` run deletes its bundle and triage record: the message has left the inbox, so it is handled.
 
 ## Handoff
 
-After a download + label pass, no bundle is left at `status: downloaded`:
-real reports sit at `<date>/<pmc>/<keywords>/` (`status: filed`), specialized-PMC reports are filed the same way (no `wf`), open-reports digests under `<pmc>/digest/` (`keywords: [digest]`), non-issues under `zzz-non-issue/<pmc>/<label>/`, and non-reports are spam tombstones.
-The **drafting SKILL** then assesses each filed report against the PMC's threat model and adds the model's fragments (`summary.md` / `reason.md`), skipping digests (`keywords: [digest]`) and reports for a specialized PMC (which it recognises from `project-coordinates.json`).
+After a download and label pass, nothing is left at `--status downloaded`:
+real reports are `classified` under `<pmc>/<date>-<keywords>/`,
+reports that already reached their PMC - and digests, mirrors and licence-confusion messages -
+are `assessed` + `disposition: track` (nothing for us to send),
+and dependency inquiries, spam and everything else are `assessed` + `disposition: skip`
+(out of the pipeline's scope; a dependency inquiry still waits for the team to answer it).
+The **drafting SKILL** then assesses each classified report against the PMC's threat model
+and attaches the model's fragments (`summary.md` / `reason.md`) with `report-cache put-artifact`,
+skipping anything already `track`ed (a digest, or a report in a specialized PMC's hands).
 A **status SKILL** reports handled/unhandled counts across the cache.
-Both rely on the layout and front-matter schema documented above, and both ignore the `handled/` subtree (reports the team has since archived out of the inbox).
+Both go through the `report-cache` CLI rather than the layout,
+and neither sees a handled report: its bundle is deleted once the message leaves the inbox.
+
+## The lightweight model
+
+Where this SKILL says *lightweight model*, use the smallest capable model the host agent offers.
+The point is not a particular model:
+it is that the reading is delegated, so raw message bytes stay out of the main context
+and one subagent per report is affordable enough to fan out.
+
+| Host          | lightweight model         |
+|---------------|---------------------------|
+| Claude Code   | Haiku                     |
+| Codex         | an OpenAI nano-tier model |
