@@ -425,11 +425,16 @@ def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
     if title:
         print(f"{cve_id}: {title}")
     prefix = f"{pmc_id}/"
-    labels = sorted(
-        name
-        for _, _, name in inbox.list_folders()
-        if name.startswith(prefix) and not name.startswith(prefix + "CVE")
-    )
+
+    all_labels = [name for _, _, name in inbox.list_folders() if name.startswith(prefix)]
+
+    existing_cve_labels = [label for label in all_labels if label.startswith(prefix + cve_id)]
+    if existing_cve_labels:
+        print(f"Auto-filing under existing label {existing_cve_labels[0]}")
+        inbox.move([uid], existing_cve_labels[0])
+        return
+
+    labels = sorted(label for label in all_labels if not label.startswith(prefix + "CVE"))
     if not labels:
         print(f"no existing labels under '{prefix}' - skipping\n")
         return
