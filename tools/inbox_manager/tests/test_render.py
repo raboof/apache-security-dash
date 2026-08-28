@@ -49,9 +49,7 @@ MARKERS = (
 )
 
 
-def make_pmc(
-    *, specialized=False, security_model_link="https://demo.apache.org/security"
-):
+def make_pmc(*, specialized=False, security_model_link="https://demo.apache.org/security"):
     """A stub Pmc with just the attributes the renderer reads.
 
     The renderer cites the human security page (``security_model_link``), not
@@ -61,9 +59,7 @@ def make_pmc(
         id="demo",
         name="Apache Demo",
         specialized=specialized,
-        security_contact="security@demo.apache.org"
-        if specialized
-        else "security@apache.org",
+        security_contact="security@demo.apache.org" if specialized else "security@apache.org",
         security_model_source="https://raw.githubusercontent.com/apache/demo/main/SECURITY.md",
         security_model_link=security_model_link,
         contributing="https://demo.apache.org/contributing",
@@ -131,9 +127,7 @@ def test_receipt_note_line_dropped_when_empty_kept_when_present():
 
 def test_reject_drops_model_link_line_when_pmc_has_none():
     reason = "This is out of the project's security model."
-    with_link = email_utils.fill_reject_template(
-        make_pmc(), make_message(), reason, TRIAGER
-    )
+    with_link = email_utils.fill_reject_template(make_pmc(), make_message(), reason, TRIAGER)
     assert reason in with_link
     assert "security model" in with_link  # the [security model](<model link>) line
 
@@ -146,11 +140,16 @@ def test_reject_drops_model_link_line_when_pmc_has_none():
 
 
 @pytest.mark.parametrize(
-    "from_addr", ["Jane Reporter <jane@example.com>", "jane@example.com"]
+    "from_addr, greeting",
+    [
+        ("Jane Reporter <jane@example.com>", "Jane Reporter"),
+        # No display name to greet by. The bare address is deliberately not used
+        # as a fallback: "Hello jane@example.com," reads worse than "Hello there,".
+        ("jane@example.com", "there"),
+    ],
 )
-def test_reporter_name_falls_back_to_address(from_addr):
-    out = email_utils.fill_receipt_template(
-        make_pmc(), make_message(from_addr), "", TRIAGER
-    )
-    assert ("Jane Reporter" in out) or ("jane@example.com" in out)
+def test_reporter_greeting_falls_back_to_there(from_addr, greeting):
+    out = email_utils.fill_receipt_template(make_pmc(), make_message(from_addr), "", TRIAGER)
+    assert f"Hello {greeting}," in out
+    assert "jane@example.com" not in out
     assert no_markers_left(out)

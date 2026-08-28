@@ -88,12 +88,11 @@ from pathlib import Path
 
 from report_cache import artifacts, index
 from report_cache.index import Disposition, Entry, Status
+from report_cache.paths import cache_dir
 from report_cache.render import UnsupportedAttachment, format_size, render_attachment, render_report
 from report_cache.report_md import BUNDLE_FILE, Header
 from report_cache.report_md import read as read_report
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_CACHE = REPO_ROOT / "report-cache"
 UNSORTED = "_unsorted"
 ATTACHMENTS_DIR = "attachments"
 
@@ -498,7 +497,7 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
+    ap.add_argument("--cache-dir", type=Path, default=cache_dir())
     sub = ap.add_subparsers(dest="command", required=True)
 
     statuses = tuple(s.value for s in Status)

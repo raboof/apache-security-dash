@@ -36,7 +36,9 @@ dependencies = [
     "imapclient",
     "markdown-it-py",
     "nh3",
-    "pyyaml",
+    # The report-cache/ storage: the triage state (status, disposition, labels)
+    # this tool acts on, read through report_cache rather than off disk.
+    "report-cache",
     "whimsy-lookup",
 ]
 
@@ -44,6 +46,7 @@ dependencies = [
 test = ["pytest>=7.0"]
 
 [tool.uv.sources]
+report-cache = { path = "../report_cache", editable = true }
 whimsy-lookup = { path = "../whimsy_lookup", editable = true }
 
 [project.scripts]
@@ -55,3 +58,17 @@ packages = ["src/inbox_manager"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]

@@ -65,7 +65,7 @@ Label collections such as `zzz-non-issue/<pmc>/...` are label *prefixes*
 ## CLI
 
 Three subcommands over the local cache
-(the global `--cache-dir` defaults to the repo `report-cache/`):
+(the global `--cache-dir` defaults to `$REPORT_CACHE_DIR`, else the repo's `report-cache/`):
 
 ```bash
 # classify = the skill's one-shot: move under <pmc>/<date>-<keywords>, add the label, set the state

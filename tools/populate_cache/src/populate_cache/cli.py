@@ -69,14 +69,13 @@ from email.utils import parseaddr
 from pathlib import Path
 
 from report_cache import index
+from report_cache.paths import cache_dir
 from report_cache.report_md import BUNDLE_FILE, Attachment, Header
 from report_cache.report_md import write as write_report
 from whimsy_lookup.fetch import FetchError, fetch_committee_info, fetch_security_coordinates
 
 from populate_cache import email_utils, gmail, skip
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_CACHE = REPO_ROOT / "report-cache"
 UNSORTED = "_unsorted"
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -208,11 +207,12 @@ def build_args(argv):
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    default_cache = cache_dir()
     ap.add_argument(
         "--cache-dir",
         type=Path,
-        default=DEFAULT_CACHE,
-        help=f"Cache root (default: {DEFAULT_CACHE})",
+        default=default_cache,
+        help=f"Cache root (default: {default_cache})",
     )
     ap.add_argument(
         "--query",

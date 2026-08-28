@@ -30,6 +30,10 @@ from os import getenv
 from urllib.request import urlopen
 
 from dotenv import load_dotenv
+from report_cache import artifacts
+from report_cache import index as report_index
+from report_cache.index import Disposition, Entry, Status
+from report_cache.paths import cache_dir
 from whimsy_lookup.fetch import (
     FetchError,
     fetch_committee_info,
@@ -42,13 +46,13 @@ from whimsy_lookup.pmc_guess import guess_pmcs, pmc_for
 # TERMINFO_DIRS).
 load_dotenv()
 
-from inbox_manager import imap, email_utils, cache  # noqa: E402
-
 # Prefer the stdlib readline when it is GNU-backed.
 # Fall back to gnureadline on libedit interpreters (uv's standalone Python),
 # where input_with_prefill's prefill is a no-op.
 # See the README "Terminal editing" section (TERMINFO_DIRS).
 import readline as _stdlib_readline  # noqa: E402
+
+from inbox_manager import email_utils, imap  # noqa: E402
 
 if _stdlib_readline.backend == "readline":
     readline = _stdlib_readline
@@ -80,9 +84,7 @@ def load_pmc_data():
 
 def guess_pmc(original, committees, coordinates):
     """Best-guess PMCs for a message (most likely first), fully resolved."""
-    text = " ".join(
-        original[h] or "" for h in ("Subject", "From", "To", "Cc", "Delivered-To")
-    )
+    text = " ".join(original[h] or "" for h in ("Subject", "From", "To", "Cc", "Delivered-To"))
     return guess_pmcs(text, committees, coordinates)
 
 
@@ -102,9 +104,7 @@ def print_pmc(pmc):
     if pmc.security_model_source is None:
         print(f"PMC: {pmc.id} ({pmc.internal_security_contact})")
     else:
-        print(
-            f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_model_link}"
-        )
+        print(f"PMC: {pmc.id} ({pmc.internal_security_contact}) {pmc.security_model_link}")
 
 
 def read_key():
@@ -127,47 +127,65 @@ def input_with_prefill(prompt, text):
         readline.set_startup_hook()
 
 
-def file_message(inbox, original, uid, pmc, prefix="", keywords=""):
-    """File the message under a '<prefix><pmc>/<yyyy-mm-dd> <keywords>' label.
+def file_message(inbox, original, uid, pmc, entry=None, prefix=""):
+    """Attach the message's triage labels, then archive it out of the inbox.
 
-    If the resulting label already exists, lets the user add to it or pick a different one.
-    Filing moves the message out of the inbox.
+    A label the message already carries is left alone.
+    The rest split by whether the label exists in Gmail at all,
+    because the two are different risks:
+    an existing label is a known bucket,
+    so the whole set takes one confirmation,
+    while a label being created is permanent and silently wrong if mistyped,
+    so each is offered prefilled and editable.
 
     Returns True if the message was filed, False if filing was abandoned.
     """
-    pmc_name = pmc.id if pmc else ""
-    label = input_with_prefill(
-        "File under label: ",
-        f"{prefix}{pmc_name}/{email_utils.message_date(original)} {keywords}",
-    ).strip()
-    if not label:
-        print("not filed - no label\n")
+    labels = list(entry.labels) if entry else []
+    if not labels:
+        pmc_name = pmc.id if pmc else ""
+        labels = [f"{prefix}{pmc_name}/{email_utils.message_date(original)}"]
+
+    on_message = gmail_labels(inbox, uid)
+    todo = [label for label in labels if label not in on_message]
+    if not todo:
+        print(f"All {len(labels)} label(s) already on the message.")
+
+    attach = []
+    for label in todo:
+        if inbox.folder_exists(label):
+            attach.append(label)
+            continue
+        edited = input_with_prefill("New label: ", label).strip()
+        if not edited:
+            print(f"  skipped: {label}")
+            continue
+        attach.append(edited)
+
+    if attach:
+        print(f"{len(attach)} label(s) to attach:")
+        for label in attach:
+            print(f"  + {label}")
+        prompt = "Attach them and archive? [y]es / [n]o: "
+    else:
+        prompt = "Archive it (remove from inbox)? [y]es / [n]o: "
+    print(prompt, end="", flush=True)
+    choice = read_key().lower()
+    print()
+    if choice != "y":
+        print("left in inbox\n")
         return False
 
-    while inbox.folder_exists(label):
-        print(f"Label already exists: {label}")
-        print(
-            "  [a]dd to it / [c]hoose a different label / [s]kip filing: ",
-            end="",
-            flush=True,
-        )
-        choice = read_key().lower()
-        print()
-        if choice == "a":
-            break
-        if choice in ("s", "\x03"):
-            print("not filed\n")
-            return False
-        if choice == "c":
-            label = input_with_prefill("File under label: ", label).strip()
-            if not label:
-                print("not filed - no label\n")
-                return False
-
-    if not inbox.folder_exists(label):
-        inbox.create_folder(label)
-    inbox.move([uid], label)
-    print(f"filed under: {label}\n")
+    for label in attach:
+        if not inbox.folder_exists(label):
+            inbox.create_folder(label)
+    if attach:
+        inbox.add_gmail_labels([uid], attach)
+    # Archiving moves the message to ``[Gmail]/All Mail``:
+    # in Gmail that drops the INBOX label while keeping every other label.
+    # Removing the ``\\Inbox`` label directly does not work through imapclient: it quotes the value,
+    # so Gmail treats it as a (non-existent) user label rather than the system one.
+    inbox.move([uid], "[Gmail]/All Mail")
+    print(f"attached {len(attach)} label(s), archived\n")
     return True
 
 
@@ -190,48 +208,6 @@ def gmail_labels(inbox, uid):
     return {lbl.decode() if isinstance(lbl, bytes) else str(lbl) for lbl in got}
 
 
-def file_with_tags(inbox, uid, tags):
-    """Attach every cache label the Gmail message is missing, then archive it.
-
-    A Gmail message carries many labels, but only the ones already on it live in
-    Gmail; the bundle's `tags` is the full set the triage tools recorded (for a
-    digest, every report it covers). Offer to add the labels that are in `tags`
-    but not yet on the message, then archive it out of the inbox (so the next
-    populate-cache reconcile sweeps the bundle into handled/). Returns True if
-    the operator confirmed, False if left in place.
-
-    Archiving moves the message to ``[Gmail]/All Mail``: in Gmail that drops the
-    INBOX label while keeping every other label. Removing the ``\\Inbox`` label
-    directly does not work through imapclient - it quotes the value, so Gmail
-    treats it as a (non-existent) user label rather than the system one.
-    """
-    tags = [t for t in (tags or []) if t]
-    current = gmail_labels(inbox, uid)
-    missing = [t for t in tags if t not in current]
-    if missing:
-        print(f"{len(missing)} cache label(s) not yet on the Gmail message:")
-        for t in missing:
-            print(f"  + {t}")
-        prompt = "Attach them and archive? [y]es / [n]o: "
-    else:
-        print(f"All {len(tags)} cache label(s) already on the message.")
-        prompt = "Archive it (remove from inbox)? [y]es / [n]o: "
-    print(prompt, end="", flush=True)
-    choice = read_key().lower()
-    print()
-    if choice != "y":
-        print("left in inbox\n")
-        return False
-    for t in missing:
-        if not inbox.folder_exists(t):
-            inbox.create_folder(t)
-    if missing:
-        inbox.add_gmail_labels([uid], missing)
-    inbox.move([uid], "[Gmail]/All Mail")  # archive: drops INBOX, keeps labels
-    print(f"attached {len(missing)} label(s), archived\n")
-    return True
-
-
 def _preview(msg, title):
     """Print a message envelope + rendered plain-text body for review."""
     print(f"--- {title} ---")
@@ -247,9 +223,7 @@ def _preview(msg, title):
     print()
 
 
-def send_forward_and_receipt(
-    inbox, original, uid, pmc, to_addr, forward_md, receipt_md, keywords
-):
+def send_forward_and_receipt(inbox, original, uid, pmc, to_addr, forward_md, receipt_md, entry):
     """Preview a PMC forward (forward_md) + reporter receipt (receipt_md), send
     on confirmation, then file the report.
 
@@ -271,7 +245,7 @@ def send_forward_and_receipt(
         if choice == "y":
             send_messages(fwd, receipt)
             print(f"forwarded to {fwd['To']}, receipt sent to {receipt['To']}\n")
-            file_message(inbox, original, uid, pmc, keywords=keywords)
+            file_message(inbox, original, uid, pmc, entry)
             return True
         if choice == "e":
             print("editing forward note...")
@@ -283,7 +257,7 @@ def send_forward_and_receipt(
         return False
 
 
-def send_reply(inbox, original, uid, pmc, body_md, keywords):
+def send_reply(inbox, original, uid, pmc, body_md, entry):
     """Preview a reply to the reporter (body_md), send on confirmation, then
     file the report. Returns True if sent.
     """
@@ -297,9 +271,7 @@ def send_reply(inbox, original, uid, pmc, body_md, keywords):
         if choice == "y":
             send_messages(reply)
             print(f"reply sent to {reply['To']}\n")
-            file_message(
-                inbox, original, uid, pmc, prefix="zzz-non-issue/", keywords=keywords
-            )
+            file_message(inbox, original, uid, pmc, entry, prefix="zzz-non-issue/")
             return True
         if choice == "e":
             body_md = email_utils.edit_markdown_in_editor(body_md)
@@ -308,14 +280,28 @@ def send_reply(inbox, original, uid, pmc, body_md, keywords):
         return False
 
 
-def accept_message(
-    inbox, original, uid, pmc, keywords, bundle, committees, coordinates
-):
+def draft_artifact(entry: Entry | None, name: str) -> str:
+    """The text of a triage-assess draft artifact for ``entry``, or ``""`` when absent.
+
+    triage-assess writes ``summary.md`` / ``note.md`` / ``reason.md`` into
+    the bundle through ``report-cache put-artifact``; here they pre-fill the forward /
+    receipt / reject the operator previews. A missing artifact (an interactive report with
+    no draft) reads as ``""`` so the template keeps its empty-marker behaviour and the
+    operator writes it at the preview.
+    """
+    if entry is None or not entry.path:
+        return ""
+    return artifacts.read_artifact(cache_dir() / entry.path, name) or ""
+
+
+def accept_message(inbox, original, uid, pmc, entry, committees, coordinates):
     """Forward to the PMC + reporter receipt.
 
-    The forward summary/model are read lazily in this method.
-    An edit the operator makes to summary.md while deciding is picked up.
     Prompts for the PMC when it could not be guessed.
+    The forward pre-fills triage-assess's drafted ``summary.md`` and the entry's
+    ``assessment_model`` (and the receipt's ``note.md``), or the forward-duplicate
+    template when the entry records a ``duplicate_ponymail_link``; the operator
+    reviews and can edit at the preview.
     Returns True if sent.
     """
     if pmc is None:
@@ -327,74 +313,57 @@ def accept_message(
     if not to_addr:
         print("not forwarded - no recipient\n")
         return False
-    summary = bundle.fragment("summary.md") if bundle else ""
-    model = bundle.model if bundle else ""
+    summary = draft_artifact(entry, "summary.md")
+    model = (entry.assessment_model or "") if entry else ""
+    duplicate_of = str(entry.duplicate_ponymail_link or "") if entry else ""
     forward_md = email_utils.fill_forward_template(
-        pmc, original, summary, model, TRIAGER_NAME
+        pmc, original, summary, model, TRIAGER_NAME, duplicate_of=duplicate_of
     )
-    note = ""
-    receipt_md = email_utils.fill_receipt_template(pmc, original, note, TRIAGER_NAME)
+    note = draft_artifact(entry, "note.md")
+    reporter_name = entry.reporter_name if entry else None
+    receipt_md = email_utils.fill_receipt_template(pmc, original, note, TRIAGER_NAME, reporter_name)
     return send_forward_and_receipt(
-        inbox, original, uid, pmc, to_addr, forward_md, receipt_md, keywords
+        inbox, original, uid, pmc, to_addr, forward_md, receipt_md, entry
     )
 
 
-def reject_message(inbox, original, uid, pmc, keywords, bundle):
+def reject_message(inbox, original, uid, pmc, entry):
     """reply that the report is out of scope.
 
-    Built from templates/reject.md and opened in $EDITOR so the operator can fill in the project-specific reasoning,
-    with the report quoted inline for reference.
-    The reason draft (`bundle`) is read here, at send time, not when the action menu was shown,
-    so a mid-decision edit to reason.md is picked up.
+    Built from templates/reject.md, pre-filled with triage-assess's drafted ``reason.md``,
+    with the report quoted inline for reference. When there is no drafted reason (an
+    interactive report), it opens in $EDITOR so the operator can write it.
     Files under 'zzz-non-issue/<pmc>/...'. Returns True if sent.
     """
-    reason = bundle.fragment("reason.md") if bundle else ""
-    body_md = email_utils.fill_reject_template(pmc, original, reason, TRIAGER_NAME)
-    print("editing reject reply...")
-    body_md = email_utils.edit_markdown_in_editor(body_md)
-    return send_reply(inbox, original, uid, pmc, body_md, keywords)
+    reason = draft_artifact(entry, "reason.md")
+    reporter_name = entry.reporter_name if entry else None
+    body_md = email_utils.fill_reject_template(pmc, original, reason, TRIAGER_NAME, reporter_name)
+    if not reason:
+        print("editing reject reply...")
+        body_md = email_utils.edit_markdown_in_editor(body_md)
+    return send_reply(inbox, original, uid, pmc, body_md, entry)
 
 
-def handle_cached(inbox, original, uid, bundle, committees, coordinates):
-    """Act on a message the triage SKILLs have already dispositioned.
+def suggested_action(entry: Entry | None) -> str | None:
+    """The menu key the cache's triage state implies, or None to let the operator decide.
 
-    Dispatches on the bundle's `status`: send the ready drafts for a forward or
-    push-back, or just file/junk the no-send dispositions. Every send and every
-    move is still operator-confirmed. Returns True when the cache disposition
-    was driven (caller stops), False to fall back to interactive triage (the
-    drafts are missing, or the report is not assessed yet).
+    Only an assessed report carries a disposition worth acting on, and each maps to the
+    action that consumes what the skills recorded:
+    ``track`` -> [f]ile under the recorded labels (the PMC has it, or nothing to send),
+    ``forward`` -> [a]ccept (forward triage-assess's drafted summary + receipt),
+    ``decline`` -> [r]eject (send its drafted reply).
+    ``skip`` is out of the skill's scope, so it stays interactive.
     """
-    status = bundle.status
-    tags = bundle.meta.get("tags") or []
-
-    if status == "drafted-forward":
-        return False
-
-    if status == "drafted-reply":
-        return False
-
-    if status == "tracked":
-        return False
-
-    if status == "spam":
-        return False
-
-    if bundle.is_digest or bundle.is_non_issue:
-        kind = "open-reports digest" if bundle.is_digest else "known non-issue"
-        print(f"{kind} - nothing to send.")
-        file_with_tags(inbox, uid, tags)
-        return True
-
-    # filed-but-unassessed / downloaded: no draft yet, let the operator triage.
-    print(
-        "in the cache but not assessed yet (run triage-assess) - triaging interactively\n"
-    )
-    return False
+    if entry is None or entry.status is not Status.ASSESSED:
+        return None
+    return {
+        Disposition.TRACK: "f",
+        Disposition.FORWARD: "a",
+        Disposition.DECLINE: "r",
+    }.get(entry.disposition)
 
 
-CVE_RESERVED_RE = re.compile(
-    r"\s*(CVE-\d{4}-\d+)\s+reserved for\s+(\S+)", re.IGNORECASE
-)
+CVE_RESERVED_RE = re.compile(r"\s*(CVE-\d{4}-\d+)\s+reserved for\s+(\S+)", re.IGNORECASE)
 
 
 def parse_cve_reservation(original):
@@ -513,9 +482,7 @@ def is_thread_head(data, headers):
     head. ``References`` is used rather than ``In-Reply-To`` because forwards
     carry ``References`` but often omit ``In-Reply-To``.
     """
-    return (
-        data.get(b"X-GM-MSGID") == data.get(b"X-GM-THRID") or not headers["References"]
-    )
+    return data.get(b"X-GM-MSGID") == data.get(b"X-GM-THRID") or not headers["References"]
 
 
 def skip_reason(headers, is_head):
@@ -554,19 +521,9 @@ def handle_message(inbox, uid, committees, coordinates, index):
         handle_cve_reservation(inbox, original, uid, *cve)
         return
 
-    # Fetch LLM suggestions
-    bundle = cache.lookup(original["Message-ID"], index)
-    if bundle:
-        # Some have bespoke handling defined
-        if handle_cached(inbox, original, uid, bundle, committees, coordinates):
-            return
-        # Others provide pre-filled values in the regular flow.
-        tags = bundle.meta.get("tags")
-        keywords = tags[0].split(" ", 1)[1] if tags and " " in tags[0] else None
-        pmc = pmc_for(bundle.pmc, committees, coordinates) if bundle.pmc else None
-    else:
-        keywords = ""
-        pmc = None
+    # What the triage skills already decided about this report, if anything.
+    entry = index.get(original["Message-ID"] or "")
+    pmc = pmc_for(entry.pmc, committees, coordinates) if entry and entry.pmc else None
 
     if not pmc:
         pmcs = guess_pmc(original, committees, coordinates)
@@ -591,19 +548,30 @@ def handle_message(inbox, uid, committees, coordinates, index):
     if handle_cve_announcement(inbox, original, current_labels):
         return
 
-    if bundle:
-        if bundle.status == "drafted-forward":
-            print("Suggested action: [a]ccept")
-        elif bundle.status == "drafted-reply":
-            print("Suggested action: [r]eject")
-        elif bundle.status == "filed" or bundle.status == "tracked":
-            print(f"Suggested action: [f]ile under '{keywords}'")
-        else:
-            print(f"Suggested action: {bundle.status}")
-    prompt = "Action? [a]ccept / [r]eject / [s]kip / [j]unk / [f]ile under / [q]uit / [d]isplay / [c]onfused: "
+    suggested = suggested_action(entry)
+    if suggested == "f":
+        labels = ", ".join(entry.labels or []) or "(no label recorded)"
+        print(f"Suggested action: [f]ile under {labels}")
+    elif suggested == "a":
+        print("Suggested action: [a]ccept (forward the drafted summary + receipt)")
+    elif suggested == "r":
+        print("Suggested action: [r]eject (send the drafted reply)")
+    prompt = (
+        "Action? [a]ccept / [r]eject / [s]kip / [j]unk / [f]ile under / "
+        "[q]uit / [d]isplay / [c]onfused: "
+    )
+    if suggested:
+        # Mark the key Enter runs, so the default is visible in the menu itself.
+        prompt = prompt.replace(f"[{suggested}]", f"[{suggested.upper()}]", 1)
     print(prompt, end="", flush=True)
     while True:
         action = read_key().lower()
+        # Enter takes the suggestion.
+        # Every action it can reach either previews before sending or confirms before moving,
+        # so this can never send mail.
+        if action in ("\r", "\n") and suggested:
+            action = suggested
+            print()
         if action == "a":
             print()
             if accept_message(
@@ -611,8 +579,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
                 original,
                 uid,
                 pmc,
-                keywords,
-                bundle,
+                entry,
                 committees,
                 coordinates,
             ):
@@ -620,7 +587,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
             print(prompt, end="", flush=True)
         if action == "r":
             print()
-            if reject_message(inbox, original, uid, pmc, keywords, bundle):
+            if reject_message(inbox, original, uid, pmc, entry):
                 return
             print(prompt, end="", flush=True)
         if action == "s":
@@ -635,7 +602,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
             return
         if action == "f":
             print()
-            if file_message(inbox, original, uid, pmc, keywords=keywords):
+            if file_message(inbox, original, uid, pmc, entry):
                 return
             print(prompt, end="", flush=True)
         if action == "c":
@@ -644,7 +611,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
             print("Filed under 'hack or license confusion'")
             return
         if action in ("q", "\x03"):
-            exit(0)
+            sys.exit(0)
         if action == "d":
             print()
             subprocess.run(["less"], input=body, text=True)
@@ -672,16 +639,12 @@ def main(argv: list[str] | None = None) -> int:
             "automatically): " + ", ".join(missing)
         )
     committees, coordinates = load_pmc_data()
-    index = cache.load_index()
+    index = report_index.load(cache_dir())
     if index:
         print(f"(report-cache: {len(index)} reports indexed)")
     inbox = imap.connect()
     uids = inbox.search(["ALL"])
-    fetched = (
-        inbox.fetch(uids, [HEADER_FETCH, INTERNAL_DATE, *GMAIL_ID_FETCH])
-        if uids
-        else {}
-    )
+    fetched = inbox.fetch(uids, [HEADER_FETCH, INTERNAL_DATE, *GMAIL_ID_FETCH]) if uids else {}
 
     # Process oldest-first by server receive time. Gmail's INBOX UIDs are not in
     # date order, so a UID sort is not chronological - sort on INTERNALDATE.

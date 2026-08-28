@@ -15,8 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from imapclient import IMAPClient
 from os import getenv
+
+from imapclient import IMAPClient
+
 from inbox_manager.vendor.oauth2 import RefreshToken
 
 # .env is loaded by the entry point (cli.py) before this module is imported,
@@ -44,7 +46,7 @@ def _create_accesstoken():
     # Use our refresh token to get a token for this session
     response = RefreshToken(CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN)
     if "error" in response:
-        raise ValueError("Authentication failed: %s" % response["error"])
+        raise ValueError("Authentication failed: {}".format(response["error"]))
     return response["access_token"]
 
 

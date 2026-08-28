@@ -74,8 +74,7 @@ def test_non_public_recipients_kept(addr):
 
 def test_reply_drops_public_list_and_keeps_the_rest():
     original = make_message(
-        "Demo Dev <dev@demo.apache.org>, Co Reporter <co@example.com>, "
-        "private@demo.apache.org"
+        "Demo Dev <dev@demo.apache.org>, Co Reporter <co@example.com>, private@demo.apache.org"
     )
     reply = email_utils.make_receipt(original, "Thanks for the report.")
     assert "dev@demo.apache.org" not in reply["Cc"]

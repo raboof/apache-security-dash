@@ -1,14 +1,15 @@
+import email
 import re
 import subprocess
 import tempfile
-import nh3
 from datetime import date
-from html import unescape
-import email
 from email.message import EmailMessage
 from email.utils import formataddr, getaddresses, parseaddr, parsedate_to_datetime
+from html import unescape
 from os import getenv
 from pathlib import Path
+
+import nh3
 
 from inbox_manager.markdown_render import md_to_html, md_to_text
 
@@ -194,9 +195,7 @@ def make_forward(original, intro_md, from_addr, to_addr):
     if not re.fullmatch(r"security@.+\.apache\.org", to_email, re.IGNORECASE):
         fwd["Cc"] = "ASF Security <security@apache.org>"
     subject = _header_value(original["Subject"])
-    fwd["Subject"] = (
-        subject if subject.lower().startswith("fwd:") else f"Fwd: {subject}"
-    )
+    fwd["Subject"] = subject if subject.lower().startswith("fwd:") else f"Fwd: {subject}"
     mid = original["Message-ID"]
     if mid:
         fwd["References"] = mid
@@ -213,9 +212,7 @@ def make_forward(original, intro_md, from_addr, to_addr):
 
     # --- plain-text body ---
     original_text = body_to_text(original)
-    plain_body = (
-        f"{md_to_text(intro_md)}\n\n" + "\n".join(header_lines) + f"\n{original_text}"
-    )
+    plain_body = f"{md_to_text(intro_md)}\n\n" + "\n".join(header_lines) + f"\n{original_text}"
 
     # --- html body: rendered note + (sanitised original html | escaped text) ---
     header_html = _text_to_html("\n".join(header_lines))
@@ -238,9 +235,7 @@ def make_forward(original, intro_md, from_addr, to_addr):
     if html_part is not None:
         html_alt = fwd.get_payload()[1]
         for cid, data, subtype in _safe_inline_images(original, original_html):
-            html_alt.add_related(
-                data, maintype="image", subtype=subtype, cid=f"<{cid}>"
-            )
+            html_alt.add_related(data, maintype="image", subtype=subtype, cid=f"<{cid}>")
 
     _copy_attachments(fwd, original)
     return fwd
@@ -286,7 +281,7 @@ def _apply(text, mapping):
     return text
 
 
-def fill_markers(text, pmc, original, triager_name):
+def fill_markers(text, pmc, original, triager_name, reporter_name=None):
     """Fill the identity / PMC / infra markers in a template, then drop any line
     whose marker stayed empty.
 
@@ -295,10 +290,15 @@ def fill_markers(text, pmc, original, triager_name):
     rest from the PMC coordinates, the live message, and the operator identity,
     then removes any line still carrying an unfilled marker (a PMC with no
     threat-model link, an empty receipt note, ...).
+
+    ``reporter_name`` is the curated greeting name from the triage bundle
+    (how the reporter asked to be addressed);
+    it wins over the live ``From`` display name,
+    which stays as the fallback for interactive reports with no cached name.
     """
-    name, addr = parseaddr(reporter_from(original) or "")
+    name, _addr = parseaddr(reporter_from(original) or "")
     values = {
-        "Reporter name": name or addr or "there",
+        "Reporter name": reporter_name or name or "there",
         "Triager full name": triager_name or "the Apache Security Team",
     }
     if pmc:
@@ -315,9 +315,7 @@ def fill_markers(text, pmc, original, triager_name):
             values["contributing link"] = pmc.contributing
     text = _apply(text, values)
     text = "".join(
-        ln
-        for ln in text.splitlines(keepends=True)
-        if not any(f"<{m}>" in ln for m in _ALL_MARKERS)
+        ln for ln in text.splitlines(keepends=True) if not any(f"<{m}>" in ln for m in _ALL_MARKERS)
     )
     return re.sub(r"\n{3,}", "\n\n", text)
 
@@ -327,9 +325,7 @@ def fill_llm_suggestions_template(summary, model):
     content = {}
     content["summary"] = summary
     content["model"] = model
-    return _apply(
-        (TEMPLATE_DIR / "forward-llm-summary.md").read_text(encoding="utf-8"), content
-    )
+    return _apply((TEMPLATE_DIR / "forward-llm-summary.md").read_text(encoding="utf-8"), content)
 
 
 def fill_forward_template(pmc, original, summary, model, triager_name, duplicate_of=""):
@@ -351,22 +347,22 @@ def fill_forward_template(pmc, original, summary, model, triager_name, duplicate
     return fill_markers(text, pmc, original, triager_name)
 
 
-def fill_receipt_template(pmc, original, note, triager_name):
+def fill_receipt_template(pmc, original, note, triager_name, reporter_name=None):
     """Render the reporter receipt: receipt-specialized.md for a specialized PMC,
     else receipt.md. The content (note) is filled here, the rest via
     fill_markers; an empty note drops its line."""
     name = "receipt-specialized.md" if (pmc and pmc.specialized) else "receipt.md"
     content = {"note": note} if note else {}
     text = _apply((TEMPLATE_DIR / name).read_text(encoding="utf-8"), content)
-    return fill_markers(text, pmc, original, triager_name)
+    return fill_markers(text, pmc, original, triager_name, reporter_name)
 
 
-def fill_reject_template(pmc, original, reason, triager_name):
+def fill_reject_template(pmc, original, reason, triager_name, reporter_name=None):
     """Render the reporter push-back from reject.md: the reason is filled here,
     the rest via fill_markers; an empty reason drops its line."""
     content = {"reason": reason} if reason else {}
     text = _apply((TEMPLATE_DIR / "reject.md").read_text(encoding="utf-8"), content)
-    return fill_markers(text, pmc, original, triager_name)
+    return fill_markers(text, pmc, original, triager_name, reporter_name)
 
 
 def quote_original(original):

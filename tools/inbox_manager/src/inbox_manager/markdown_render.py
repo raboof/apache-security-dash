@@ -162,9 +162,7 @@ def _list(
     return "\n".join(lines)
 
 
-def _blocks_one(
-    node: SyntaxTreeNode, width: int, links: list[tuple[int, str]]
-) -> list[str]:
+def _blocks_one(node: SyntaxTreeNode, width: int, links: list[tuple[int, str]]) -> list[str]:
     """Render a single block node to zero or more block strings."""
     kind = node.type
     if kind in ("paragraph", "heading"):
@@ -184,9 +182,7 @@ def _blocks_one(
     return _blocks(node, width, links)
 
 
-def _blocks(
-    node: SyntaxTreeNode, width: int, links: list[tuple[int, str]]
-) -> list[str]:
+def _blocks(node: SyntaxTreeNode, width: int, links: list[tuple[int, str]]) -> list[str]:
     out: list[str] = []
     for child in node.children:
         out.extend(_blocks_one(child, width, links))
