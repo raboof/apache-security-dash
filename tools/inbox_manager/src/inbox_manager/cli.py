@@ -440,12 +440,15 @@ def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
         print("skipped\n")
         return
     label = labels[int(choice) - 1]
-    new_label = re.sub(r"(?<=/)\d{4}-\d{2}-\d{2}", cve_id, label, count=1)
-    suffix = " wf cve-allocation"
-    if new_label.lower().endswith(suffix):
-        new_label = new_label[: -len(suffix)]
-    if new_label != label:
-        inbox.rename_folder(label, new_label)
+    if "/aaa" in label:
+        new_label = label
+    else:
+        new_label = re.sub(r"(?<=/)\d{4}-\d{2}-\d{2}", cve_id, label, count=1)
+        suffix = " wf cve-allocation"
+        if new_label.lower().endswith(suffix):
+            new_label = new_label[: -len(suffix)]
+        if new_label != label:
+            inbox.rename_folder(label, new_label)
     inbox.move([uid], new_label)
     print(f"moved to {new_label}\n")
 
