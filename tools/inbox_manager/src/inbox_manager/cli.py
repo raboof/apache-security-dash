@@ -424,6 +424,7 @@ def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
     title = cve_title(original, cve_id)
     if title:
         print(f"{cve_id}: {title}")
+    print(f"https://cveprocess.apache.org/cve5/{cve_id}")
     prefix = f"{pmc_id}/"
     labels = sorted(
         name
