@@ -45,3 +45,9 @@ __pycache__/
 # into the snapshot. Same magpie-* glob + magpie-setup negation.
 /.agents/skills/magpie-*
 !/.agents/skills/magpie-setup
+
+# macOS Finder metadata
+.DS_Store
+
+# Scratch working directory for sweep runs (ad-hoc scripts + API dumps).
+/.sweep-tmp/
