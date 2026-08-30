@@ -51,69 +51,11 @@ Both paths run the same flow.
    `$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd)")` —
    surface it explicitly so the operator can `cd` there.
 2. Read `<committed-lock>`. If missing, the repo isn't
-   adopted — suggest `/magpie-setup adopt` and stop.
+   adopted — suggest `/magpie-setup install` and stop.
 3. Read `<local-lock>`. If missing (gitignored, fresh
    clone), the local install hasn't been initialised yet —
    route as a recover-snapshot install per the committed
    lock, not as an upgrade. Continue at Step 3.
-
-## Step 0a — Migrate `apache-steward`-era naming
-
-The framework was once named **apache-steward** before it was
-renamed to **Apache Magpie**. Every upgrade run **performs this
-migration automatically** so no adopter is left half-renamed.
-**This step is the only place the `steward` name should still
-appear anywhere in the framework — and only as the *source* side
-of a rename.**
-
-First detect whether any legacy artefact is present —
-`.apache-steward.lock`, `.apache-steward/`,
-`.apache-steward-overrides/`, a committed `setup-steward/` skill
-directory, a framework symlink **without** the `magpie-` prefix,
-a `~/.config/apache-steward/` user-config dir, a
-`[tool.steward.checks]` block in a member `pyproject.toml`, a
-`STEWARD_*` / `APACHE_STEWARD_*` reference, or an
-`apache-steward` / `airflow-steward` path in `.claude/settings*.json`.
-If **none** is present, the repo is already on the Magpie layout —
-skip to Step 1.
-
-Otherwise, perform every migration below that applies, then resume
-the normal upgrade against the clean Magpie layout.
-
-**Performed automatically by this skill:**
-
-1. **User config dir.** If `~/.config/apache-steward/` exists and
-   `~/.config/apache-magpie/` does not, move it:
-   `mv ~/.config/apache-steward ~/.config/apache-magpie`. If **both**
-   exist, do **not** clobber — stop and ask the maintainer to merge
-   them by hand.
-2. **Sandbox-allowlist path references.** In `.claude/settings.json`
-   and `.claude/settings.local.json`, rewrite any `apache-steward`
-   path to `apache-magpie` and any `airflow-steward` checkout path to
-   the current repo path.
-3. **Per-member opt-out key.** Rewrite any `[tool.steward.checks]`
-   block in a workspace member's `pyproject.toml` to
-   `[tool.magpie.checks]`.
-4. **Snapshot layout.** Remove the legacy gitignored artefacts
-   (`.apache-steward*`, any un-prefixed framework symlinks, a
-   committed `setup-steward` skill) and re-adopt with `/magpie-setup`
-   so the `.apache-magpie*` layout and `magpie-`-prefixed symlinks
-   are written fresh. (The snapshot is a build artefact, so
-   re-adoption — not hand-editing — is the safe path here.)
-
-**Cannot be reached from inside the repo — prompt the maintainer:**
-
-5. **Environment variables.** Any `STEWARD_*` override
-   (`STEWARD_GUARD_OFF`, `STEWARD_ALLOW_*`, `STEWARD_GUARD_DIRS`,
-   `STEWARD_READY_LABEL`) and `APACHE_STEWARD_USER_CONFIG` are now
-   `MAGPIE_*` / `APACHE_MAGPIE_USER_CONFIG`. Tell the maintainer to
-   update their shell profile, CI secrets, and any wrapper scripts.
-6. **Issue / PR body markers.** Comment markers written as
-   `<!-- apache-steward: … -->` are now `<!-- apache-magpie: … -->`.
-   The tooling reads only the new marker, so any open tracker item
-   still carrying the old marker must have it rewritten by hand.
-
-Then resume this upgrade against the clean Magpie layout.
 
 ## Step 1 — Compute drift
 
@@ -313,17 +255,21 @@ silent on families). Compose the **effective family set**
 for this upgrade as:
 
 - **Opt-in families** the project recorded (`security`,
-  `pr-management`, `issue`, or any combination).
+  `pr-management`, `issue`, `release-management`, `repo-health`,
+  `pairing`, `mentoring`, `contributor-growth`, or any
+  combination).
 - **Newly-introduced opt-in families** — families the
   framework now ships that did not exist when the lock was
-  written. Detect by enumerating the prefixes of opt-in
-  families in the snapshot (`security-*`, `pr-management-*`,
-  `issue-*`) and comparing against the lock's recorded set.
-  Any family present in the snapshot but absent from the
-  lock is auto-added to the effective set on this run, and
-  the addition is **written back to `<committed-lock>`**
-  (same fields as
-  [`adopt.md` Step 4](adopt.md#step-4--write-committed-lock-fresh-only)).
+  written. Detect by reading the distinct `family:` frontmatter
+  keys across the snapshot's `SKILL.md` files, dropping the
+  always-on families (`setup`, `utilities`), and comparing the
+  remaining opt-in set against the lock's recorded set — **not**
+  by name prefix, since families such as `repo-health` and
+  `contributor-growth` span several prefixes. Any family present
+  in the snapshot but absent from the lock is auto-added to the
+  effective set on this run, and the addition is **written back
+  to `<committed-lock>`** (same fields as
+  [`install.md` Step 4](install.md#step-4--write-committed-lock-fresh-only)).
   Surface the added family in the upgrade summary so the
   operator sees it; do not prompt — per the framework's
   policy each opt-in family is maintainer-grade and an
@@ -332,20 +278,20 @@ for this upgrade as:
 - **Always-on families** (always added — never read from
   the lock, never user-configurable, per
   [`SKILL.md` Golden rule 8](SKILL.md#golden-rules)):
-  - every `setup-*` skill in the new snapshot *except*
+  - every `family: setup` skill in the new snapshot *except*
     `setup` itself, and
-  - every `list-*` skill in the new snapshot.
+  - every `family: utilities` skill in the new snapshot.
 
-Compute the always-on set fresh from the snapshot contents
-on disk — it expands automatically when the framework adds
-a new `setup-*` or `list-*` skill in a release, and
-contracts on a rename / removal without code changes here.
+Compute the always-on set fresh from the snapshot's `family:`
+keys on disk — it expands automatically when the framework adds
+a new `family: setup` or `family: utilities` skill in a release,
+and contracts on a rename / removal without code changes here.
 
 Before creating symlinks for a newly-introduced opt-in
 family — or for a newly-present active target dir — reconcile
 the adopter's `.gitignore` so the new snapshot symlinks are
 gitignored. Append the `.gitignore` lines from
-[`adopt.md` Step 7](adopt.md#step-7--gitignore-entries-fresh-only)
+[`install.md` Step 7](install.md#step-7--gitignore-entries-fresh-only)
 for **each active target dir** ([`agents.md`](agents.md)). Every
 framework skill is symlinked under the `magpie-` prefix, so a
 single `magpie-*` glob (plus the `!…/magpie-setup` negation that
@@ -429,8 +375,8 @@ The framework ships hooks and config files an adopter
 rather than pulls in via symlink. Examples:
 
 - `<repo-root>/.git/hooks/post-checkout` (the worktree-aware
-  hook installed during adoption). Its expected content is the
-  [`adopt.md` Step 10](adopt.md#step-10--worktree-aware-post-checkout-hook-fresh-only)
+  hook installed during installation). Its expected content is the
+  [`install.md` Step 10](install.md#step-10--worktree-aware-post-checkout-hook-fresh-only)
   template — which now both chains the sandbox-allowlist helper
   **and** seeds a new worktree's agent-guard from the main
   checkout. An adopter on an older hook (sandbox-only, or the
@@ -439,13 +385,19 @@ rather than pulls in via symlink. Examples:
 - `<repo-root>/.claude/hooks/agent-guard.py` and the
   `<repo-root>/.claude/hooks/guards.d/` directory (the
   deterministic `PreToolUse` guard dispatcher and its guards — see
-  [`adopt.md` Step 12](adopt.md#step-12--post-install-sync--worktree-propagation--sandbox-allowlist--sanity-check)
+  [`install.md` Step 12](install.md#step-12--post-install-sync--worktree-propagation--sandbox-allowlist--sanity-check)
   and [`tools/agent-guard`](../../tools/agent-guard/README.md)).
   `guards.d/` is populated from **both** the engine's bundled
   `guards.d/*.py` **and** every skill-owned `skills/*/guards/*.py`
   in the snapshot. Re-syncing it is how a new skill — or a skill
   that newly adds a guard — reaches an already-adopted repo; the
-  `settings.json` `hooks.PreToolUse` wiring is unchanged.
+  `settings.local.json` `hooks.PreToolUse` wiring is unchanged (already
+  wired, or re-added via the same idempotent merge if missing).
+- The committed `.codex/config.toml` and `.codex/rules/magpie.rules`:
+  compare them with the current snapshot policy. Preserve unrelated
+  Codex settings; surface conflicts and hand edits rather than
+  overwriting them. Run `sandbox-lint --codex .codex` after the merge
+  and never modify Codex project trust.
 - Any future hook or local config the framework adds.
 
 These can drift independently of the snapshot — an
@@ -631,7 +583,7 @@ If every template scans clean, surface the section as
 ## Step 6e — Refresh comdev MCP checkouts (ASF projects)
 
 **Run this step only for ASF projects** — detect ASF the same way
-as [`adopt.md` Step 9c](adopt.md#step-9c--comdev-mcp-prerequisites-asf-projects):
+as [`install.md` Step 9c](install.md#step-9c--comdev-mcp-prerequisites-asf-projects):
 `<project-config>/project.md` declares `project_metadata.mandatory:
 true` or `ponymail` `mandatory: yes`. Skip otherwise.
 
@@ -669,7 +621,7 @@ This is the adoption-flow mirror of
 comdev-MCP check — it exists here so the prereq rides along with the
 upgrade an ASF adopter actually runs. If a registered MCP is
 missing entirely, point the operator at
-[`adopt.md` Step 9c](adopt.md#step-9c--comdev-mcp-prerequisites-asf-projects)
+[`install.md` Step 9c](install.md#step-9c--comdev-mcp-prerequisites-asf-projects)
 to (re-)install it.
 
 ## Step 6f — Re-fetch trusted external sources
@@ -707,6 +659,19 @@ newly-`provides`-d source skill picks up its per-worktree symlink
 on its next `worktree-init` or
 `/magpie-setup verify --auto-fix-symlinks`.
 
+## Step 6g — Re-derive auto-sourced configuration fields (drift reconciliation)
+
+If live metadata is accessible via `gh repo view`:
+1. **Re-derive the stable fields**, following the same organization split as
+   [`install.md` Step 4b](install.md#step-4b--read-fit-signals-fresh-only):
+   - *Organization-agnostic* (any adopter): repo name, default branch,
+     homepage/product URL, labels — from GitHub repo metadata.
+   - *ASF-specific* (**only when `organization: ASF`**): mailing lists from
+     `.asf.yaml`. Skip the `.asf.yaml`/mailing-list re-derivation for a
+     non-ASF `organization` — there is nothing to reconcile against.
+2. **Detect config drift**: Compare these re-derived values against the committed values in `.apache-magpie-overrides/project.md`.
+3. **Surface and reconcile**: If any value has changed (e.g., branch renamed, or — for ASF projects — a mailing-list address updated in `.asf.yaml`), display the drift to the user. Offer to update `.apache-magpie-overrides/project.md` with the new values in place. If confirmed by the user, write the updated configuration to `.apache-magpie-overrides/project.md` and stage the file (`git add`).
+
 ## Step 7 — Update `<local-lock>`
 
 Write the new local lock with the values captured in Step
@@ -739,9 +704,9 @@ setup (bootstrap):
   ✓ in sync   OR   ↻ overwritten from snapshot (reloaded in-flight)
 
 Symlinks (main checkout):
-  Opt-in families:     <security>, <pr-management>, <issue>   (from lock)
-  Newly added opt-in:  <issue>   (introduced since lock was written; lock updated)
-  Always-on families:  setup-*, list-*       (per Golden rule 8)
+  Opt-in families:     <e.g. security, pr-management, release-management>   (from lock)
+  Newly added opt-in:  <e.g. repo-health>   (introduced since lock was written; lock updated)
+  Always-on families:  setup, utilities       (per Golden rule 8)
   ✓ <list of unchanged symlinks>
   + <list of newly-created symlinks (skill present in the
      effective family set but missing from an active target dir)>
@@ -792,7 +757,7 @@ Recommended follow-ups:
 ## Failure modes
 
 - **`<committed-lock>` missing** → repo not adopted; suggest
-  `/magpie-setup adopt`.
+  `/magpie-setup install`.
 - **Network failure** → stop, surface error, user retries.
   The skill never leaves a half-deleted snapshot — Step 3's
   `rm -rf` runs only after Step 2's user confirmation.
