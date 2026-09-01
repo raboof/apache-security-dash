@@ -384,7 +384,7 @@ def cve_title(original, cve_id):
 CVE_ANNOUNCEMENT_RE = re.compile(r"^(CVE-\d{4}-\d+):")
 
 
-def handle_cve_announcement(inbox, original, current_labels):
+def handle_cve_announcement(inbox, original, uid, current_labels):
     """True if this was a CVE announcement"""
     m = CVE_ANNOUNCEMENT_RE.match(str(original["Subject"] or ""))
     if not m:
@@ -394,6 +394,12 @@ def handle_cve_announcement(inbox, original, current_labels):
     for lbl in current_labels:
         if cve in lbl:
             current_label = lbl
+
+    if current_label.startswith("zzz-resolved"):
+        print(f"Auto-filing under existing label {current_label}")
+        inbox.move([uid], current_label)
+        return True
+
     json_url = f"https://cveawg.mitre.org/api/cve-id/{cve}"
     j = json.loads(urlopen(json_url).read())
     state = j.get("state")
@@ -499,13 +505,16 @@ def skip_reason(headers, is_head):
         return None
     if not is_head:
         return "not a thread head"
-    if (headers["Subject"] or "").startswith("Comment added on CVE-") or (
-        headers["Subject"] or ""
-    ).endswith("is now REVIEW"):
+    subject = headers["Subject"] or ""
+    if (
+        subject.startswith("Comment added on CVE-")
+        or subject.endswith("is now REVIEW")
+        or subject.endswith("is now READY")
+    ):
         return "CVE-process update"
     if headers["From"] == "VINCE <cert+donotreply@cert.org>":
         return "VINCE notifications are usually updates"
-    if (headers["Subject"] or "").startswith("svn commit: r"):
+    if subject.startswith("svn commit: r"):
         return "SVN updates are usually updates"
     return None
 
@@ -549,7 +558,7 @@ def handle_message(inbox, uid, committees, coordinates, index):
     current_labels = gmail_labels(inbox, uid)
     print(f"Current labels: {current_labels}")
 
-    if handle_cve_announcement(inbox, original, current_labels):
+    if handle_cve_announcement(inbox, original, uid, current_labels):
         return
 
     suggested = suggested_action(entry)
@@ -661,10 +670,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         hdrs = header_message(data)
 
-        # A report already in the cache has been assessed; surface it even if
-        # the head test would otherwise skip it (defensive).
-        in_cache = bool(hdrs["Message-ID"] and hdrs["Message-ID"] in index)
-        reason = None if in_cache else skip_reason(hdrs, is_thread_head(data, hdrs))
+        reason = skip_reason(hdrs, is_thread_head(data, hdrs))
         if reason:
             print(f"Next: {hdrs['Subject']}")
             print(f"skipping - {reason}\n")
