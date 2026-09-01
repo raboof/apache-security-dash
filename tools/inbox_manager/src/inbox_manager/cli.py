@@ -140,10 +140,16 @@ def file_message(inbox, original, uid, pmc, entry=None, prefix=""):
 
     Returns True if the message was filed, False if filing was abandoned.
     """
-    labels = list(entry.labels) if entry else []
+    labels = []
+    for label in list(entry.labels) if entry else []:
+        if label.startswith(prefix):
+            labels.append(label)
+        else:
+            labels.append(f"{prefix}{label}")
+
     if not labels:
         pmc_name = pmc.id if pmc else ""
-        labels = [f"{prefix}{pmc_name}/{email_utils.message_date(original)}"]
+        labels = [f"{prefix}{pmc_name}/{email_utils.message_date(original)} "]
 
     on_message = gmail_labels(inbox, uid)
     todo = [label for label in labels if label not in on_message]
