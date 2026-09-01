@@ -177,14 +177,35 @@ def test_digest_attaches_every_label_it_covers(message, confirm):
     assert sorted(inbox.added) == ["hadoop/2026-05-21 rce", "spark/2026-05-24 xxe"]
 
 
-def test_declining_the_confirm_leaves_the_message_in_the_inbox(message, monkeypatch):
+def test_when_not_tagging_declining_the_confirm_leaves_the_message_in_the_inbox(
+    message, monkeypatch
+):
     monkeypatch.setattr(cli, "read_key", lambda: "n")
-    monkeypatch.setattr(cli, "input_with_prefill", lambda prompt, text: text)
+    monkeypatch.setattr(cli, "input_with_prefill", lambda prompt, text: "")
     inbox = FakeInbox(folders=["spark/2026-05-24 xxe"])
     ok = cli.file_message(inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"]))
     assert not ok
     assert inbox.added == []
     assert inbox.moved_to is None
+
+
+def test_when_not_tagging_confirming_archives_the_message(message, monkeypatch):
+    monkeypatch.setattr(cli, "read_key", lambda: "y")
+    monkeypatch.setattr(cli, "input_with_prefill", lambda prompt, text: "")
+    inbox = FakeInbox(folders=["spark/2026-05-24 xxe"])
+    ok = cli.file_message(inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"]))
+    assert ok
+    assert inbox.added == []
+    assert inbox.moved_to == "[Gmail]/All Mail"
+
+
+def test_tagging_moves_the_message_without_confirmation(message, monkeypatch):
+    monkeypatch.setattr(cli, "input_with_prefill", lambda prompt, text: text)
+    inbox = FakeInbox(folders=["spark/2026-05-24 xxe"])
+    ok = cli.file_message(inbox, message, 1, None, entry(labels=["spark/2026-05-24 xxe"]))
+    assert ok
+    assert inbox.added == ["spark/2026-05-24 xxe"]
+    assert inbox.moved_to == "[Gmail]/All Mail"
 
 
 def test_an_emptied_fresh_label_is_skipped_not_aborted(message, monkeypatch):

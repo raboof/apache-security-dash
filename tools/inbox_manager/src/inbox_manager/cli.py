@@ -152,10 +152,7 @@ def file_message(inbox, original, uid, pmc, entry=None, prefix=""):
 
     attach = []
     for label in todo:
-        if inbox.folder_exists(label):
-            attach.append(label)
-            continue
-        edited = input_with_prefill("New label: ", label).strip()
+        edited = input_with_prefill("Label: ", label).strip()
         if not edited:
             print(f"  skipped: {label}")
             continue
@@ -165,15 +162,13 @@ def file_message(inbox, original, uid, pmc, entry=None, prefix=""):
         print(f"{len(attach)} label(s) to attach:")
         for label in attach:
             print(f"  + {label}")
-        prompt = "Attach them and archive? [y]es / [n]o: "
     else:
-        prompt = "Archive it (remove from inbox)? [y]es / [n]o: "
-    print(prompt, end="", flush=True)
-    choice = read_key().lower()
-    print()
-    if choice != "y":
-        print("left in inbox\n")
-        return False
+        print("Archive it (remove from inbox)? [y]es / [n]o: ", end="", flush=True)
+        choice = read_key().lower()
+        print()
+        if choice != "y":
+            print("left in inbox\n")
+            return False
 
     for label in attach:
         if not inbox.folder_exists(label):
