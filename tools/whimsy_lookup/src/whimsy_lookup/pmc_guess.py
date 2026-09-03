@@ -48,7 +48,6 @@ from whimsy_lookup.committee import mail_list_of
 # Free-text extraction: the ``<host>.apache.org`` domain of an email address.
 _ADDR_DOMAIN = re.compile(r"@([a-z0-9][a-z0-9-]*\.apache\.org)", re.IGNORECASE)
 _EMAIL = re.compile(r"\S+@\S+")
-_TOKEN = re.compile(r"[a-z0-9][a-z0-9-]*")
 
 
 @dataclass(frozen=True)
@@ -202,7 +201,7 @@ def guess_pmcs(text: str, committees: dict, coordinates: dict) -> list[Pmc]:
     # list's local part ("security@...") or domain doesn't masquerade as a
     # slug token. Address *hosts* are handled by the strong signal above.
     prose = _EMAIL.sub(" ", text or "").lower()
-    tokens = set(_TOKEN.findall(prose))
+    tokens = set(prose.split(" ") + re.split(r"\W+", prose))
     for slug in sorted(known & tokens):
         if slug not in ranked:
             ranked.append(slug)
