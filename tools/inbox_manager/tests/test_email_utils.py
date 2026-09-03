@@ -153,3 +153,30 @@ def test_reporter_greeting_falls_back_to_there(from_addr, greeting):
     assert f"Hello {greeting}," in out
     assert "jane@example.com" not in out
     assert no_markers_left(out)
+
+
+def test_text_to_html():
+    out = email_utils._html_to_text("""
+        def receive_command(self):<br>
+            data = self.client.recv(1024).decode().strip()<br>
+            print(f"[<] {data}")<br>
+            return data<br>
+        <br>
+        def handle_commands(self):<br>
+            parts = cmd.split(' ', 1)<br>
+            args = parts[1] if len(parts) > 1 else ""<br>
+    """)
+
+    assert (
+        out
+        == """
+        def receive_command(self):
+            data = self.client.recv(1024).decode().strip()
+            print(f"[<] {data}")
+            return data
+
+        def handle_commands(self):
+            parts = cmd.split(' ', 1)
+            args = parts[1] if len(parts) > 1 else ""
+"""
+    )
