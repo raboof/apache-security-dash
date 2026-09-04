@@ -29,15 +29,17 @@ from whimsy_lookup.pmc_guess import (
 # committee-info mapping: most mail_lists equal the slug; httpcomponents is the
 # canonical differing case (mail_list 'hc'), brand has a full-address mail_list.
 KNOWN = {
-    "tomcat": {"mail_list": "tomcat"},
-    "kafka": {"mail_list": "kafka"},
+    "age": {"mail_list": "age"},
     "ant": {"mail_list": "ant"},
     "airflow": {"mail_list": "airflow"},
+    "axis": {"mail_list": "axis"},
+    "brand": {"mail_list": "trademarks@apache.org"},
     "commons": {"mail_list": "commons"},
+    "empire-db": {"mail_list": "empire-db"},
     "httpcomponents": {"mail_list": "hc"},
     "httpd": {"mail_list": "httpd"},
-    "brand": {"mail_list": "trademarks@apache.org"},
-    "axis": {"mail_list": "axis"},
+    "kafka": {"mail_list": "kafka"},
+    "tomcat": {"mail_list": "tomcat"},
 }
 
 COORDINATES = {
@@ -212,6 +214,13 @@ def test_guess_maps_product_name_to_pmc():
     # tokenise to the slug, so the alias map must carry it.
     subj = "Security disclosure — Apache HttpClient 4.5.14: cross-origin redirect leaks headers"
     assert _slugs(guess_pmcs(subj, KNOWN, COORDINATES)) == ["httpcomponents"]
+
+
+def test_guess_tokenization():
+    assert _slugs(guess_pmcs("Subject: empire-db has an issue", KNOWN, COORDINATES)) == [
+        "empire-db"
+    ]
+    assert _slugs(guess_pmcs("Subject: age-viewer has an issue", KNOWN, COORDINATES)) == ["age"]
 
 
 def test_guess_matches_standalone_token_only():
