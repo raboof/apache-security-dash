@@ -96,7 +96,7 @@ and the SKILL recognizes it from the body.
 Heads that are automated notifications, not fresh reports, are skipped
 (a header-only decision):
 
-- CVE-process mail injected by `security-vm-he-fi.apache.org` (per the `Received` chain);
+- https://cveprocess.apache.org notification emails
 - CERT/CC VINCE notifications (`From: cert+donotreply@cert.org`);
 - SVN commit mail (`Subject:` starts `svn commit: r`).
 
