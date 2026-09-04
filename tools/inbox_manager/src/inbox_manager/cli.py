@@ -127,7 +127,7 @@ def input_with_prefill(prompt, text):
         readline.set_startup_hook()
 
 
-def file_message(inbox, original, uid, pmc, entry=None, prefix=""):
+def file_message(inbox, original, uid, pmc, entry=None, prefix="", cve=None):
     """Attach the message's triage labels, then archive it out of the inbox.
 
     A label the message already carries is left alone.
@@ -149,7 +149,7 @@ def file_message(inbox, original, uid, pmc, entry=None, prefix=""):
 
     if not labels:
         pmc_name = pmc.id if pmc else ""
-        labels = [f"{prefix}{pmc_name}/{email_utils.message_date(original)} "]
+        labels = [f"{prefix}{pmc_name}/{cve or email_utils.message_date(original)} "]
 
     on_message = gmail_labels(inbox, uid)
     todo = [label for label in labels if label not in on_message]
@@ -422,7 +422,7 @@ def handle_cve_announcement(inbox, original, uid, current_labels):
     return True
 
 
-def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
+def handle_cve_reservation(inbox, original, uid, cve_id, pmc):
     """Attach a reserved CVE to one of the PMC's existing report labels.
 
     Lists the labels under ``<pmc_id>/``; when the user picks one, moves this
@@ -432,7 +432,7 @@ def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
     if title:
         print(f"{cve_id}: {title}")
     print(f"https://cveprocess.apache.org/cve5/{cve_id}")
-    prefix = f"{pmc_id}/"
+    prefix = f"{pmc.id}/"
 
     all_labels = [name for _, _, name in inbox.list_folders() if name.startswith(prefix)]
 
@@ -444,7 +444,8 @@ def handle_cve_reservation(inbox, original, uid, cve_id, pmc_id):
 
     labels = sorted(label for label in all_labels if not label.startswith(prefix + "CVE"))
     if not labels:
-        print(f"no existing labels under '{prefix}' - skipping\n")
+        print(f"no existing labels under '{prefix}' - how do you want to file this reserved CVE?\n")
+        file_message(inbox, original, uid, pmc, cve=cve_id)
         return
     for i, name in enumerate(labels, 1):
         print(f"  [{i}] {name}")
@@ -537,7 +538,9 @@ def handle_message(inbox, uid, committees, coordinates, index):
     print(f"Next: {original['Subject']}")
     cve = parse_cve_reservation(original)
     if cve:
-        handle_cve_reservation(inbox, original, uid, *cve)
+        cve_id, pmc_id = cve
+        pmc = pmc_for(pmc_id, committees, coordinates)
+        handle_cve_reservation(inbox, original, uid, cve_id, pmc)
         return
 
     # What the triage skills already decided about this report, if anything.
