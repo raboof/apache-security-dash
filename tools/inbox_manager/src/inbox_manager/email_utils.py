@@ -5,11 +5,11 @@ import tempfile
 from datetime import date
 from email.message import EmailMessage
 from email.utils import formataddr, getaddresses, parseaddr, parsedate_to_datetime
-from html import unescape
 from os import getenv
 from pathlib import Path
 
 import nh3
+from bs4 import BeautifulSoup
 
 from inbox_manager.markdown_render import md_to_html, md_to_text
 
@@ -98,11 +98,7 @@ def _sanitize_html(raw_html):
 
 
 def _html_to_text(html):
-    html = re.sub(r"(?is)<(script|style).*?>.*?</\1>", "", html)
-    html = re.sub(r"(?i)<br\s*/?>", "\n", html)
-    html = re.sub(r"(?i)</p\s*>", "\n\n", html)
-    html = re.sub(r"(?i)</div\s*>", "\n", html)
-    return unescape(re.sub(r"(?s)<[^>]+>", "", html)).strip()
+    return BeautifulSoup(html, features="html.parser").get_text()
 
 
 def _safe_inline_images(msg, clean_html):

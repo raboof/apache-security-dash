@@ -19,13 +19,13 @@ from populate_cache.gmail import MessageMeta
 from populate_cache.skip import skip_reason
 
 
-def info(subject="", sender="", received=None):
-    return MessageMeta(subject=subject, sender=sender, received=received or [])
+def info(subject="", sender=""):
+    return MessageMeta(subject=subject, sender=sender)
 
 
-def test_cve_process_received_host():
-    received = ["from security-vm-he-fi.apache.org (...) by mailrelay2-ec2-de.apache.org"]
-    assert skip_reason(info(received=received)) == "cve-process"
+def test_cveprocess():
+    sender = "cveprocess site <security@apache.org>"
+    assert skip_reason(info(sender=sender)) == "cveprocess"
 
 
 def test_cve_subject_alone_is_not_skipped():
@@ -54,16 +54,12 @@ def test_open_reports_digest_is_not_skipped():
 
 
 def test_real_report_not_skipped():
-    real = info(
-        subject="XXE in Foo parser",
-        sender="Jane Reporter <jane@example.com>",
-        received=["from mail.example.com (...) by mx.google.com"],
-    )
+    real = info(subject="XXE in Foo parser", sender="Jane Reporter <jane@example.com>")
     assert skip_reason(real) is None
 
 
 def test_orphan_reply_not_skipped():
     # "Re:" and In-Reply-To are NOT skip reasons here - the Gmail thread-head
     # filter owns reply detection, and orphan replies are kept on purpose.
-    orphan = info(subject="Re: SSRF in Bar", received=["from reporter.example.com"])
+    orphan = info(subject="Re: SSRF in Bar")
     assert skip_reason(orphan) is None

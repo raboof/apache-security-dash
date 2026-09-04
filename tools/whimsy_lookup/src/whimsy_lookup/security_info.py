@@ -69,11 +69,25 @@ def pmc_security_info(coordinates: dict, slug: str) -> dict:
                               else the raw source, else ``None``. Use this in a
                               PMC-facing or reporter-facing message.
       * ``advisory_link``   — the ``advisory_link`` field, or ``None``.
+      * ``subprojects``     — for a PMC that registers a model per
+                              sub-project, the list of
+                              ``{name, security_model_source,
+                              security_model_link}`` entries that carry one
+                              (empty list when there are none).
     """
     entry = coordinates.get(slug) or {}
     contact = (entry.get("contact") or "").strip() or None
     source = entry.get("security_model_source")
     link = entry.get("security_model_link")
+
+    subprojects = [
+        {
+            "name": sub.get("name"),
+            "security_model_source": sub.get("security_model_source"),
+            "security_model_link": sub.get("security_model_link"),
+        }
+        for sub in (entry.get("projects") or [])
+    ]
 
     # The PMC runs its own security team iff its registered contact is a
     # project-scoped ``security@<slug>.apache.org`` alias. Real coordinates
@@ -100,4 +114,5 @@ def pmc_security_info(coordinates: dict, slug: str) -> dict:
         "security_model_source": source or link or None,
         "security_model_link": link or source or None,
         "advisory_link": entry.get("advisory_link") or None,
+        "subprojects": subprojects,
     }

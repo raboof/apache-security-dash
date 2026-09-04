@@ -21,7 +21,6 @@ from whimsy_lookup.pmc_guess import (
     guess_pmcs,
     mail_list,
     pmc_for,
-    security_link,
     slugs_delivered_from_addresses,
     slugs_from_addresses,
     slugs_from_domains,
@@ -33,6 +32,7 @@ KNOWN = {
     "age": {"mail_list": "age"},
     "ant": {"mail_list": "ant"},
     "airflow": {"mail_list": "airflow"},
+    "axis": {"mail_list": "axis"},
     "brand": {"mail_list": "trademarks@apache.org"},
     "commons": {"mail_list": "commons"},
     "empire-db": {"mail_list": "empire-db"},
@@ -62,6 +62,24 @@ COORDINATES = {
         "contact": "security@apache.org",
     },
     "ant": {"name": "Apache Ant"},
+    "axis": {
+        "name": "Apache Axis",
+        "security_model_source": None,
+        "security_model_link": None,
+        "contact": "security@apache.org",
+        "projects": [
+            {
+                "name": "Apache Axis2 Java Core",
+                "security_model_source": "https://raw.githubusercontent.com/apache/axis-axis2-java-core/master/SECURITY.md",
+                "security_model_link": "https://github.com/apache/axis-axis2-java-core/security/policy",
+            },
+            {
+                "name": "Apache Axis2 C Core",
+                "security_model_source": "https://raw.githubusercontent.com/apache/axis-axis2-c-core/master/SECURITY.md",
+                "security_model_link": "https://github.com/apache/axis-axis2-c-core/security/policy",
+            },
+        ],
+    },
 }
 
 
@@ -304,24 +322,18 @@ def test_pmc_for_unknown_slug_is_bare():
     assert pmc.security_contact == "security@apache.org"
 
 
-def test_security_link_present():
-    # security_link() is source-first (the raw model), mirroring
-    # Pmc.security_model_source.
-    assert security_link(COORDINATES, "tomcat") == (
-        "Apache Tomcat",
-        "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
+def test_pmc_with_subprojects() -> None:
+    """An umbrella PMC's per-sub-project models land in ``subprojects``.
+
+    ``axis`` registers models through ``subprojects``.
+    """
+    pmc = pmc_for("axis", KNOWN, COORDINATES)
+    assert pmc.security_model_source is None
+    assert pmc.security_model_link is None
+    assert [s["name"] for s in pmc.subprojects] == [
+        "Apache Axis2 Java Core",
+        "Apache Axis2 C Core",
+    ]
+    assert pmc.subprojects[0]["security_model_source"].endswith(
+        "/axis-axis2-java-core/master/SECURITY.md"
     )
-
-
-def test_security_link_falls_back_to_link_page():
-    # security_model_source absent -> security_model_link is used.
-    assert security_link(COORDINATES, "hop") == (
-        "Apache Hop",
-        "https://hop.apache.org/security",
-    )
-
-
-def test_security_link_none_when_no_link():
-    assert security_link(COORDINATES, "kafka") is None  # both model URLs None
-    assert security_link(COORDINATES, "ant") is None  # no model URL key
-    assert security_link(COORDINATES, "missing") is None  # no entry

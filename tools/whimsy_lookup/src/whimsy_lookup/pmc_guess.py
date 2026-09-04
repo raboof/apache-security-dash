@@ -71,6 +71,9 @@ class Pmc:
     least one model URL on record.
 
     ``contact`` is the raw project-coordinates value (``None`` when the PMC has no entry).
+
+    Some PMCs (``axis``, ``ws``) register one model per sub-project;
+    those land in ``subprojects``.
     """
 
     id: str
@@ -80,6 +83,7 @@ class Pmc:
     contact: str | None
     contributing: str | None
     mail_list: str | None
+    subprojects: tuple[dict, ...] = ()
 
     @property
     def security_contact(self) -> str:
@@ -233,6 +237,14 @@ def pmc_for(slug: str, committees: dict, coordinates: dict) -> Pmc:
         entry.get("contact"),
         entry.get("contributing"),
         mail_list(committees, slug),
+        tuple(
+            {
+                "name": sub.get("name"),
+                "security_model_source": sub.get("security_model_source"),
+                "security_model_link": sub.get("security_model_link"),
+            }
+            for sub in (entry.get("projects") or [])
+        ),
     )
 
 
@@ -241,21 +253,3 @@ def mail_list(committees: dict, slug: str) -> str | None:
     if not isinstance(entry, dict):
         return None
     return mail_list_of(entry)
-
-
-def security_link(coordinates: dict, slug: str) -> tuple[str, str] | None:
-    """``(display_name, security_page_url)`` for ``slug`` from coordinates.json.
-
-    Returns None if the slug has no coordinates entry or no security-model URL.
-    The URL is the project's documented security model
-    — the machine-readable ``security_model_source`` (e.g. the raw ``SECURITY.md``) when present,
-    else the human-readable ``security_model_link`` page
-    — what a triager wants when sizing up a report against a PMC.
-    """
-    entry = coordinates.get(slug)
-    if not isinstance(entry, dict):
-        return None
-    link = entry.get("security_model_source") or entry.get("security_model_link")
-    if not link:
-        return None
-    return (entry.get("name") or slug, link)

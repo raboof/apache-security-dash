@@ -121,7 +121,6 @@ class MessageMeta:
     subject: str = ""
     sender: str = ""  # the ``From`` header ("from" is a keyword)
     has_references: bool = False  # head detection only needs presence, not the value
-    received: list[str] = field(default_factory=list)
     label_ids: list[str] = field(default_factory=list)
 
 
@@ -159,7 +158,6 @@ def _parse_metadata(response: dict) -> MessageMeta:
     """Pull the headers + label ids we care about out of a metadata response."""
     message_id = subject = sender = ""
     has_references = False
-    received: list[str] = []
     for header in response.get("payload", {}).get("headers", []):
         name = header.get("name", "").lower()
         value = header.get("value", "")
@@ -171,14 +169,11 @@ def _parse_metadata(response: dict) -> MessageMeta:
             sender = value
         elif name == "references":
             has_references = bool(value)
-        elif name == "received":
-            received.append(value)
     return MessageMeta(
         message_id=message_id,
         subject=subject,
         sender=sender,
         has_references=has_references,
-        received=received,
         label_ids=response.get("labelIds", []) or [],
     )
 

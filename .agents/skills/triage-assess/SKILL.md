@@ -70,7 +70,8 @@ Before spawning assessors:
 
 - list the work with `report-cache list --status classified` and group it by `pmc`,
 - determine the threat model for each PMC
-  (`whimsy-lookup pmc-security-info` returns its `security_model_source` and `security_model_link`),
+  (`whimsy-lookup pmc-security-info` returns its `security_model_source` and `security_model_link`,
+  and a `subprojects` list when the PMC registers one model per sub-project - see Inputs),
   and record it on each of that PMC's reports with
   `report-cache set <id> --security-model-source <url> --security-model-link <url>`,
   so it shows on the report's `model:` line and `inbox_manager` can cite it at send time.
@@ -101,6 +102,15 @@ Before spawning assessors:
 
 - **PMC security coordinates** via the `whimsy-lookup pmc-security-info <slug>` tool:
   the project's security model as two URLs: `security_model_source` (the raw `SECURITY.md`) to read/WebFetch when verifying, and `security_model_link` (the human security page) to cite in a draft to the PMC or reporter.
+
+  **An PMC may register a model per sub-project.**
+  These will be listed
+  under `subprojects` (one entry per sub-project, each with its own pair of URLs).
+  So when `subprojects` is non-empty, **pick the entry matching the product the report is about**
+  and record that one on the bundle -
+  assessing an Axis2/Java report against the Axis2/C model is simply the wrong model.
+  Only when both the PMC-level fields *and* `subprojects` are empty does the PMC genuinely have no
+  model on record; that is the case that gets the "did we miss one?" question and the cwiki link.
 - **Project source** under `--workspace` (default `workspace`):
   the SKILL reads `<workspace>/<pmc>` to check the report against real code.
   If that checkout is absent,
@@ -124,7 +134,8 @@ Before spawning assessors:
 
 Work one classified bundle at a time.
 `<id>` is the report's Message-ID;
-`report-cache list --status classified` prints ids you can pass straight back.
+`report-cache list --status classified` prints leaf names you can pass straight back.
+Note the Message-ID carries its angle brackets.
 
 ### Step 1: read the report
 
