@@ -35,6 +35,7 @@ KNOWN = {
     "axis": {"mail_list": "axis"},
     "brand": {"mail_list": "trademarks@apache.org"},
     "commons": {"mail_list": "commons"},
+    "directory": {"mail_list": "directory"},
     "empire-db": {"mail_list": "empire-db"},
     "httpcomponents": {"mail_list": "hc"},
     "httpd": {"mail_list": "httpd"},
@@ -227,6 +228,29 @@ def test_guess_matches_standalone_token_only():
     # 'antics' must NOT match the 'ant' slug (token boundary, not substring).
     assert guess_pmcs("Subject: shenanigans and antics", KNOWN, COORDINATES) == []
     assert _slugs(guess_pmcs("Subject: the ant build", KNOWN, COORDINATES)) == ["ant"]
+
+
+def test_guess_common_word_token_loses_to_a_named_project():
+    # 'directory' is a slug but also the word every path-traversal subject
+    # uses; an unqualified occurrence must not compete with the real project.
+    subj = "Directory traversal in Apache Tomcat 9.0.83 lets an attacker read WEB-INF"
+    assert _slugs(guess_pmcs(subj, KNOWN, COORDINATES)) == ["tomcat"]
+    # ...the same holds when the real project only shows up as an address host.
+    text = "Subject: arbitrary file read via directory listing\nTo: security@kafka.apache.org"
+    assert _slugs(guess_pmcs(text, KNOWN, COORDINATES)) == ["kafka"]
+
+
+def test_guess_common_word_token_is_a_last_resort():
+    # Nothing else in the text names a PMC, so the weak candidate is still
+    # worth showing the operator.
+    subj = "Directory traversal in the upload handler"
+    assert _slugs(guess_pmcs(subj, KNOWN, COORDINATES)) == ["directory"]
+
+
+def test_guess_maps_apacheds_to_directory():
+    # The product name of Apache Directory Server doesn't tokenise to its slug.
+    subj = "ApacheDS 2.0.0.AM27 allows anonymous bind despite configuration"
+    assert _slugs(guess_pmcs(subj, KNOWN, COORDINATES)) == ["directory"]
 
 
 def test_guess_ignores_slugs_inside_email_addresses():

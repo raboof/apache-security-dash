@@ -16,18 +16,19 @@
 # under the License.
 """Best-effort PMC guessing from free text (e.g. an inbound email's headers).
 
-Two signals, strongest first:
+Three signals, strongest first:
 
-  1. ``@<slug>.apache.org`` hosts appearing as email-address domains —
+  1. ``@<pmc>.apache.org`` hosts appearing as email-address domains —
      a report addressed to ``security@tomcat.apache.org`` names its PMC
      unambiguously.
-  2. A committee slug appearing as a standalone token (e.g. the word
-     "tomcat" in the subject).
+  2. A committee name appearing as a standalone token
+     (e.g. the word "tomcat" in the subject).
+     Names that are also ordinary English words ("directory", "logging", ...) are skipped here.
   3. A project's descriptive name rather than its slug (e.g. "HTTP Server"
      for ``httpd``) — the weakest signal, ranked last.
 
 Both are validated against the authoritative committee-info slug set so a
-stray word that merely *looks* like a slug isn't reported. The result is a
+stray word that merely *looks* like a pmc name isn't reported. The result is a
 ranked list of candidates the operator reviews — never an automated action.
 
 The PMC security-model URL comes from
@@ -114,11 +115,19 @@ _NAME_ALIASES = {
     "woden": "ws",
     "wss4j": "ws",
     "xmlschema": "ws",
+    "apacheds": "directory",
     "http server": "httpd",
     "httpclient": "httpcomponents",
     "httpcore": "httpcomponents",
     "httpasyncclient": "httpcomponents",
 }
+
+
+# Committee slugs that are also commonly-found English words.
+# A security subject uses these words about *other* projects all the time
+# — "directory traversal in Foo", "logging of credentials" —
+# so a bare token match on one of them is not by itself evidence that the report is about that PMC.
+_COMMON_WORD_SLUGS = frozenset({"age", "answer", "attic", "db", "directory", "logging"})
 
 
 def slugs_from_domains(domains: Iterable[str], committees: dict) -> list[str]:
@@ -190,6 +199,8 @@ def guess_pmcs(text: str, committees: dict, coordinates: dict) -> list[Pmc]:
 
     Address-domain matches (strong signal) come first, in the order they
     appear; standalone-token matches (weaker) follow, sorted for stability.
+    A token that is an ordinary English word (:data:`_COMMON_WORD_SLUGS`)
+    is a last-resort guess, returned only when the text names no other PMC.
     Only slugs present in ``committees`` (the committee-info mapping) are
     returned, each built into a full :class:`Pmc` with its security
     coordinates and mail_list token resolved.
@@ -206,9 +217,16 @@ def guess_pmcs(text: str, committees: dict, coordinates: dict) -> list[Pmc]:
     # slug token. Address *hosts* are handled by the strong signal above.
     prose = _EMAIL.sub(" ", text or "").lower()
     tokens = set(prose.split(" ") + re.split(r"\W+", prose))
+    # A common-word slug matched without a qualifier is held back rather than
+    # ranked; it is reported only if nothing else names a PMC.
+    deferred: list[str] = []
     for slug in sorted(known & tokens):
-        if slug not in ranked:
-            ranked.append(slug)
+        if slug in ranked:
+            continue
+        if slug in _COMMON_WORD_SLUGS:
+            deferred.append(slug)
+            continue
+        ranked.append(slug)
 
     # Weakest signal: a project's descriptive name (e.g. "HTTP Server") rather
     # than its slug. Appended last so it ranks below the token matches.
@@ -216,6 +234,12 @@ def guess_pmcs(text: str, committees: dict, coordinates: dict) -> list[Pmc]:
     for phrase, slug in _NAME_ALIASES.items():
         if phrase in lowered and slug in known and slug not in ranked:
             ranked.append(slug)
+
+    # Last resort: an unqualified common word is a guess only when the text
+    # offers nothing better ("directory traversal in Apache Tomcat" is a Tomcat
+    # report; a bare "directory traversal" has only the one weak candidate).
+    if not ranked:
+        ranked.extend(deferred)
 
     return [pmc_for(slug, committees, coordinates) for slug in ranked]
 
