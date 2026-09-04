@@ -118,7 +118,10 @@ For each one the listing shows at `status: downloaded`:
    Delegate the read to a **[lightweight-model](#the-lightweight-model) subagent** (it keeps raw message bytes out of the main context):
    give it the message's `<id>` and have it return a compact proposal
    ([schema](#the-labelling-subagent)).
-   Run one subagent per message; they are independent and can fan out in parallel.
+   Run one subagent per message;
+   they are independent and can fan out in parallel,
+   each prompt must be **self-contained**,
+   and no two agents may share a writable directory.
 2. **Settle the category** from the proposal (below).
 3. **Propose**, per message: its category, its PMC, and the values that category needs.
    Reports need keywords and reporter name,
@@ -275,6 +278,9 @@ The `<Title>` is the report's email subject.
 `email-classification/<pmc>/` stores each report's `subj` and `message_id` but **not** the Ponymail thread-id, so the cross-check is **by subject**: match each digest `<Title>` to the tag file whose `subj` is the same report.
 
 Delegate this to a **[lightweight-model](#the-lightweight-model) subagent** (one per digest), giving it the digest's `<id>` (to read with `report-cache show <id>`) and `email-classification/<pmc>/`, and ask it to return the matched tag list.
+Isolate it like any other subagent in the fan-out:
+the prompt carries everything it needs,
+and it shares no writable directory with its siblings.
 When matching a `<Title>` to a `subj`, normalize for:
 
 - the trailing `[N days]` and a leading `Re:`;
