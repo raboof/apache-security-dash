@@ -66,6 +66,23 @@ Sub-agents do prompt the user for tool approval, but the per-PMC assessors run c
 so their prompts collide - while you are answering one, another can pop up and override it, and approvals get lost.
 So **every tool this SKILL uses must be preapproved** (see Tools below) to avoid that crossfire.
 
+### Give every assessor its own scratchpad
+
+The harness hands each sub-agent the **parent session's** scratchpad path.
+**Assign each assessor a private directory in its prompt**,
+and interpolate the PMC name yourself so uniqueness comes from the fan-out,
+not from the assessor's judgement.
+
+Include this verbatim in every assessor prompt:
+
+```text
+Your scratchpad is <the session scratchpad>/<pmc>/.
+Create it first (`mkdir -p`) and keep every temp file inside it.
+Never write to the scratchpad root:
+the other per-PMC assessors are running concurrently against the same root,
+and a bare name like `summary.md` is one file with N writers.
+```
+
 Before spawning assessors:
 
 - list the work with `report-cache list --status classified` and group it by `pmc`,
@@ -80,6 +97,8 @@ Before spawning assessors:
 - check the source is up-to-date, fetching from its remote (`origin` or `apache`),
 - check the authentication status with Ponymail (`mcp__ponymail__auth_status`),
   if it is not, ask the user to log in.
+- give each assessor its own scratchpad directory in its prompt (see above) - one `<pmc>` subdirectory
+  per assessor, interpolated by you, so no two of them can converge on the same file.
 
 ## Hard rules
 
