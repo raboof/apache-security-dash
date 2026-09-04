@@ -100,6 +100,10 @@ def cmd_pmc_security_info(args: argparse.Namespace) -> int:
     the ``security_model_source`` to read/WebFetch the model,
     and the ``security_model_link`` human page to cite it to a person.
 
+    A PMC may register a model per sub-project instead (``axis``, ``ws``); those are printed under
+    ``subprojects`` and the caller must pick the one matching the product it
+    is assessing, since they differ per product.
+
     ``--json`` emits the full record as one JSON object (for programmatic use, e.g. triage-assess);
     the default is a human-readable key/value block.
     """
@@ -114,8 +118,16 @@ def cmd_pmc_security_info(args: argparse.Namespace) -> int:
         print(f"security_contact:      {info['security_contact']}")
         print(f"has_own_security_team: {info['has_own_security_team']}")
         print(f"team_cc:               {info['team_cc']}")
-        print(f"security_model_source: {info['security_model_source'] or '(none on record)'}")
-        print(f"security_model_link:   {info['security_model_link'] or '(none on record)'}")
+        subs = info.get("subprojects") or []
+        if info["security_model_source"] or info["security_model_link"] or not subs:
+            print(f"security_model_source: {info['security_model_source'] or '(none on record)'}")
+            print(f"security_model_link:   {info['security_model_link'] or '(none on record)'}")
+        if subs:
+            print(f"subprojects:           {len(subs)} with a registered model")
+            for sub in subs:
+                print(f"  - {sub['name'] or '(unnamed)'}")
+                print(f"      security_model_source: {sub['security_model_source']}")
+                print(f"      security_model_link:   {sub['security_model_link']}")
 
     return 0
 
@@ -133,10 +145,14 @@ def cmd_guess_pmc(args: argparse.Namespace) -> int:
         return 1
     print("PMC guess(es):")
     for pmc in candidates:
-        if pmc.security_model_source is None:
+        if not pmc.security_model_source and not pmc.subprojects:
             print(f"  {pmc.id:24} (no security page on record)")
-        else:
+        if pmc.security_model_source:
             print(f"  {pmc.id:24} {pmc.security_model_source}")
+        if pmc.subprojects:
+            print(f"  {pmc.id:24} (per sub-project):")
+            for sub in pmc.subprojects:
+                print(f"  {'':24}   {sub['name'] or '(unnamed)'}: {sub['security_model_source']}")
     return 0
 
 

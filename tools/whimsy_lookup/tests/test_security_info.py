@@ -33,6 +33,7 @@ def test_pmc_security_info_own_contact(security_coordinates) -> None:
         "security_model_source": "https://raw.githubusercontent.com/apache/tomcat/main/SECURITY.md",
         "security_model_link": "https://tomcat.apache.org/security.html",
         "advisory_link": None,
+        "subprojects": [],
     }
 
 
@@ -89,6 +90,7 @@ def test_pmc_security_info_missing_slug(security_coordinates) -> None:
         "security_model_source": None,
         "security_model_link": None,
         "advisory_link": None,
+        "subprojects": [],
     }
 
 
@@ -146,3 +148,20 @@ def test_team_cc_mixed_case_contact_detects_own_team(security_coordinates) -> No
     info = pmc_security_info(security_coordinates, "kafka")
     assert info["has_own_security_team"] is True
     assert info["team_cc"] == "security@kafka.apache.org"
+
+
+def test_pmc_with_per_subproject_models(security_coordinates) -> None:
+    """A PMC that surfaces each sub-project's model under ``subprojects``.
+
+    ``axis`` registers no PMC-wide model; the real models hang off the
+    ``projects`` array.
+    """
+    info = pmc_security_info(security_coordinates, "axis")
+    assert info["known"] is True
+    assert [s["name"] for s in info["subprojects"]] == [
+        "Apache Axis2 Java Core",
+        "Apache Axis2 C Core",
+    ]
+    java = info["subprojects"][0]
+    assert java["security_model_source"].endswith("/axis-axis2-java-core/master/SECURITY.md")
+    assert java["security_model_link"].endswith("/axis-axis2-java-core/security/policy")

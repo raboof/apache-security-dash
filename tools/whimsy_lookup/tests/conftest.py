@@ -118,6 +118,26 @@ SECURITY_COORDINATES_SAMPLE = {
         "security_model_link": "https://github.com/apache/apisix/blob/master/THREAT_MODEL.md",
         "contact": None,
     },
+    # one model registered per sub-project, (mirrors the real `axis` / `ws`
+    # entries).
+    "axis": {
+        "name": "Apache Axis",
+        "security_model_source": None,
+        "security_model_link": None,
+        "contact": "security@apache.org",
+        "projects": [
+            {
+                "name": "Apache Axis2 Java Core",
+                "security_model_source": "https://raw.githubusercontent.com/apache/axis-axis2-java-core/master/SECURITY.md",
+                "security_model_link": "https://github.com/apache/axis-axis2-java-core/security/policy",
+            },
+            {
+                "name": "Apache Axis2 C Core",
+                "security_model_source": "https://raw.githubusercontent.com/apache/axis-axis2-c-core/master/SECURITY.md",
+                "security_model_link": "https://github.com/apache/axis-axis2-c-core/security/policy",
+            },
+        ],
+    },
     # Mixed-case in the JSON (real entries are observed lowercase but
     # the classifier normalises so a stray mixed-case entry shouldn't
     # break detection).
