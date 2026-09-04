@@ -82,6 +82,7 @@ name = "inbox-manager"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "beautifulsoup4" },
     { name = "dotenv" },
     { name = "gnureadline" },
     { name = "imapclient" },
@@ -98,6 +99,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "beautifulsoup4" },
     { name = "dotenv" },
     { name = "gnureadline" },
     { name = "imapclient" },
