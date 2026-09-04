@@ -134,7 +134,8 @@ Before spawning assessors:
 
 Work one classified bundle at a time.
 `<id>` is the report's Message-ID;
-`report-cache list --status classified` prints ids you can pass straight back.
+`report-cache list --status classified` prints leaf names you can pass straight back.
+Note the Message-ID carries its angle brackets.
 
 ### Step 1: read the report
 

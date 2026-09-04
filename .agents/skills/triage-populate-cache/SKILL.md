@@ -227,6 +227,7 @@ while `--disposition` is `report-cache`'s record of what the team owes on it
 
 `<id>` is the RFC `Message-ID` (a unique prefix works) or the bundle's leaf directory name;
 `list` prints one you can pass straight back.
+Note the Message-ID carries its angle brackets.
 
 ```bash
 # Find reports with a given status
