@@ -34,7 +34,9 @@ dependencies = [
     # uv-managed standalone interpreters link the stdlib readline against
     # libedit, where the startup hook is a no-op. gnureadline ships GNU readline.
     "gnureadline",
-    "imapclient",
+    # To get https://github.com/mjs/imapclient/pull/647
+    # before post-3.1.0 versino is released
+    "imapclient @ git+https://github.com/mjs/imapclient@2f5947cc420c48faac6f9dd7af78ae63465537c9",
     "markdown-it-py",
     "nh3",
     # The report-cache/ storage: the triage state (status, disposition, labels)
@@ -55,6 +57,9 @@ inbox-manager = "inbox_manager.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/inbox_manager"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
