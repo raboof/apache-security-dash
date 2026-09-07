@@ -141,3 +141,88 @@ def test_build_apply_plan_empty_updates_returns_empty() -> None:
     api_data, diff = build_apply_plan([], {})
     assert api_data == []
     assert diff == []
+
+
+def test_build_apply_plan_skips_cell_already_at_requested_value() -> None:
+    """A re-run against an already-applied update must report nothing to do.
+
+    This is what makes ``apply --dry-run`` usable to verify a write landed.
+    """
+    grid = [
+        ["PMC Slug", "Scan Requested"],
+        ["alpha", "Yes"],
+    ]
+    updates = [
+        {
+            "sheet": "PMCs",
+            "match": {"column": "PMC Slug", "value": "alpha"},
+            "set": {"Scan Requested": "Yes"},
+        }
+    ]
+    api_data, diff = build_apply_plan(updates, {"PMCs": grid})
+    assert api_data == []
+    assert diff == []
+
+
+def test_build_apply_plan_mixed_changed_and_unchanged() -> None:
+    """Only the genuinely-changing cell is written; the no-op is dropped."""
+    grid = [
+        ["PMC Slug", "Scan Requested", "Notes"],
+        ["alpha", "Yes", "old note"],
+    ]
+    updates = [
+        {
+            "sheet": "PMCs",
+            "match": {"column": "PMC Slug", "value": "alpha"},
+            "set": {"Scan Requested": "Yes", "Notes": "new note"},
+        }
+    ]
+    api_data, diff = build_apply_plan(updates, {"PMCs": grid})
+    assert api_data == [{"range": "PMCs!C2", "values": [["new note"]]}]
+    assert len(diff) == 1
+    assert "'old note' -> 'new note'" in diff[0]
+
+
+def test_build_apply_plan_blank_cell_set_to_blank_is_a_no_op() -> None:
+    """An absent trailing cell reads as '' and must not be rewritten with ''."""
+    grid = [
+        ["PMC Slug", "Scan Requested", "Notes"],
+        ["alpha", "Yes"],  # Notes column absent from the row entirely
+    ]
+    updates = [
+        {
+            "sheet": "PMCs",
+            "match": {"column": "PMC Slug", "value": "alpha"},
+            "set": {"Notes": ""},
+        }
+    ]
+    api_data, diff = build_apply_plan(updates, {"PMCs": grid})
+    assert api_data == []
+    assert diff == []
+
+
+def test_build_apply_plan_non_string_value_compared_as_string() -> None:
+    """JSON numbers compare against the grid's string form, not by identity."""
+    grid = [
+        ["PMC Slug", "Count"],
+        ["alpha", "7"],
+    ]
+    same = [
+        {
+            "sheet": "PMCs",
+            "match": {"column": "PMC Slug", "value": "alpha"},
+            "set": {"Count": 7},
+        }
+    ]
+    api_data, _ = build_apply_plan(same, {"PMCs": grid})
+    assert api_data == []
+
+    different = [
+        {
+            "sheet": "PMCs",
+            "match": {"column": "PMC Slug", "value": "alpha"},
+            "set": {"Count": 8},
+        }
+    ]
+    api_data, _ = build_apply_plan(different, {"PMCs": grid})
+    assert api_data == [{"range": "PMCs!B2", "values": [[8]]}]

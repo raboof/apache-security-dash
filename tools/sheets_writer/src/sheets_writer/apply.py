@@ -35,6 +35,14 @@ def build_apply_plan(
     ``grids`` maps sheet name to its full grid (header + rows). Pure
     function: no API calls. Returns ``(api_data, diff_lines)`` where
     ``api_data`` is the ``values.batchUpdate``-shaped ``data`` payload.
+
+    Cells whose current value already equals the requested value are
+    omitted from both returned lists. That is what lets a re-run of
+    ``apply --dry-run`` against an already-applied updates file report
+    nothing to do, so it can be used to verify a write actually landed.
+    The comparison is an exact string match against the grid, so any
+    formatting difference still produces a write — the filter can drop
+    a redundant write, never a needed one.
     """
     api_data: list[dict] = []
     diff_lines: list[str] = []
@@ -55,6 +63,10 @@ def build_apply_plan(
                 )
             set_col_idx = header.index(set_col)
             current = row[set_col_idx] if set_col_idx < len(row) else ""
+            if current == str(new_value):
+                # Already at the requested value — writing it again would
+                # be a no-op that still reports as a change.
+                continue
             a1 = f"{sheet}!{col_letter(set_col_idx)}{row_idx + 1}"
             diff_lines.append(
                 f"  {sheet} row {row_idx + 1} ({match['column']}="
@@ -84,13 +96,20 @@ def cmd_apply(args: argparse.Namespace) -> None:
     except (KeyError, ValueError) as e:
         sys.exit(str(e))
 
+    requested = sum(len(u.get("set", {})) for u in updates)
+    unchanged = requested - len(api_data)
+
     if not api_data:
-        print("No cell changes computed.")
+        print(
+            f"Nothing to do — all {requested} requested cell(s) already hold the requested values."
+        )
         return
 
     print("Planned cell updates:")
     for line in diff_lines:
         print(line)
+    if unchanged:
+        print(f"  ({unchanged} cell(s) already current — skipped.)")
 
     if args.dry_run:
         print(f"\nDry run — no changes written. ({len(api_data)} cells would change.)")
