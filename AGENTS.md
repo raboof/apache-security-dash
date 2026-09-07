@@ -229,5 +229,5 @@ This AGENTS.md captures conventions surfaced during the 2026-05 Glasswing pipeli
 when multiple PRs (#54 through #59) landed back-to-back
 and the team realized the agent-side conventions for commit trailers + PR creation + pre-commit hygiene weren't written down anywhere.
 Patterned after Airflow's AGENTS.md (`apache/airflow/AGENTS.md`)
-and apache-steward's pre-commit config (`apache/airflow-steward/.pre-commit-config.yaml`);
+and Magpie's pre-commit config (`apache/magpie/.pre-commit-config.yaml`);
 scoped down for apache/security's much smaller surface area.

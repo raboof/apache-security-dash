@@ -471,7 +471,7 @@ That sequence is the same for every PMC.
 **Separately**, the template raises an offer for PMC members who'll be doing the triage work on the results:
 **Anthropic's Claude-for-Open-Source subscription**,
 which gives them access to Claude Opus 4.7 + tooling like Apache Magpie
-(the hopefully-to-be-established ASF TLP at github.com/apache/airflow-steward)
+(the hopefully-to-be-established ASF TLP at github.com/apache/magpie)
 to manage the scan findings —
 convert them into GitHub issues, pre-triage,
 draft fixes and PRs based on the maintainer discussion around each issue.
@@ -539,7 +539,7 @@ Claude Opus 4.7 has proven solid at. Several ASF projects
 are using it in this capacity today, paired with Apache
 Magpie (hopefully to be established as an ASF TLP) — a
 set of reusable skills at
-https://github.com/apache/airflow-steward that already
+https://github.com/apache/magpie that already
 supports:
 
   - Importing scan results and converting them into
