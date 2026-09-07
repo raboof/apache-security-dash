@@ -40,6 +40,7 @@ KNOWN = {
     "httpd": {"mail_list": "httpd"},
     "kafka": {"mail_list": "kafka"},
     "tomcat": {"mail_list": "tomcat"},
+    "xmlgraphics": {"mail_list": "xmlgraphics"},
 }
 
 COORDINATES = {
@@ -214,6 +215,8 @@ def test_guess_maps_product_name_to_pmc():
     # tokenise to the slug, so the alias map must carry it.
     subj = "Security disclosure — Apache HttpClient 4.5.14: cross-origin redirect leaks headers"
     assert _slugs(guess_pmcs(subj, KNOWN, COORDINATES)) == ["httpcomponents"]
+    assert _slugs(guess_pmcs("Apache Batik SSRF", KNOWN, COORDINATES)) == ["xmlgraphics"]
+    assert _slugs(guess_pmcs("Apache XML Graphics SSRF", KNOWN, COORDINATES)) == ["xmlgraphics"]
 
 
 def test_guess_tokenization():

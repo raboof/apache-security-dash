@@ -110,6 +110,7 @@ class Pmc:
 # PMC even though none of them tokenises to it.
 _NAME_ALIASES = {
     "axiom": "ws",
+    "batik": "xmlgraphics",
     "neethi": "ws",
     "woden": "ws",
     "wss4j": "ws",
@@ -118,6 +119,7 @@ _NAME_ALIASES = {
     "httpclient": "httpcomponents",
     "httpcore": "httpcomponents",
     "httpasyncclient": "httpcomponents",
+    "xml graphics": "xmlgraphics",
 }
 
 
