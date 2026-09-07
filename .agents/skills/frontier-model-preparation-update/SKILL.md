@@ -229,10 +229,35 @@ The `frontier-model-preparation/` subdirectory keeps this tool's artefacts scope
    ```
 
    The helper prints `Applied. totalUpdatedCells=N totalUpdatedRows=M …` on success.
+   `totalUpdatedCells` counts the cells that actually **changed**, not the number
+   requested — a cell already holding the requested value is skipped, so the count
+   can legitimately be lower than the number of entries in the `set` block.
 
-7. **Verify** by re-reading the affected rows (one `mcp__claude_ai_Google_Drive__read_file_content` call is fine;
-   you can also re-run the helper with `--dry-run` against the same updates JSON —
-   it should now show every cell as `'<value>' -> '<value>'`, i.e. nothing to change).
+7. **Verify** by re-running the helper with `--dry-run` against the same updates JSON.
+   A write that landed reports:
+
+   ```
+   Nothing to do — all N requested cell(s) already hold the requested values.
+   ```
+
+   Anything else means part of the write did not take: the cells that are still
+   wrong are listed with their real `'current' -> 'proposed'` diff, and a
+   partially-landed apply also prints `(N cell(s) already current — skipped.)`.
+
+   **This check only works on `apply` from apache/security#276 onwards.** Before
+   that fix the helper emitted a diff line for every column in `set` without
+   comparing it to the grid, so a re-run printed `'X' -> 'X'` for each cell and
+   still claimed `N cells would change` — identical output whether the write had
+   landed or not. If you are on an older checkout, or the re-run prints
+   `'<value>' -> '<value>'` pairs rather than `Nothing to do`, fall back to
+   re-reading the row.
+
+   Re-reading the affected rows directly is an equally valid check, and the right
+   one when you want to see the rendered value rather than confirm equality:
+   `sheets-writer dump` for the whole sheet, or one
+   `mcp__claude_ai_Google_Drive__read_file_content` call for a single row you have
+   already identified (mind the MCP truncation caveat — see
+   `frontier-model-preparation-run` Step 2).
 
 8. **Refresh the derived views + dashboard.**
    A write to the PMCs sheet leaves the read-only derived tabs and the dashboard gist stale.
@@ -286,6 +311,10 @@ Safety properties baked into the helper:
 - Match step requires exactly one row;
   multi-match and zero-match both abort with a clear error.
 - Unknown column names in `match` or `set` abort.
+- Cells already holding the requested value are skipped, so an apply only ever
+  writes real changes and a re-run is a clean no-op.
+  This is what makes step 7's `--dry-run` re-run a usable verification —
+  see that step for the exact output to expect.
 - Defaults to `--dry-run` *off*,
   but the SKILL always runs `--dry-run` first per rule 1;
   nothing applies without the agent explicitly omitting the flag after user approval.

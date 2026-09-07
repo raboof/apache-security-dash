@@ -62,7 +62,7 @@ payload without contacting the API.
 | --- | --- |
 | `setup` | One-time OAuth installed-app flow. |
 | `dump --spreadsheet-id ID --sheet S [--objects] [--compact]` | **Read-only.** Print a whole sheet as JSON to stdout, straight off the Sheets API (no Drive-MCP ~80 KB truncation). Default shape is `{header, rows}`; `--objects` keys each row by header. Pipe to `jq` to read without pulling bytes into model context. |
-| `apply --spreadsheet-id ID --updates PATH [--dry-run]` | Apply row-level updates from a JSON file. Match step requires exactly one row per update. |
+| `apply --spreadsheet-id ID --updates PATH [--dry-run]` | Apply row-level updates from a JSON file. Match step requires exactly one row per update. Cells already holding the requested value are skipped, so `totalUpdatedCells` counts real changes and re-running an applied file with `--dry-run` reports `Nothing to do` — which is how you verify a write landed. |
 | `init-canned-tab --spreadsheet-id ID [--dry-run]` | Create the `Canned Responses` sheet idempotently. |
 | `append-canned --spreadsheet-id ID --entries PATH [--dry-run]` | Append canned-response rows. Today's date auto-fills the `Date Added` column. |
 | `append-pmc --spreadsheet-id ID --entries PATH [--dry-run]` | Append new PMC rows. `PMC Name` + `PMC Slug` required. Duplicate-slug appends abort with the existing row number. |
