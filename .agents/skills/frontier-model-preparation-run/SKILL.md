@@ -374,18 +374,20 @@ see `frontier-model-preparation-forward`.)
 
 ### Step 2.5 — Archive sweep (new ASF Tooling scans → assess → forward)
 
-ASF Tooling delivers each scan by committing it to the `apache/tooling-agents-private` archive under `scans/mythos/<project>/<scan-id>/`. This step detects **new** scans there and routes each to its next action — pre-forward assessment, then forward — so a freshly-landed scan surfaces in the action list without waiting on an email.
+ASF Tooling delivers each scan by committing it to the `apache/tooling-agents-private` archive under `scans/glasswing/<project>/<scan-id>/`, where `<scan-id>` is a **UTC timestamp directory** — e.g. `scans/glasswing/activemq/20260811T042551Z/`. The archive also carries `scans/experiments/` (alternate-model runs, including a `mythos` tree); that is **not** the delivery tree and PMC-facing state must never be sourced from it. This step detects **new** scans there and routes each to its next action — pre-forward assessment, then forward — so a freshly-landed scan surfaces in the action list without waiting on an email.
 
 Work against a **local clone at `~/code/tooling-agents-private`** (clone if absent; `git pull --ff-only` on a clean tree otherwise, to pick up the **latest** commits). Reaching the private repo needs the keychain — bypass the sandbox for the fetch, loud banner per the user's rule. (Record the clone path in the `secure-setup-local-paths` memory so later sweeps find it.)
 
-Enumerate every scan-id directory under `scans/mythos/*/`. For each, read its `metadata.yml` (`project` = PMC slug, `repo`, `scan_date`, `head_sha`), then classify:
+Enumerate every scan-id directory under `scans/glasswing/*/`. Take `<project>` from the directory name, and read the bundle's `PROVENANCE.md` for repo / branch / commit / clone date — the same file [`frontier-model-preparation-forward`](../frontier-model-preparation-forward/SKILL.md) reads for scan identity. The commit is a 40-hex SHA, but the surrounding prose varies between bundles (`- HEAD:`, `Commit:`, `@ <sha>`), so match the SHA rather than a fixed key. Then classify:
 
-1. **No assessment** at `pre-forward-results/mythos/<project>/<scan-id>/` → bucket **`scan-needs-assessment`** → route to `pre-forward-report-preparation`. (Eligible only if the PMC's `Security model verified` is set; if not, it's blocked on model-verify — surface that instead of assessing.)
+1. **No assessment** under any assessment tree — today `pre-forward-results/mythos/` and `pre-forward-results/glasswing-asvs/`, so check both. Their scan-id shape is `<project>-<YYYY-MM-DD>-<sha>`, which does **not** match the timestamp directory names under `scans/glasswing/`, so match on project plus bundle identity (`PROVENANCE.md` commit), never on a shared id string → bucket **`scan-needs-assessment`** → route to `pre-forward-report-preparation`. (Eligible only if the PMC's `Security model verified` is set; if not, it's blocked on model-verify — surface that instead of assessing.)
 2. **Assessment exists** → read its `metadata.yml` `sanity_check`:
    - `RETURNED` → bucket **`scan-returned`** → escalate to ASF Tooling; do **not** forward a broken scan.
    - `PASS` / `PASS-with-notes` → cross-reference the PMC's tracker row:
      - `Forwarded scan to PMC` **blank** → bucket **`scan-needs-forward`** → route to `frontier-model-preparation-forward`.
      - `Forwarded scan to PMC` **set** → already delivered; no action (confirm the scan-id is recorded in the row's `Notes` / ponymail cell).
+
+**A zero-bundle result means the path is wrong, not that the archive is empty — stop and re-derive it.** The delivery tree has been renamed at least once (`scans/mythos/` → `scans/glasswing/`), and enumerating a directory that does not exist returns an empty list rather than an error, so the sweep reports "no new scans" with total confidence and no warning. This cost the 2026-08-30 sweep a full pass. Sanity-check any zero against `ls scans/glasswing | wc -l` before believing it. **Also check which branch the clone is on** (`git status`): it is a working checkout, not a read-only mirror, and it sat on the feature branch `report-quality-analysis` on 2026-08-30 — `git pull --ff-only` on a feature branch silently leaves you reading something other than `main`.
 
 Write the enumeration to a file and post-process with `jq`/`awk` **from a file** (never inline — shell-safety note above). A scan-id whose `project` is not a `Scan Requested = Yes` PMC is surfaced as an anomaly, never silently dropped. This is the trigger path end-to-end: new scan → `scan-needs-assessment`; assessed PASS → `scan-needs-forward` on the next sweep.
 
@@ -394,7 +396,7 @@ Write the enumeration to a file and post-process with `jq`/`awk` **from a file**
 This pass must cover **every open PR/change the operator has authored**, not only the ones recorded on the tracker —
 the tracker's `PR/Issues` cells lag reality (model and discoverability PRs get opened mid-discussion and added to the sheet later, if at all;
 the 2026-06 audit found several operator-opened model PRs — ozone, santuario, solr, creadur — that no tracker cell pointed at).
-Build the candidate set from **three** sources and dedupe:
+Build the candidate set from **two** sources and dedupe:
 
 1. **Tracker-listed** — every URL in a non-empty `PR/Issues` cell.
 2. **Author-discovered (exhaustive)** — query GitHub for *all* open PRs authored by the operator, paginating to exhaustion:
@@ -409,10 +411,7 @@ Build the candidate set from **three** sources and dedupe:
    Do **not** restrict to FRONTIER MODEL PREPARATION-spawned or `asf-security/*` branches —
    any open PR waiting on us counts,
    including ones opened from a past discussion that never made it onto the sheet.
-3. **Gerrit changes** — the operator also opens changes on Apache-adjacent Gerrit hosts (e.g. `gerrit.cloudera.org` for Kudu) that GitHub never sees.
-   For each Gerrit instance the team uses, list the operator's open changes (`is:open owner:self`) and fold them into the candidate set.
-   When a Gerrit host can't be reached from this environment (not allowlisted / auth not set up), **surface it as an explicit manual-check item** in the action list rather than silently dropping it —
-   an unreachable host is an unresolved direction, not an absent PR.
+**Do not sweep Gerrit.** Earlier revisions asked for a pass over Apache-adjacent Gerrit hosts (e.g. `gerrit.cloudera.org` for Kudu). That work is **done and closed** (operator, 2026-08-30); the host is not reachable from this environment anyway, so the check only ever produced a standing manual-check item that the operator had already actioned. Do not add it to the candidate set, and do not surface it as unresolved.
 
 Dedupe the union by `owner/repo#num` (a tracker URL and an author-discovered hit are the same PR;
 keep the PMC association from the tracker where one exists, else label the PR's repo).
@@ -508,7 +507,7 @@ For each `Scan Requested = Yes` PMC, produce a single classification:
 | `pre-flight-passed-awaiting-pmc-pitch-reply` | `Security model verified` set; pre-flight-pass pitch sent but PMC hasn't replied yet; `Expedite Claude OSS Requests` still empty. | Wait. No action unless overdue (>14d). |
 | `pmc-pitch-replied-awaiting-operator-decision` | `Expedite Claude OSS Requests` cell populated (with addresses or the literal string `none`); `Date scan requested` still blank. PMC has chosen path(s); waiting for the Security team operator to explicitly say "submit X" (or to defer further). | Surface for operator decision. `frontier-model-preparation-submit` is operator-gated — never auto-fire on this state. |
 | `submitted-awaiting-asf-tooling` | `Date scan requested` set; `Date scan received` blank. | Wait; surface if > 14 days. |
-| `scan-needs-assessment` | A scan bundle exists at `scans/mythos/<project>/<scan-id>/` in the archive but has **no** matching `pre-forward-results/mythos/<project>/<scan-id>/` assessment (detected in Step 2.5). The pre-forward assessment (sanity check + dispositions) hasn't been produced yet. | Run `pre-forward-report-preparation` (eligible only if the PMC's `Security model verified` is set; else surface as blocked-on-model-verify). |
+| `scan-needs-assessment` | A scan bundle exists at `scans/glasswing/<project>/<scan-id>/` in the archive but has **no** matching assessment under `pre-forward-results/` (either tree) (detected in Step 2.5). The pre-forward assessment (sanity check + dispositions) hasn't been produced yet. | Run `pre-forward-report-preparation` (eligible only if the PMC's `Security model verified` is set; else surface as blocked-on-model-verify). |
 | `scan-needs-forward` | The scan has an assessment with `sanity_check: PASS` / `PASS-with-notes`, but the PMC row's `Forwarded scan to PMC` is blank (Step 2.5). Ready to deliver. | Run `frontier-model-preparation-forward` (attaches the scan `.zip` + assessment `.md`, drafts the email, records the tracker + ponymail permalink). |
 | `scan-returned` | The scan's assessment recorded `sanity_check: RETURNED` (a broken scan — wrong project / stale model / truncation / cross-PMC leak). | Escalate to ASF Tooling for a re-run; do **not** forward. |
 | `enrollable-not-enrolled` | A repo in `Repositories requested` passes Check A on its **default branch** but is absent from `Repositories submitted` (detected by the merged-PR reconciliation in Step 3). Usually caused by a discoverability PR merging quietly — it vanishes from open-PR queries exactly when it becomes enrollable. | Surface with the repo's OSSF Criticality Score and how long it has been enrollable. Operator decides; on go-ahead, `frontier-model-preparation-submit` for that repo (phase-1 subset is fine — see hard rule 6 there). Never auto-enrol. |
@@ -633,12 +632,11 @@ Output format:
 - **Awaiting them (N):** <PMC / owner/repo#num> — we acted last
   @ <date>; nothing owed unless overdue.
 - **Direction UNRESOLVED (N) — drive this to zero before the
-  sweep is done:** <thread / PR / Gerrit change> — why it
-  couldn't be resolved (thread or message list not fully paged,
-  Gerrit host unreachable, ambiguous last actor). Each entry is
-  a gap to close *now*, not to defer — re-page the
-  thread/message list or do the manual Gerrit check until the
-  direction is definite.
+  sweep is done:** <thread / PR> — why it couldn't be resolved
+  (thread or message list not fully paged, ambiguous last
+  actor). Each entry is a gap to close *now*, not to defer —
+  re-page the thread/message list until the direction is
+  definite.
 
 ## Status sheet refresh
 - Status tab refreshed at <time>. <N> in flight, <N>
@@ -746,12 +744,12 @@ This section is the operator's final at-a-glance "is anyone waiting on me for an
 
 ### Step 7 — Hand off
 
-Before surfacing, confirm the direction ledger accounts for **every** in-flight thread *and* every open PR / Gerrit change with a definite "awaiting us" / "awaiting them" verdict,
+Before surfacing, confirm the direction ledger accounts for **every** in-flight thread *and* every open PR with a definite "awaiting us" / "awaiting them" verdict,
 and that the UNRESOLVED bucket is empty.
 If it isn't, the sweep is **not finished** —
-go back and drain the missing thread/message pages (Step 1) or do the outstanding manual Gerrit check (Step 3) first.
-A sweep is complete only when who-waits-for-whom is clear for every thread and every open PR/change;
-"I didn't get to page 2" or "that Gerrit host wasn't reachable" is an open action, not a closed sweep.
+go back and drain the missing thread/message pages (Step 1) first.
+A sweep is complete only when who-waits-for-whom is clear for every thread and every open PR;
+"I didn't get to page 2" is an open action, not a closed sweep.
 
 Surface the action list and stop.
 The user picks an item and invokes the matching SKILL by name.
