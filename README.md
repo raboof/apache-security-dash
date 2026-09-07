@@ -597,42 +597,27 @@ merge. The toolchain conventions (prek setup, commit-message
 trailer, sandbox-bypass etiquette) live in
 [`AGENTS.md`](AGENTS.md).
 
-## Agent-assisted contribution (apache-steward)
+## Agent-assisted contribution (Apache Magpie)
 
-This repo adopts the
-[`apache/airflow-steward`](https://github.com/apache/airflow-steward)
-framework via a snapshot mechanism. The framework is **not**
-vendored — it lives as a gitignored snapshot under
-`.apache-magpie/`, fetched on demand from the version pinned in
-the committed [`.apache-magpie.lock`](.apache-magpie.lock)
-(currently tracking the framework's `main` branch).
+This repo uses [Apache Magpie](https://magpie.apache.org/)
+skills, installed from the project's plugin marketplace rather
+than vendored or snapshotted into the tree. No magpie-owned
+artefact is committed here any more, and a fresh clone needs no
+setup step — the repo's own Glasswing / triage SKILLs under
+[`.agents/skills/`](.agents/skills/) work as they always did.
 
-The only framework artefact committed to this repo is the
-`magpie-setup` skill at
-[`.github/skills/magpie-setup/`](.github/skills/magpie-setup/);
-every other framework skill is a gitignored `magpie-`-prefixed
-symlink the setup skill wires up. This adopter currently wires
-only the framework's **always-on maintenance skills**
-(`setup-isolated-setup-*`, `setup-override-upstream`,
-`setup-shared-config-sync`, `list-skills`) — none of the opt-in
-`security-*`, `pr-management-*`, or `issue-*` families are
-installed. (The repo's own Glasswing / triage SKILLs are
-unaffected.)
+In Claude Code, add the marketplace once per machine and install
+the families you want:
 
-A fresh clone needs the snapshot populated before any framework
-skill is invocable. In your agent harness, run:
+    /plugin marketplace add apache/magpie
+    /plugin install magpie-setup@apache-magpie
+    /plugin install magpie-utilities@apache-magpie
 
-    /magpie-setup
-
-(or follow [`.claude/skills/magpie-setup/`](.claude/skills/magpie-setup/))
-to fetch the snapshot per the committed lock, scaffold the
-gitignored symlinks, and install the post-checkout hook.
-
-Adopter-specific modifications to framework workflows live in
-[`.apache-magpie-overrides/`](.apache-magpie-overrides/)
-(committed) — never edit the snapshot directly. Framework changes
-go via PR to
-[`apache/airflow-steward`](https://github.com/apache/airflow-steward).
+Adopter-specific configuration consumed by the framework skills
+lives in [`.apache-magpie-overrides/`](.apache-magpie-overrides/)
+(committed; the per-developer `user.md` inside it is gitignored).
+Framework changes go via PR to
+[`apache/magpie`](https://github.com/apache/magpie).
 
 ## License
 

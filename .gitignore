@@ -12,15 +12,6 @@ __pycache__/
 # Environment files
 .env
 
-# apache-magpie — gitignored snapshot of the framework, refreshed
-# by /magpie-setup upgrade. Build artefact, not source.
-/.apache-magpie/
-
-# Per-machine local-pin file. Records what THIS machine fetched and
-# when. Compared against the committed .apache-magpie.lock to
-# detect drift.
-/.apache-magpie.local.lock
-
 # User-scope override — per-developer config (e.g. personal Gmail
 # OAuth credentials path). The .apache-magpie-overrides/ directory and
 # skill-scope overrides stay committed; this user-scope file does not.
@@ -28,23 +19,6 @@ __pycache__/
 
 # Project-local per-machine settings (sandbox allowlist etc.).
 /.claude/settings.local.json
-
-# Symlinks created by /magpie-setup into the gitignored snapshot.
-# Every framework skill is symlinked under the magpie- prefix, so a
-# single glob covers them all. Layout B (per-skill double-symlinked)
-# → both layers need the ignore line. The committed magpie-setup
-# bootstrap is kept tracked by the !negation lines below — without
-# them the magpie-* glob would ignore it and a plain `git add` would
-# silently skip the one copied framework skill.
-/.claude/skills/magpie-*
-!/.claude/skills/magpie-setup
-/.github/skills/magpie-*
-!/.github/skills/magpie-setup
-# Universal agent-skills target (.agents/skills/) — the neutral path
-# shared by Codex, Cursor, Gemini CLI, Copilot, OpenCode, … wired flat
-# into the snapshot. Same magpie-* glob + magpie-setup negation.
-/.agents/skills/magpie-*
-!/.agents/skills/magpie-setup
 
 # macOS Finder metadata
 .DS_Store

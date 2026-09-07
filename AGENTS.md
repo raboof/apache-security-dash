@@ -12,18 +12,14 @@ This lets different agent runtimes find them with their preferred directory layo
 Helper tools that have outgrown the single-file-inside-a-SKILL pattern live under `tools/` as proper Python projects (`pyproject.toml` + tests + CI); see the [README's "Two helper tiers" section](README.md#two-helper-tiers--inline-scripts-vs-tools-projects).
 The [README](README.md) at the repo root is the entry point and the canonical workflow reference (diagrams, per-PMC state machine, sequence diagram).
 
-## apache-steward framework
+## Apache Magpie framework
 
-This repo adopts the [`apache/airflow-steward`](https://github.com/apache/airflow-steward) framework via the snapshot mechanism.
-The framework's skills are gitignored symlinks (each `magpie-`-prefixed) into the `.apache-magpie/` snapshot;
-only the always-on `setup-*` / `list-*` maintenance skills are wired in this adopter (no opt-in `security-*` / `pr-management-*` / `issue-*` families).
+This repo uses [Apache Magpie](https://magpie.apache.org/) skills installed from the project's plugin marketplace (`apache/magpie`) — not vendored, not snapshotted.
+There is no snapshot to fetch and no repo-side setup step; install the plugin families you want in your own harness, once per machine.
+The contributor-facing summary lives in the [Agent-assisted contribution section of `README.md`](README.md#agent-assisted-contribution-apache-magpie).
 
-A fresh clone needs the snapshot populated before any framework skill is invocable.
-Run `/magpie-setup` (or follow [`.claude/skills/magpie-setup/`](.claude/skills/magpie-setup/)) to fetch it per the committed [`.apache-magpie.lock`](.apache-magpie.lock).
-The contributor-facing summary lives in the [Agent-assisted contribution section of `README.md`](README.md#agent-assisted-contribution-apache-steward).
-
-Adopter-specific modifications to framework-skill workflows live in [`.apache-magpie-overrides/`](.apache-magpie-overrides/) — never edit the snapshot directly.
-Framework changes go via PR to [`apache/airflow-steward`](https://github.com/apache/airflow-steward).
+Adopter-specific configuration consumed by framework skills lives in [`.apache-magpie-overrides/`](.apache-magpie-overrides/).
+Framework changes go via PR to [`apache/magpie`](https://github.com/apache/magpie).
 
 ## Pre-commit hooks
 
