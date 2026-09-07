@@ -325,6 +325,26 @@ Exploit that:
 5. **Save** the cache with `last_sweep` set to the start time of this sweep (pass the timestamp in;
    do not call `Date.now()` inside a helper that must stay deterministic).
 
+**The working set for the rest of the sweep is the whole cache — every record in `threads` — not the changed set.**
+The changed set exists only to decide *which records need re-reading*;
+once step 4 has refreshed them, the cache holds a current verdict for every thread the programme has ever seen,
+and that full map is what Step 4's classification, Step 5's direction ledger and Step 6.5's unresolved-asks pass all read from.
+
+This is the single easiest way to produce a confident, wrong sweep,
+and it fails in the direction that hides work rather than inventing it.
+A thread that went quiet *before* the `after:` window — a PMC reply nobody answered three weeks ago — is by construction absent from the changed set,
+so a ledger built from the changed set alone silently omits exactly the threads that have been waiting longest.
+The 2026-09-07 sweep did this: it reported **4** threads awaiting us when the cache held **41**,
+and Guacamole — last message from the PMC on 08-07, cached as `awaiting: us` the whole time — never appeared in the ledger at all
+and had been sitting 31 days.
+Most of the other 41 were correctly annotated as bare acks with no ask, which is the Step 6.5 distinction and is fine;
+the bug is that they were never *considered*, not that they were dismissed.
+
+Two mechanical consequences:
+
+- Iterate `cache["threads"].values()`, never the changed-set list, when building the ledger or the action list.
+- The ledger's thread count must equal the number of non-noise records in the cache. Step 7 makes that a completion check.
+
 The cache is a *speed + correctness aid*, never the source of truth —
 Gmail and the spreadsheet are.
 If a record looks stale, contradictory, or you're about to act on it, re-pull the thread.
@@ -627,8 +647,18 @@ Output format:
 - <PMC> — forwarded <date>; end-to-end <D days>.
 
 ## Who waits for whom — direction ledger (every thread + every open PR/change)
+<!-- Built from EVERY record in the thread-state cache, not from this
+     sweep's changed set. Threads that went quiet before the `after:`
+     window are absent from the changed set by construction and are
+     exactly the ones that have waited longest — see Step 1. State the
+     cache total here so the omission is visible if it recurs. -->
+- **Cache coverage:** <N> non-noise threads in the cache; <N>
+  classified below. These two numbers must match.
 - **Awaiting us (N):** <PMC / owner/repo#num> — <thread or PR> —
   they acted last @ <date>; what we owe: <one line>.
+  Include long-quiet threads, not just ones that moved this
+  sweep; annotate each as a genuine ask or a bare ack per
+  Step 6.5 rather than dropping it.
 - **Awaiting them (N):** <PMC / owner/repo#num> — we acted last
   @ <date>; nothing owed unless overdue.
 - **Direction UNRESOLVED (N) — drive this to zero before the
@@ -751,6 +781,17 @@ go back and drain the missing thread/message pages (Step 1) first.
 A sweep is complete only when who-waits-for-whom is clear for every thread and every open PR;
 "I didn't get to page 2" is an open action, not a closed sweep.
 
+**Run the count check, do not eyeball it.** Compare the number of threads classified in the ledger against the number of non-noise records in the thread-state cache:
+
+```python
+cached = [t for t in cache["threads"].values() if t.get("awaiting") != "noise"]
+assert len(classified) == len(cached), (
+    f"ledger covers {len(classified)} of {len(cached)} cached threads"
+)
+```
+
+A shortfall means the ledger was built from this sweep's changed set rather than the whole cache (see Step 1) — the threads missing are the ones that went quiet earliest, i.e. the ones most likely to be owed a reply. Rebuild from `cache["threads"]` before surfacing anything. The 2026-09-07 sweep shipped with 4 of 41 and read as complete.
+
 Surface the action list and stop.
 The user picks an item and invokes the matching SKILL by name.
 Do not chain into a SKILL unbidden.
@@ -807,7 +848,12 @@ Do not chain into a SKILL unbidden.
   this both buries PMC replies we owe answers to and invents "awaiting us" items we already answered.
   Resolve the latest message per-thread with `get_thread` (MINIMAL),
   cached against last sweep so it stays cheap.
-- A sweep that reports `pr-needs-reply` from `reviewDecision` / `updatedAt` / the email threads instead of actually fetching each open PR's `comments` + `reviews` (Step 3).
+- A sweep that builds the direction ledger from the **changed set** instead of the whole thread-state cache (Step 1, Step 7).
+  This is the inverse of the pagination failures above and it is worse, because the changed set is *supposed* to be a subset —
+  nothing looks truncated, no page is missing, and the action list reads as complete.
+  What it omits is precisely the threads that stopped moving earliest, i.e. the ones most likely to be owed a reply.
+  The 2026-09-07 sweep reported **4** threads awaiting us against **41** in the cache, and Guacamole — a PMC reply from 08-07, cached `awaiting: us`, three repos and the whole engagement parked on it — was never listed at all.
+  Iterate `cache["threads"].values()`; run the Step 7 count check before surfacing.
   A `COMMENTED` review or an issue-comment carries a maintainer's question with **no** `CHANGES_REQUESTED` and no `reviewDecision` change, so the shortcut reports the PR clean while a real question sits unanswered.
   The 2026-07-05 Maven `#12421` (elharo scope review) and CloudStack `#13293` (review-process question) misses are the reference failure — both were caught only by a dedicated comment-fetch re-run.
   Fetch the comment/review threads on **every** sweep (mechanical recipe in Step 3); never derive the flag second-hand.
