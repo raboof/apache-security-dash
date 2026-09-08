@@ -816,7 +816,8 @@ Do not chain into a SKILL unbidden.
 | Enroll scan in the tracker + draft PMC notification | `frontier-model-preparation-submit` |
 | Forward the scan bundle + assessment (attachments) to PMC | `frontier-model-preparation-forward` |
 | Generate a status rollup | `frontier-model-preparation-status` |
-| Produce a fresh threat-model draft for a PMC | `threat-model-producer` |
+| Produce a fresh threat-model draft for a PMC (no model yet) | `magpie-security:security-model-prepare` |
+| Grow an existing model to close rubric gaps | `magpie-security:security-model-update` |
 
 ## Style notes
 

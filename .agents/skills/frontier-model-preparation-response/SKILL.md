@@ -9,8 +9,9 @@ description: >-
   Use whenever someone replies to (or directly asks about) Jarek's "[IMPORTANT][SECURITY] Possibility of running your project through Frontier Model Preparation security scan" announcement,
   or otherwise asks for the scan.
   Output is an email draft for human review — never sends.
-  Bundles a companion threat-model producer
-  to attach to the response when one is needed.
+  Routes model drafting to the Magpie security-model SKILLs
+  (which delegate the writing to the Alpha-Omega threat-model skill set)
+  when a model needs producing or growing.
 ---
 
 # Frontier Model Preparation scan-response SKILL
@@ -470,7 +471,7 @@ That sequence is the same for every PMC.
 
 **Separately**, the template raises an offer for PMC members who'll be doing the triage work on the results:
 **Anthropic's Claude-for-Open-Source subscription**,
-which gives them access to Claude Opus 4.7 + tooling like Apache Magpie
+which gives them access to Anthropic's current Opus-class models + tooling like Apache Magpie
 (the hopefully-to-be-established ASF TLP at github.com/apache/magpie)
 to manage the scan findings —
 convert them into GitHub issues, pre-triage,
@@ -511,13 +512,11 @@ Pre-flight is complete for Apache <PMC name>:
     PR(s)#NN+#NN>.
 
 Ready to queue whenever you give the green light — we
-don't auto-submit. One scheduling note worth flagging:
-we're actively working out when each project's scan will run
-and scheduling them in criticality order — green-lighting now
-(and landing anything still in flight above) puts you into the
-queue at your criticality rank, and the sooner it lands the
-sooner we can schedule your scan. Typical end-to-end cycle is
-days to a couple of weeks depending on queue position.
+don't auto-submit. Repos are scanned in the sequence of
+submission, so the green light is what sets your place in
+it; green-lighting now (and landing anything still in flight
+above) is the one lever you have. I'd rather not give you a
+date I can't stand behind.
 
 A program-shape note for context.
 
@@ -535,7 +534,7 @@ triage work:
 When scan results come back, the work of reading them,
 classifying findings against the threat model, deciding
 on fixes, and drafting PRs is exactly the kind of thing
-Claude Opus 4.7 has proven solid at. Several ASF projects
+Claude has proven solid at. Several ASF projects
 are using it in this capacity today, paired with Apache
 Magpie (hopefully to be established as an ASF TLP) — a
 set of reusable skills at
@@ -709,7 +708,7 @@ The scan accepts any *human-readable* threat model that:
 - says what's in scope for the scan and what's out (e.g. `contrib/`, `examples/`, demo apps),
 - includes the recurring false-positives the project already knows about, so the scan does not re-discover them.
 
-For projects that **don't** already have such a model, or want to update the one they have before the scan, the ASF Security team will run the `threat-model-producer` SKILL (Michael Scovetta's recipe, imported verbatim at <https://gist.github.com/scovetta/2dc9a0695c7cbcc32e23799e00d2ced3>) against the project's public artifacts using Claude Opus 4.7.
+For projects that **don't** already have such a model, the ASF Security team will run the Magpie `security-model-prepare` SKILL against the project's public artifacts; for projects that have a model and want to grow it before the scan, `security-model-update`. Both delegate the model-writing itself to the **Alpha-Omega threat-model skill set** (<https://github.com/alpha-omega-security/threat-model>) — an orchestrator plus specialists (recon, surface, interview, authoring, backtest, sidecar, triage) whose `output-structure.md` defines the §1.1–§1.19 section structure the scan grades against.
 The output is a draft `THREAT-MODEL.md` that:
 
 - is itself human-readable
@@ -731,7 +730,7 @@ Before the scan is queued,
 the Security team's own agent runs a pre-flight pass against the project's repo at the designated commit
 and confirms it can locate the threat model via `AGENTS.md` → `SECURITY.md`.
 The mechanics of that pre-flight —
-both the discoverability check and the minimum-bar completeness check against the `threat-model-producer` rubric —
+both the discoverability check and the minimum-bar completeness check against the Alpha-Omega rubric —
 live in the companion `frontier-model-preparation-model-verify` SKILL;
 invoke it once a model has been nominated.
 **If the agent cannot find the model, the scan is refused**
@@ -866,9 +865,9 @@ run those four gates on every `[GLASSWING]` request before drafting a reply.
 4. **Decide whether a threat-model draft is needed in this reply.**
    - If the requester is asking process / framework questions only (the typical first round),
      the reply contains *no* attached model —
-     answer in prose and offer the threat-model-producer SKILL as the next step if they want it.
+     answer in prose and offer the Magpie security-model SKILLs (`security-model-prepare` / `security-model-update`) as the next step if they want it.
    - If the user explicitly says "attach the draft",
-     run `threat-model-producer` against the relevant repository
+     run `magpie-security:security-model-prepare` (or `security-model-update`) against the relevant repository
      and attach the generated markdown (inline, fenced, or as a follow-up PR link).
      The draft is **what** the reply attaches; the SKILL itself is not attached.
 

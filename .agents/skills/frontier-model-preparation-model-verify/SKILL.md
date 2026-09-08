@@ -5,11 +5,11 @@ description: >-
   Given a PMC's nominated security model (file path or URL in their repo),
   check two things — (1) discoverability via AGENTS.md -> SECURITY.md
   so the scan agent can mechanically find it,
-  and (2) completeness against the threat-model-producer rubric (the SKILL bound in this same repo).
+  and (2) completeness against the Alpha-Omega threat-model rubric (github.com/alpha-omega-security/threat-model).
   Produce a concrete remediation:
   either draft an email reply to the original PMC thread describing where verification stands and proposing improvements,
   or — when the gap is mechanical (e.g. AGENTS.md missing the link line, or a small set of missing sections) —
-  generate the additions via threat-model-producer and open a PR with the diff.
+  generate the additions via the Magpie security-model skills (which delegate the model-writing to Alpha-Omega) and open a PR with the diff.
   After verification passes,
   hand off to frontier-model-preparation-update to flip the `Security model verified` cell for that PMC.
   Use whenever a PMC nominates a security model (in their [GLASSWING] request, in a reply, or in their repo)
@@ -91,16 +91,21 @@ that's a prerequisite handled by `frontier-model-preparation-response` (the disc
    and public attention is fine on "add one link line"),
    email replies for everything else.
 
-3. **Use the project's own voice for proposed model content.** When generating threat-model section drafts via `threat-model-producer`,
-   every claim must carry a `*(documented)*` / `*(maintainer)*` / `*(inferred)*` tag,
-   and every `*(inferred)*` claim must route to a matching open question in §14.
+3. **Use the project's own voice for proposed model content.** When generating threat-model section drafts via `magpie-security:security-model-update` (or `security-model-prepare` for a project with no model at all),
+   every claim must carry exactly one Alpha-Omega provenance tag —
+   `*(documented, source)*` (cite a locator, not a bare filename),
+   `*(maintainer, YYYY-MM)*` (always dated),
+   `*(assumption, QN)*` (a conservative default the author will act on now),
+   or `*(inferred, QN)*` (genuinely open, no committed default) —
+   and every `*(assumption, QN)*` / `*(inferred, QN)*` claim must resolve its `QN`
+   to a matching item in §1.18.
    Do not silently fabricate maintainer positions.
    The PR is a *starting point* for the PMC to react to, not a finished model.
 
 4. **Default to *email reply* for substantive gaps; default to *PR* for mechanical fixes.**
    A missing `AGENTS.md` link is mechanical (one-line repo add).
-   A missing §8 "Properties provided" section is substantive (needs maintainer input).
-   Borderline cases (e.g. missing §11a known-non-findings list) lean toward email with an offer to draft a PR on request.
+   A missing §1.11 "Security properties the project provides" section is substantive (needs maintainer input).
+   Borderline cases (e.g. missing §1.15 known-non-findings list) lean toward email with an offer to draft a PR on request.
    The email always replies to the original `[GLASSWING]` thread so the PMC sees it in the same conversation they started.
 
 5. **Pre-flight is a check, not a re-write.**
@@ -137,7 +142,7 @@ that's a prerequisite handled by `frontier-model-preparation-response` (the disc
    lead with "**this is a proposal for the PMC to review —
    please correct, reject, or discuss as needed**" (or similar).
    Do not phrase suggestions as obligations ("you need to do X" / "the scan requires Y").
-   The scan does not require any of the §7 / §8 / §11a / §13 gaps to be filled before it runs;
+   The scan does not require any of the §1.10 / §1.11 / §1.15 / §1.17 gaps to be filled before it runs;
    it just runs better when they are.
    Say so plainly.
 
@@ -185,7 +190,7 @@ Acceptable terminations:
 - The threat model is in `SECURITY.md` itself.
 - `SECURITY.md` links to an in-repo file (e.g. `docs/threat-model.md`) and that file exists at the commit.
 - `SECURITY.md` links to a project-site URL (e.g. `https://<pmc>.apache.org/security/threat-model/`) and the URL resolves to a model document.
-  The website is acceptable per the threat-model-producer §3.1 rule.
+  A project-site URL is an acceptable terminus — what matters is that the chain mechanically reaches a model document.
 
 Check failures:
 
@@ -200,33 +205,68 @@ Check failures:
 ### Check B — Completeness
 
 Read the model.
-Cross-check against the threat-model-producer rubric (the SKILL at `.github/skills/threat-model-producer/`).
+Cross-check against the **Alpha-Omega threat-model rubric**, maintained publicly at
+<https://github.com/alpha-omega-security/threat-model>;
+the section structure this SKILL grades against is its
+`skills/threat-model/references/output-structure.md` (§1.1–§1.19),
+and §1.17 defines the closed disposition set.
+
+**Do not paraphrase that rubric into this file** — cite it by URL.
+A second copy of a spec is a second spec, and this one is maintained upstream.
+
+> **Renumbering note (2026-09-08).** This SKILL previously graded against
+> Michael Scovetta's numbering (§2 scope, §3 out-of-scope, §6 inputs, §7 adversary,
+> §8/§9 properties, §10 downstream, §11a known-non-findings, §13 dispositions).
+> Tracker `Notes` cells and canned responses written **before** that date use the old
+> numbers. The mapping, for reading historical records:
+>
+> | Old (Scovetta) | New (Alpha-Omega) |
+> | --- | --- |
+> | §2 Scope and intended use | §1.2 Scope and intended use |
+> | §3 Out of scope | §1.3 Out of scope (explicit non-goals) |
+> | §6 Inputs / per-parameter trust | §1.7 Assumptions about inputs |
+> | §7 Adversary model | §1.10 Adversary model |
+> | §8 Properties provided | §1.11 Security properties the project provides |
+> | §9 Properties *not* provided | §1.12 Security properties the project does *not* provide |
+> | §10 Downstream responsibilities | §1.13 Downstream responsibilities |
+> | §11a Known non-findings | §1.15 Known non-findings (recurring false positives) |
+> | §13 Triage dispositions | §1.17 Triage dispositions |
+> | §14 Open questions | §1.18 Open questions for the maintainers |
+> | §5a Build/config variants | §1.6 Build-time and configuration variants |
+> | §15 Machine-readable companion | §1.19 Machine-readable companions |
 The *minimum bar* for a Frontier Model Preparation-ready model is the sections below;
 each must either contain substantive content or be marked `Not applicable — <reason>`.
 
 | Section | Why the scan needs it |
 | --- | --- |
-| §2 Scope and intended use (with the component-family table) | Tells the scan which directories are in-model. Without it, every finding in `examples/` or `contrib/` lands on the PMC's plate. |
-| §3 Out of scope (explicit non-goals) | The complement of §2 — same reasoning. |
-| §6 Inputs and the per-parameter trust table | Triagers route findings against specific sinks; prose alone isn't enough. |
-| §7 Adversary model | Lets the agent classify "in-model attacker" vs "out-of-model attacker" without re-deriving. |
-| §8 Security properties provided (with violation symptom + severity) | The "what's a real bug" list. The single most-cited section in triage. |
-| §9 Security properties *not* provided (with false-friends + well-known attack classes) | Pre-empts the most common false-positive category. |
-| §10 Downstream responsibilities | What the integrator must do — clarifies which finding categories aren't the project's bug. |
-| §11a Known non-findings | The recurring-false-positive list that feeds the scan agent's suppression. **Highest leverage section for noise reduction.** |
-| §13 Triage dispositions | The closed set of routing outcomes. Without it, every finding is implicitly `MODEL-GAP`. |
+| §1.2 Scope and intended use (with the component-family table) | Tells the scan which directories are in-model. Without it, every finding in `examples/` or `contrib/` lands on the PMC's plate. |
+| §1.3 Out of scope (explicit non-goals) | The complement of §1.2 — same reasoning. |
+| §1.7 Assumptions about inputs (the per-input trust table) | Triagers route findings against specific sinks; prose alone isn't enough. |
+| §1.10 Adversary model | Lets the agent classify "in-model attacker" vs "out-of-model attacker" without re-deriving. |
+| §1.11 Security properties the project provides (with violation symptom + severity) | The "what's a real bug" list. The single most-cited section in triage. |
+| §1.12 Security properties the project does *not* provide (with false-friends + well-known attack classes) | Pre-empts the most common false-positive category. |
+| §1.13 Downstream responsibilities | What the integrator must do — clarifies which finding categories aren't the project's bug. |
+| §1.15 Known non-findings (recurring false positives) | The list that feeds the scan agent's suppression. **Highest leverage section for noise reduction.** |
+| §1.17 Triage dispositions | The closed set of routing outcomes. Without it, every finding is implicitly `MODEL-GAP`. |
 
 Sections explicitly **not** part of the minimum bar (nice to have, but verification passes without them):
 
-- §5a Build-time and configuration variants — only required if the project has security-relevant build flags.
-- §15 Machine-readable companion (`threat-model.yaml`) — optional; useful but not blocking.
+- §1.6 Build-time and configuration variants — only required if the project has security-relevant build flags.
+- §1.19 Machine-readable companions — optional; useful but not blocking.
+- §1.4 Trust boundaries and data flow, §1.5 Assumptions about the environment,
+  §1.8 Assumptions and guarantees about outputs, §1.9 Assumptions about dependencies,
+  §1.14 Known misuse patterns, §1.16 Conditions that would change this model —
+  all part of the Alpha-Omega structure and all worth having, but **deliberately not added to the
+  minimum bar** when the rubric was renumbered on 2026-09-08. The bar is the slice the scan agent
+  depends on mechanically; widening it would retroactively fail models this SKILL has already passed.
+  Surface these as improvement proposals, never as gates.
 
 If a section is `Not applicable — <reason>`,
 verification passes for that section (the maintainer has thought about it and ruled it out).
 Empty headings with no commentary count as missing.
 
 **Important — completeness is graded, not pass/fail.**
-A model with substantive coverage of the core rubric (scope, out-of-scope, inputs, adversary, properties) but gaps in §11a or §13 is still good enough for the scan to run.
+A model with substantive coverage of the core rubric (scope, out-of-scope, inputs, adversary, properties) but gaps in §1.15 or §1.17 is still good enough for the scan to run.
 The gaps are recorded as *improvement proposals* (per hard rule 7), not as blockers.
 The only hard-fail under this SKILL is **discoverability** —
 without it the scan agent literally cannot reach the model and cannot start.
@@ -297,15 +337,15 @@ Every other failure mode produces a proposal that the PMC decides what to do wit
    multiple repos share one):
      Model: <URL>
        Repos sharing this model: <list>
-       §2 Scope                  present / partial / missing
-       §3 Out of scope           ...
-       §6 Inputs                 ...
-       §7 Adversary              ...
-       §8 Properties provided    ...
-       §9 Properties not         ...
-       §10 Downstream resp.      ...
-       §11a Known non-findings   ...
-       §13 Triage dispositions   ...
+       §1.2  Scope                 present / partial / missing
+       §1.3  Out of scope          ...
+       §1.7  Inputs / trust table  ...
+       §1.10 Adversary             ...
+       §1.11 Properties provided   ...
+       §1.12 Properties NOT provided ...
+       §1.13 Downstream resp.      ...
+       §1.15 Known non-findings    ...
+       §1.17 Triage dispositions   ...
    ```
 
    When the verification message goes to the PMC (or into the per-PMC enrollment notes ASF Tooling reads off the tracker),
@@ -322,12 +362,13 @@ Every other failure mode produces a proposal that the PMC decides what to do wit
      create with the minimum scaffold (see template below).
    - **AGENTS.md present, no link**: insert a single Security section.
    - **Model sections missing**:
-     invoke `threat-model-producer` against the repo's public artefacts to generate drafts for each missing section,
-     with every claim carrying a provenance tag (predominantly `*(inferred)*` on first draft) and corresponding §14 open questions.
+     invoke `magpie-security:security-model-update` against the repo's public artefacts to generate drafts for each missing section
+     (it delegates the model-writing to the Alpha-Omega skill set; when those skills are not loaded in the session it follows the published rubric by URL).
+     Every claim carries a provenance tag (predominantly `*(inferred, QN)*` on first draft) and a corresponding §1.18 open question.
      The PR scope is *adding* those sections — do not edit existing content.
 
 7. **For issue-path remediations**,
-   draft the issue body (template below) listing the gaps with section citations and the rationale ("the Frontier Model Preparation scan needs §11a to suppress recurring false positives; without it the noise rate is X-fold higher").
+   draft the issue body (template below) listing the gaps with section citations and the rationale ("the Frontier Model Preparation scan needs §1.15 to suppress recurring false positives; without it the noise rate is X-fold higher").
 
 8. **Show the artefact and wait.**
    Render full PR diff (or issue body), the target repo, and the proposed title.
@@ -353,10 +394,10 @@ Every other failure mode produces a proposal that the PMC decides what to do wit
 | `SECURITY.md` missing but model file exists | PR creating `SECURITY.md` stub linking to it | Mechanical, PMC just needs to ratify the canonical pointer. |
 | `SECURITY.md` exists but doesn't link to a model and has no embedded model content | Email reply | PMC needs to decide where the model lives. |
 | Project-site URL 404 / redirects | Email reply | PMC owns the destination, not us. |
-| 1–2 model sections missing, project public artefacts are rich enough to draft from | PR with draft additions via `threat-model-producer` | Maintainer reacts to a concrete starting point. |
-| ≥ 3 model sections missing, OR §7 adversary / §8 properties absent | Email reply listing all gaps with rubric citations | Substantive work that the PMC has to drive. Drafting it all unsolicited is too much. |
+| 1–2 model sections missing, project public artefacts are rich enough to draft from | PR with draft additions via `magpie-security:security-model-update` | Maintainer reacts to a concrete starting point. |
+| ≥ 3 model sections missing, OR §1.10 adversary / §1.11 properties absent | Email reply listing all gaps with rubric citations | Substantive work that the PMC has to drive. Drafting it all unsolicited is too much. |
 | Sections present but tagged with hedge-words (`(implicit)`, `(generally known)`) | Email reply with a one-line note about provenance tagging discipline | Not blocking the scan per se, but worth flagging. |
-| §11a (known non-findings) missing on a project that's been scanned before | Email reply with offer to draft from prior scan findings on request | Highest-leverage section but only the maintainer knows which findings were false positives. |
+| §1.15 (known non-findings) missing on a project that's been scanned before | Email reply with offer to draft from prior scan findings on request | Highest-leverage section but only the maintainer knows which findings were false positives. |
 
 When in doubt,
 lean toward **email reply** with the explicit offer to draft a PR if the PMC prefers.
@@ -406,7 +447,7 @@ team has reached out separately on the PMC's private list with
 the program details; this PR is the public-facing repo piece.
 
 The Security team uses
-[`threat-model-producer`](https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573)
+[Alpha-Omega threat-model rubric](https://github.com/alpha-omega-security/threat-model)
 as the rubric for what a complete model looks like — but this
 PR is just the *link*; nothing about the model content itself
 changes.
@@ -442,15 +483,15 @@ declarations, and known non-findings before reporting issues.
 
 **PR body**: same shape as Template 1 (no "Frontier Model Preparation" mention; generic "an automated agentic security scan we're piloting" phrasing), framed as the file-creation case.
 
-### Template 3 — PR: add draft sections via `threat-model-producer`
+### Template 3 — PR: add draft sections via `magpie-security:security-model-update`
 
 **Title**: `SECURITY.md: draft additions for <list of section numbers>`
 
 **Branch**: `asf-security/security-model-additions-<YYYY-MM-DD>`
 
 **Diff**: append the generated sections to the existing model,
-each carrying provenance tags per §3.3 of the producer SKILL.
-Group all the `*(inferred)*` claims into a fresh §14 Open questions block at the end (or merge into the existing one).
+each carrying provenance tags per the rubric's "Provenance tags" section.
+Group all the `*(inferred, QN)*` claims into a fresh §1.18 Open questions block at the end (or merge into the existing one).
 
 **PR body skeleton**:
 
@@ -464,7 +505,7 @@ filled in before it runs — it just runs better when they are.
 
 Context: the ASF Security team is preparing this project for
 an automated agentic security scan we're piloting. Per the
-[`threat-model-producer`](https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573)
+[Alpha-Omega threat-model rubric](https://github.com/alpha-omega-security/threat-model)
 rubric — this PR proposes **draft** content for the following
 currently-empty sections, written from the project's own
 public artefacts (README, docs, header comments, FAQ):
@@ -478,14 +519,15 @@ Every claim in the draft carries a provenance tag:
 - *(documented)* — lifted from a project doc; cited.
 - *(inferred)* — agent guess from code structure or domain
   norms. **Every *(inferred)* tag has a matching question in
-  §14 "Open questions"** for the PMC to confirm, correct,
+  §1.18 "Open questions for the maintainers"** for the PMC to confirm, correct,
   or strike.
 
 What's needed from the PMC:
 
-1. Walk the §14 questions and answer in-thread (a one-line
+1. Walk the §1.18 questions and answer in-thread (a one-line
    confirm / correct / strike per question is enough — see the
-   producer SKILL §3.2 for the "react, don't compose" pattern).
+   Alpha-Omega's `threat-model-interview` skill, which frames question
+   waves as proposed answers rather than blank prompts).
 2. We'll fold the answers in and the *(inferred)* tags will
    become *(maintainer)*.
 
@@ -530,7 +572,7 @@ Status update on the pre-flight for the Frontier Model Preparation scan against
   model is substantive on <list the sections that landed
   well — e.g. "scope, out-of-scope, inputs, downstream
   responsibilities">. We ran it against the rubric in
-  https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573
+  https://github.com/alpha-omega-security/threat-model
   and flagged a few gaps as suggestions (nothing here blocks
   the scan; closing them reduces noise in the output):
 
@@ -544,8 +586,8 @@ Two paths forward, either works for us:
 
 1. You drive — walk the gaps section by section, ping us when
    you'd like a re-check.
-2. We draft. We can run the threat-model-producer recipe
-   (https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573)
+2. We draft. We can run the Alpha-Omega threat-model recipe
+   (https://github.com/alpha-omega-security/threat-model)
    against your repo's public artefacts, open a PR with
    *(inferred)*-tagged drafts for each gap, and collect the
    open questions at the end so you react to a concrete
@@ -670,7 +712,7 @@ git commit -m "$(cat <<'EOF'
 
 <commit body — same content as the PR body's first paragraph>
 
-Generated-by: Claude Code (Claude Opus 4.7)
+Generated-by: Claude Code (<the model that actually drafted it, e.g. Claude Opus 5>)
 EOF
 )"
 git push -u origin asf-security/<purpose>-<YYYY-MM-DD>
@@ -749,12 +791,12 @@ This SKILL does not write to the spreadsheet or call Gmail tools directly.
 ## Style notes
 
 - **Concrete over abstract.**
-  "Your model doesn't have a §11a section" beats "your model has gaps".
+  "Your model doesn't have a §1.15 section" beats "your model has gaps".
   Cite the rubric.
 - **Single ask per artefact.**
   Per hard rule 2, one remediation per failing check.
 - **Don't lecture.**
-  Link to `threat-model-producer` rather than re-explaining what a threat model is.
+  Link to the Alpha-Omega rubric (<https://github.com/alpha-omega-security/threat-model>) rather than re-explaining what a threat model is.
   The PMC's threat model is *their* document;
   the rubric exists to help, not to impose.
 - **Don't restate what the recipient already knows.**
@@ -766,11 +808,12 @@ This SKILL does not write to the spreadsheet or call Gmail tools directly.
   When generating model section drafts via the producer SKILL,
   the prose should read as if the project wrote it about itself — first person plural, project-specific examples.
   The Security-team voice is only the PR body / issue body / this SKILL's own prose.
-- **Provenance discipline is the producer SKILL's job;
+- **Provenance discipline belongs to the Alpha-Omega rubric;
   don't shortcut it.**
-  Every drafted claim must carry exactly one of `*(documented)*` / `*(maintainer)*` / `*(inferred)*`.
-  Hedge variants ("*(implicit)*", "*(generally known)*") are not allowed —
-  the producer SKILL §3.3 is explicit about that.
+  Every drafted claim carries exactly one of `*(documented, source)*` / `*(maintainer, YYYY-MM)*` /
+  `*(assumption, QN)*` / `*(inferred, QN)*`, and every `QN` resolves to a §1.18 item.
+  Hedge variants ("*(implicit)*", "*(generally known)*", "*(documented in purpose)*") are not allowed —
+  the rubric's "Provenance tags" section is explicit about that.
 
 ## Examples of bad outputs (avoid)
 
@@ -793,6 +836,8 @@ This SKILL does not write to the spreadsheet or call Gmail tools directly.
 ## Provenance
 
 This SKILL formalizes the pre-flight discoverability + model-completeness check that `frontier-model-preparation-response`'s "Hard pre-flight" rule alludes to.
-The completeness rubric is the minimum-bar subset of [`threat-model-producer`](../threat-model-producer/SKILL.md); the full producer rubric is the standard a model aspires to, this SKILL enforces only the slice the scan agent depends on mechanically.
+The completeness rubric is the minimum-bar subset of the [Alpha-Omega threat-model rubric](https://github.com/alpha-omega-security/threat-model) (§1.1–§1.19); the full rubric is the standard a model aspires to, this SKILL enforces only the slice the scan agent depends on mechanically.
+
+On **2026-09-08** the pipeline switched model production from the in-repo `threat-model-producer` (Michael Scovetta's recipe) to the Magpie security-model SKILLs, which delegate the writing to Alpha-Omega, and the Check B rubric was renumbered to match. The in-repo `threat-model-producer` SKILL is retained for reading historical records written against its numbering; see the renumbering note in Check B for the mapping.
 
 The remediation patterns (small structural fix → PR; substantive gap → issue) match what Jarek has been doing manually for the first wave of opted-in PMCs.

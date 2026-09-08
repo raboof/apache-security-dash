@@ -204,8 +204,9 @@ Keeping the original subject (and replying in-thread) keeps the whole engagement
 Hi <Primary contact first name>,
 
 The scan request for Apache <PMC name> has been queued by
-the ASF Security team. Queue position is TBD — usually a
-few days to a couple of weeks, with no commitment.
+the ASF Security team. Repos are scanned in the sequence of
+submission; we'd rather not give you a date we can't stand
+behind.
 
 Repos queued (ordered by OSSF Criticality Score):
   1. <repo URL 1>  (highest criticality)

@@ -103,11 +103,22 @@ Before drafting,
 write down the 2–4 PMC-relevant facts being communicated, sourced from the triggering announcement.
 For the 2026-07 Mythos 5 provisioning update these were:
 
-- The ASF is **now provisioned on the upgraded Mythos 5** model (via Frontier Model Preparation / Trusted Access) as of 2026-07-01;
-  scanning is kicking off.
-- **No deadline claim.** A nominal 1–31 July 2026 credit window exists, but as of 2026-07-29 it has **not** closed and any change to it is **ASF Tooling's to announce**. Do not tell a PMC their scan must land "this cycle" or "before the window closes".
-- Scans run in **OSS Criticality Score order** from the **Scan Queue** tab;
-  readiness + criticality rank drive ordering within the window.
+- The ASF runs scans internally on **Mythos 5**, via ASF Tooling.
+  **Do not claim a "provisioned as of 2026-07-01, scanning is kicking off" state** — an earlier
+  revision of this SKILL asserted exactly that and it was untrue. Per Dave Fisher (wave@, VP Tooling)
+  on 2026-07-29, scans were **blocked for technical reasons** through July while the ASF migrated off
+  AWS Bedrock to Anthropic 1P; wave@ declared the pause over on **2026-07-30** ("We are now unblocked").
+  Any restart or scheduling announcement is **Tooling's to make, not ours**.
+- **No deadline claim, and there is no cliff to nudge against.** Per Sally Khudairi (sk@, 2026-07-29,
+  confidential): the order form is a **rolling monthly renewal with access through June 2027**. Treat any
+  date-based urgency as unsourced unless the Tooling team states it. Never tell a PMC their scan must land
+  "this cycle" or "before the window closes".
+- **Ordering, stated precisely — these are two different things and only one is PMC-facing.**
+  The **Scan Queue** tab is *sorted* by OSS Criticality Score; that is a tracker artefact we use internally
+  to decide who to chase. **Scans are run by ASF Tooling in the sequence of submission**, and that — not
+  criticality — is what goes in PMC-facing text. Saying "you're queued at your criticality rank" tells a
+  PMC something we cannot stand behind and implies we control the running order. Use the `timing` canned
+  response's wording verbatim.
 - (Context, optional) Claude Fable 5 — the public "safe" model released the same week — ships safety classifiers that block security-research prompts,
   so it is deliberately not the model used for the scans.
 
@@ -128,7 +139,7 @@ Run (or reuse from a fresh `frontier-model-preparation-run` sweep) the per-PMC p
 Group into:
 
 - **Submitted / awaiting ASF Tooling** (`Date scan requested` set) — in the queue; nothing owed by them.
-- **Ready** (`Security model verified` set, not yet submitted) — cleared pre-flight; queued at criticality rank; nothing owed.
+- **Ready** (`Security model verified` set, not yet submitted) — cleared pre-flight; **not yet in the queue at all** (submission is what puts them in it, and it is operator-gated); nothing owed by them.
 - **Pre-flight / blocked** (model not verified, or discoverability / scope / gate items outstanding) —
   owes specific items before it can enter the queue.
 
@@ -183,7 +194,8 @@ Keep the program-status wording aligned with the `program-status` canned respons
 ### Group A — Submitted (awaiting ASF Tooling)
 
 > **Where you stand:** apache/<repo(s)> is submitted and sits in that
-> queue at its criticality rank — you're done on the prep side. Nothing
+> queue in the sequence it was submitted — you're done on the prep
+> side. Nothing
 > is needed from you. When your scan runs, results come back to us for a
 > sanity check and are forwarded verbatim to <recipients> on a fresh
 > thread.
@@ -193,8 +205,8 @@ Keep the program-status wording aligned with the `program-status` canned respons
 ### Group B — Ready (verified, not yet submitted)
 
 > **Where you stand:** pre-flight is complete for apache/<repo(s)> —
-> threat model verified and discoverable — so you're queued at your
-> criticality rank with nothing outstanding. We'll queue the scan on
+> threat model verified and discoverable — so there is nothing
+> outstanding on your side. We'll queue the scan on
 > your go-ahead (we don't auto-submit); just reply when you're ready, or
 > say the word and we'll line it up now.
 >
