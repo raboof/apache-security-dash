@@ -52,7 +52,7 @@ verification, and that does not amortise.
 
 | Parameter | Values | Default | What it controls |
 | --- | --- | --- | --- |
-| `targets` | a project name, a list, or `all` | the project named at invocation | Which scan directories to process. `all` = every directory under the archive's scan tree holding at least one of the two report files. |
+| `targets` | a project name, a list, or `all` | the project named at invocation | Which scan directories to process. `all` = every directory under the archive's delivery tree — `august-scans/<project>/<scan-id>/` since 2026-09-08 (top-level, not under `scans/`), plus the legacy `scans/glasswing/` for the bundles that were not re-dropped there — holding at least one of the two report files. |
 | `files` | `maintainer-report` \| `critical-candidates` \| `both` | `both` | Which files to rewrite. A directory missing one is processed for the other, not skipped. |
 | `verify` | `true` \| `false` | `true` | The fact-preservation check. `false` needs an explicit operator instruction in the same breath and is recorded in the commit message. There is no silent way to turn it off. |
 | `concurrency` | integer | 8 | Parallel rewrite agents in bulk mode. |

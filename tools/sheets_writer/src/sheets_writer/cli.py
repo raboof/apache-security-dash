@@ -222,7 +222,8 @@ def build_parser() -> argparse.ArgumentParser:
     bsr_p.add_argument(
         "--archive-root",
         required=True,
-        help="Path to an apache/tooling-agents-private clone (scans/glasswing/ + scans/mythos/).",
+        help="Path to an apache/tooling-agents-private clone "
+        "(august-scans/ + scans/glasswing/ + scans/mythos/).",
     )
     bsr_p.add_argument("--today", default="", help="Date stamp for the tab header (YYYY-MM-DD).")
     bsr_p.add_argument("--dry-run", action="store_true")

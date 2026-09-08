@@ -3,7 +3,7 @@ name: frontier-model-preparation-forward
 description: >-
   Close out a Glasswing scan delivery: clear it for release, then record it once ASF Tooling has sent it to the PMC.
   ASF Tooling now sends the PMC email itself, from `vp-tooling@apache.org`, per `docs/pmc-email.txt` in the `apache/tooling-agents-private` archive — this SKILL no longer drafts, addresses or sends any PMC-facing mail.
-  What it does own: reading the scan directory (`scans/glasswing/<repo>/<scan-id>/`), confirming the report was rendered and its fact-preservation verdict is clean before it goes out, resolving the delivery's ponymail permalink on the Tooling list afterwards, and writing the tracker — `Date scan received`, `Forwarded scan to PMC`, the Scan Queue per-scan block, the Scan Results row, and the mandatory `build-status-tab` refresh.
+  What it does own: reading the scan directory (`august-scans/<repo>/<scan-id>/`), confirming the report was rendered and its fact-preservation verdict is clean before it goes out, resolving the delivery's ponymail permalink on the Tooling list afterwards, and writing the tracker — `Date scan received`, `Forwarded scan to PMC`, the Scan Queue per-scan block, the Scan Results row, and the mandatory `build-status-tab` refresh.
   Use when Jarek says "the <PMC> scan is ready to go", "Tooling sent the <PMC> report", "record the <PMC> delivery", or when a sweep finds a scan Tooling has delivered that the tracker does not yet show as forwarded.
 ---
 
@@ -24,7 +24,7 @@ This SKILL never drafts a PMC email, never resolves PMC recipients, and never se
 
 - Jarek says "the <PMC> scan is ready to go" / "clear <PMC> for release" (the *before* half).
 - Jarek says "Tooling sent the <PMC> report" / "record the <PMC> delivery" (the *after* half).
-- A sweep finds a scan in `scans/glasswing/` that Tooling has delivered while the tracker still shows `Forwarded scan to PMC` blank.
+- A sweep finds a scan in `august-scans/` (or the legacy `scans/glasswing/`) that Tooling has delivered while the tracker still shows `Forwarded scan to PMC` blank.
 
 Skip when:
 
@@ -57,7 +57,7 @@ Skip when:
 
 | Input | Source |
 | --- | --- |
-| Scan directory | `apache/tooling-agents-private/scans/glasswing/<repo>/<scan-id>/` |
+| Scan directory | `apache/tooling-agents-private/august-scans/<repo>/<scan-id>/` — the current delivery tree since 2026-09-08, **top-level, not under `scans/`**. The previous tree `scans/glasswing/<repo>/<scan-id>/` is still in place and still the only home of the bundles that were not re-dropped, so fall back to it when the scan-id is not under `august-scans/`. |
 | Report + critical candidates | `MAINTAINER-REPORT.md`, `CRITICAL-CANDIDATES.{json,md}` (present only when the run nominated critical candidates) |
 | Fact-preservation verdict | `report-verification.json` beside the assessment in `pre-forward-results/` |
 | Repo / branch / commit / clone date | `PROVENANCE.md` in the scan directory (**not** `metadata.yml` — it does not exist here) |
@@ -84,11 +84,11 @@ Recorded here so the delivery can be recognised on the list and its permalink re
 
 ### A. Clear the scan for release
 
-1. **Identify the scan.** From Jarek's instruction (a project name) or a new directory in `scans/glasswing/`. Resolve to `<repo>/<scan-id>`. Where a repo has several scan directories, take the most recent unless told otherwise. If ambiguous, list candidates and ask.
+1. **Identify the scan.** From Jarek's instruction (a project name) or a new directory in `august-scans/` (falling back to the legacy `scans/glasswing/`). Resolve to `<repo>/<scan-id>`. Where a repo has several scan directories, take the most recent unless told otherwise. If ambiguous, list candidates and ask.
 
 2. **Refresh the archive locally** — `git pull` on a clean clone of `apache/tooling-agents-private`. (Reaching the private repo over `gh`/git needs the keychain: bypass the sandbox, with the loud banner per the user's rule.)
 
-3. **Read `PROVENANCE.md`** for repo, branch, full commit SHA and clone date. These drive the tracker cells and identify the run.
+3. **Read `scan-meta.json`** for repo, branch, commit and `scanned_utc` — every `august-scans/` bundle carries one, and it is JSON, so nothing has to be parsed out of prose. Its `commit` is the **short** (7-hex) SHA; take the full 40-hex SHA and the clone date from **`PROVENANCE.md`**, which is also the only identity file in `scans/glasswing/` bundles. These drive the tracker cells and identify the run.
 
 4. **Run the clearance gate** (hard rule 2): report present, rendered, verdict clean. Report the result plainly — cleared, or the specific failure and where it routes.
 
@@ -156,7 +156,7 @@ Recorded here so the delivery can be recognised on the list and its permalink re
 - Drafting or sending a PMC email from this SKILL, or reintroducing recipient logic. Tooling sends; `docs/pmc-email.txt` is theirs.
 - Setting `Forwarded scan to PMC` on clearance, before Tooling has actually sent.
 - Clearing a scan whose report was never rendered, or whose fact-preservation verdict was not clean — both failures are invisible to the PMC receiving it.
-- Reading `metadata.yml` for identity in a `scans/glasswing/` directory. It does not exist there; use `PROVENANCE.md`.
+- Reading `metadata.yml` for identity in an `august-scans/` or `scans/glasswing/` directory. It exists in neither; use `scan-meta.json` (`august-scans/` only) or `PROVENANCE.md`.
 - Treating a finding count from `VULN-FINDINGS` as the verdict. `TRIAGE.json` is authoritative; `VULN-FINDINGS` is pre-triage and includes items later rejected.
 - Recording a scan as having had no feedback without checking the Tooling list — the template's reply-to points there, not at us.
 - Skipping `build-status-tab`. The delivery is not recorded until the derived tabs show it.
@@ -168,5 +168,7 @@ This SKILL originally drafted and sent the PMC email itself, in the operator's n
 That half was **retired on 2026-08-14**. ASF Tooling now delivers results directly from `vp-tooling@apache.org` using `docs/pmc-email.txt`, agreed in the archive and co-signed by both teams. The change follows the standing scope ruling: threat-model preparation is the Security team's remit, Tooling runs the scans, and Security must never be framed as running them. Reporting sits with whoever ran the scan.
 
 The delivery also moved to the `scans/glasswing/` layout, whose artefact set (`MAINTAINER-REPORT.md`, `TRIAGE`, `VULN-FINDINGS`, `PATCHES`, `PROVENANCE`, `METHODOLOGY`) replaced the older `scans/mythos/` bundle, and whose report is rendered and fact-checked by `maintainer-report-plain-language` before release.
+
+On **2026-09-08** that tree was re-dropped as the top-level **`august-scans/`** — same artefact set minus the `.pre-stack` patch intermediates, plus `scan-meta.json` (machine-readable identity) and `PMC-FEEDBACK.md` (collated PMC replies, on the bundles that have drawn any) — along with 17 bundles the old tree never had. `scans/glasswing/` stays in place for the bundles that were not re-dropped, so both trees are live and `august-scans/` wins on a collision.
 
 `tools/forward_draft/` was built for the retired half and now has no caller in this repository.

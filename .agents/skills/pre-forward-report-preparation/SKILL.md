@@ -58,7 +58,7 @@ The max pass costs hundreds of agent dispatches and real money. It runs **only o
 ## When to invoke
 
 - Jarek says "assess the `<project>` scan", "do the pre-forward assessment for `<project>`", "triage the `<project>` scan against its threat model", "assess the pending scans", "re-assess `<project>`".
-- A new scan lands in `apache/tooling-agents-private/scans/` with `sanity_check: PENDING` and no corresponding `pre-forward-results/` entry, and the team wants the internal read before forwarding.
+- A new scan lands in the `apache/tooling-agents-private` archive — in the delivery tree `august-scans/<project>/<scan-id>/` (top-level, since 2026-09-08; previously `scans/glasswing/`, still present for the bundles that were not re-dropped), or as an ASVS bundle under `scans/` with `sanity_check: PENDING` — with no corresponding `pre-forward-results/` entry, and the team wants the internal read before forwarding.
 - `frontier-model-preparation-run`'s sweep flags a scan as "results back, not yet assessed."
 
 Skip / refuse when:
@@ -135,7 +135,7 @@ Record the selection in `metadata.yml` as `report_steps: [...]`. A report produc
 
 4. **Triage against the project's OWN model, not a generic checklist — read it from the repo, then reconcile with `metadata.yml`.** The authoritative text is the model **as it exists in the project's own directory at the scanned commit** (`<SCAN_ROOT>/<path>` — e.g. `docs/.../security-threat-model.md`, `SECURITY.md`, `THREAT_MODEL.md`), not a URL fetched from a branch tip that may have moved. Read that file, then **cross-check it against the `threat_model` recorded in the scan's `metadata.yml`**: they must be the same document. If they disagree — different path, different content, a URL that resolves to a newer revision, or a `metadata.yml` pointing at a model the repo does not contain at that commit — **record the discrepancy and surface it**, and disposition against the in-repo text. A mismatch is itself a finding: it means the scanner was briefed on a different contract than the code shipped under, which invalidates scope judgements built on it. Follow delegation from the in-repo model too — if that doc delegates to an umbrella / addendum model (as `directory-ldap-api/SECURITY.md` → `directory-server/THREAT_MODEL.md` does), read the umbrella too and use **its** disposition vocabulary (the threat-model-producer §13 table). Only fall back to the generic disposition set (below) when the project's model defines none.
 
-5. **Mirror the `scans/` path exactly.** The assessment for a scan at `scans/<rel>/` is written to `pre-forward-results/<rel>/` — identical relative path, same scan-id leaf directory, same single-repo-collapse rule. A reader must be able to `diff -r scans/<rel> pre-forward-results/<rel>` and have the paths line up. See the layout in the archive README.
+5. **Mirror the scan tree's path exactly.** The assessment for a scan at `scans/<rel>/` is written to `pre-forward-results/<rel>/` — identical relative path, same scan-id leaf directory, same single-repo-collapse rule. For a bundle in a **top-level** delivery tree, the tree name leads: a scan at `august-scans/<project>/<scan-id>/` is assessed into `pre-forward-results/august-scans/<project>/<scan-id>/`. A reader must be able to `diff -r scans/<rel> pre-forward-results/<rel>` and have the paths line up. See the layout in the archive README.
 
 6. **Read the actual finding text — no triage from titles.** Disposition each finding from its body in `issues.md` (and `consolidated.md` / `_security_profile.md` for context), against the model. A disposition assigned from a heading alone is not acceptable; the model distinctions (in-scope adversary vs. operator-trusted input vs. privileged write vs. disclaimed property) live in the finding's details.
 
@@ -216,9 +216,9 @@ The headline the team cares about: **how many `VALID`** (real, default-config, i
 
 | Input | Source |
 | --- | --- |
-| Which scan(s) to assess | The user names a project (and repo, if multi-repo), or "the pending scans". Resolve to scan-id directory/directories under `scans/`. |
+| Which scan(s) to assess | The user names a project (and repo, if multi-repo), or "the pending scans". Resolve to scan-id directory/directories under `august-scans/` (the delivery tree since 2026-09-08 — top-level, not under `scans/`), the legacy `scans/glasswing/`, or `scans/` for the ASVS bundles. |
 | Threat-model-prep status (eligibility gate) | The Mythos tracker's `Security model verified` cell for the PMC (PMCs sheet / Model Status tab). Required: assess only projects where this is set (hard rule 2). Read via the `frontier-model-preparation-status` flow or the `mythos-tracker` reference (fileId `1pxaWKXYtZ-89cKk3OYE99-ewPMh2kXKvSDaqjR-I1o8`). |
-| Scan bundle | `apache/tooling-agents-private/scans/<rel>/` — at minimum `metadata.yml`, `issues.md`; also `consolidated.md`, `_security_profile.md`, `_filter_drop_log.md`, `_review_queue.md`, `issues_cross_reference.md` when present. |
+| Scan bundle | `apache/tooling-agents-private/scans/<rel>/` — at minimum `metadata.yml`, `issues.md`; also `consolidated.md`, `_security_profile.md`, `_filter_drop_log.md`, `_review_queue.md`, `issues_cross_reference.md` when present. **Delivery-tree bundles are a different shape**: `august-scans/<project>/<scan-id>/` (since 2026-09-08; previously `scans/glasswing/`) holds `MAINTAINER-REPORT.md`, `TRIAGE.{md,json}`, `VULN-FINDINGS.{md,json}`, `PATCHES{.md,.json,/}`, `COVERAGE.{md,json}`, `CRITICAL-CANDIDATES.{md,json}`, `METHODOLOGY.md`, `THREAT_MODEL.md`, `PROVENANCE.md`, `scan-meta.json` and (on some) `PMC-FEEDBACK.md` — and **no** `metadata.yml`. |
 | Project threat model | The `threat_model` URL in the scan's `metadata.yml`, **plus** any model it delegates to (follow the chain). |
 | Operator identity | The operator's `@apache.org` for `assessed_by`. |
 

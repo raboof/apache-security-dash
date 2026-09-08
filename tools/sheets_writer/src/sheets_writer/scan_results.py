@@ -32,17 +32,25 @@ Two classes of column, and the split is the whole design:
   Queue tab carries its per-scan tracking block, and are written by
   ``scan-results-set``.
 
-``scans/glasswing/`` is the delivery tree and is enumerated; ``scans/mythos/``
-is still read when present (the older layout). Sibling ensembles in the archive
-(e.g. ``scans/experiments/``) and ``failed-scans/`` are deliberately **out of
-scope** for this tab — they are not part of the delivery pipeline.
+``august-scans/`` is the delivery tree as of 2026-09-08 — a **top-level**
+directory, *not* under ``scans/`` — and is enumerated first. The tree it
+replaced, ``scans/glasswing/``, is still enumerated because it kept the bundles
+that were not re-dropped into it, as is ``scans/mythos/`` (the older layout). A
+scan id found in more than one tree is taken from the earliest tree in
+``SCAN_TREES`` and the later copies are skipped, so the ~228 bundles that exist
+in both ``august-scans/`` and ``scans/glasswing/`` yield one row each. Sibling
+ensembles in the archive (e.g. ``scans/experiments/``) and ``failed-scans/`` are
+deliberately **out of scope** for this tab — they are not part of the delivery
+pipeline.
 
 Two bundle layouts coexist and both are supported:
 
 * **mythos** — a flat ``metadata.yml`` carries every identity field.
-* **glasswing** — there is **no** ``metadata.yml``; identity comes from
-  ``TRIAGE.json`` (``triage_context.target`` / ``.commit``, ``summary.total``)
-  plus the ``<repo>/<YYYYMMDDTHHMMSSZ>`` directory layout.
+* **glasswing / august-scans** — there is **no** ``metadata.yml``; identity
+  comes from ``TRIAGE.json`` (``triage_context.target`` / ``.commit``,
+  ``summary.total``) plus the ``<repo>/<YYYYMMDDTHHMMSSZ>`` directory layout.
+  ``august-scans/`` bundles also ship a ``scan-meta.json``; it is not read here
+  because every one of them carries ``TRIAGE.json`` too.
 
 Scan ID is composed as ``<repo>-<YYYY-MM-DD>-<sha7>``, never the bundle
 directory's basename. Glasswing scans run in fleet batches that share one
@@ -178,9 +186,12 @@ def pmc_cell(row: list[str], idx: dict[str, int], name: str) -> str:
     return row[c].strip() if c is not None and c < len(row) else ""
 
 
-#: Scan trees walked, in order. Both layouts are delivery-pipeline trees; other
-#: siblings under ``scans/`` are out of scope (see the module docstring).
-SCAN_TREES = ["glasswing", "mythos"]
+#: Scan trees walked, in precedence order, as paths **relative to the archive
+#: root** — ``august-scans/`` is top-level, the other two sit under ``scans/``.
+#: The order is load-bearing: a scan id found in several trees is kept from the
+#: first one (see ``collect_scan_rows``). Other siblings under ``scans/`` are out
+#: of scope (see the module docstring).
+SCAN_TREES = ["august-scans", "scans/glasswing", "scans/mythos"]
 
 #: Files that mark a directory as a scan bundle. ``metadata.yml`` is the mythos
 #: layout; glasswing bundles have no metadata file and are identified by their
@@ -189,21 +200,35 @@ BUNDLE_MARKERS = ("metadata.yml", "TRIAGE.json")
 
 
 def find_scan_dirs(archive_root: str) -> list[str]:
-    """Impure (filesystem): every scan-bundle dir under the delivery trees, sorted.
+    """Impure (filesystem): every scan-bundle dir, in ``SCAN_TREES`` order.
 
     A bundle is any directory directly containing one of ``BUNDLE_MARKERS``.
-    Missing trees are skipped rather than raising, so an archive carrying only
-    one layout enumerates cleanly.
+    Results are sorted **within** each tree while the trees keep their declared
+    order, because that order is what lets ``collect_scan_rows`` prefer the
+    ``august-scans/`` copy of a re-dropped bundle over the ``scans/glasswing/``
+    one. Missing trees are skipped rather than raising, so an archive carrying
+    only one layout enumerates cleanly.
     """
     found: list[str] = []
     for tree in SCAN_TREES:
-        base = os.path.join(archive_root, "scans", tree)
+        base = os.path.join(archive_root, *tree.split("/"))
         if not os.path.isdir(base):
             continue
+        in_tree: list[str] = []
         for dirpath, _dirnames, filenames in os.walk(base):
             if any(m in filenames for m in BUNDLE_MARKERS):
-                found.append(dirpath)
-    return sorted(found)
+                in_tree.append(dirpath)
+        found.extend(sorted(in_tree))
+    return found
+
+
+def tree_of(scan_dir: str, archive_root: str) -> str:
+    """Pure-ish: the ``SCAN_TREES`` entry a bundle sits under, or '' if none."""
+    rel = os.path.relpath(scan_dir, archive_root).replace(os.sep, "/")
+    for tree in SCAN_TREES:
+        if rel == tree or rel.startswith(tree + "/"):
+            return tree
+    return ""
 
 
 def scan_date_from_dirname(name: str) -> str:
@@ -412,9 +437,16 @@ def collect_scan_rows(
     A scan that resolves by neither route is still emitted — with the raw slug
     and an anomaly note — rather than dropped, so an unexpected project in the
     archive is visible instead of silently missing.
+
+    A bundle whose ``Scan ID`` has already been emitted is skipped. The trees are
+    walked in ``SCAN_TREES`` order, so the ``august-scans/`` copy of a re-dropped
+    scan wins over the ``scans/glasswing/`` one — that supersession is expected
+    and silent. A collision **within** one tree is not a supersession but a real
+    data problem, and is reported as an anomaly.
     """
     rows: list[list] = []
     anomalies: list[str] = []
+    seen: dict[str, str] = {}
     for scan_dir in find_scan_dirs(archive_root):
         scan_meta = load_scan_meta(scan_dir)
         if not scan_meta:
@@ -424,6 +456,16 @@ def collect_scan_rows(
             )
             continue
         scan_id = compose_scan_id(scan_dir, scan_meta)
+        if scan_id in seen:
+            kept = seen[scan_id]
+            if tree_of(kept, archive_root) == tree_of(scan_dir, archive_root):
+                anomalies.append(
+                    f"{scan_id}: two bundles in one tree compose the same scan id "
+                    f"({os.path.relpath(kept, archive_root)} kept, "
+                    f"{os.path.relpath(scan_dir, archive_root)} skipped)"
+                )
+            continue
+        seen[scan_id] = scan_dir
 
         slug = str(scan_meta.get("project", "") or "").strip().lower()
         repo_key = normalize_repo(scan_meta.get("repo", ""))
@@ -592,7 +634,8 @@ def cmd_build_scan_results_tab(args: argparse.Namespace) -> int:
     tab.row(
         [
             "Auto columns are rebuilt from the tooling-agents-private archive "
-            "(scans/glasswing + scans/mythos). The four feedback columns have no "
+            "(august-scans + scans/glasswing + scans/mythos). The four feedback "
+            "columns have no "
             "automated source: they are written by 'scan-results-set' and carried over "
             "on every rebuild, keyed by Scan ID."
         ]

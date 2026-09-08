@@ -43,6 +43,7 @@ from sheets_writer.scan_results import (
     scan_results_carried,
     scan_type,
     totals_row,
+    tree_of,
 )
 
 SHIRO_ASSESS = """\
@@ -389,6 +390,97 @@ class TestGlasswingBundles:
     def test_glasswing_is_not_labelled_asvs(self, tmp_path):
         d = self._bundle(tmp_path, "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 1)
         assert scan_type(load_scan_meta(d)) == "Glasswing"
+
+
+class TestAugustScansTree:
+    """The delivery tree moved to a top-level ``august-scans/`` on 2026-09-08.
+
+    It re-drops most of ``scans/glasswing/`` and adds bundles the old tree never
+    had, so both trees are walked and a scan present in both must yield one row.
+    """
+
+    @staticmethod
+    def _bundle(root, tree, repo, stamp, target, commit, total):
+        d = root.joinpath(*tree.split("/")) / repo / stamp
+        d.mkdir(parents=True)
+        (d / "TRIAGE.json").write_text(
+            json.dumps(
+                {
+                    "triage_context": {"target": target, "commit": commit},
+                    "summary": {"total": total},
+                }
+            )
+        )
+        return str(d)
+
+    def test_finds_bundles_in_the_top_level_august_scans_tree(self, tmp_path):
+        """``august-scans/`` is not under ``scans/`` — the old join missed it entirely."""
+        d = self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 253
+        )
+        assert find_scan_dirs(str(tmp_path)) == [d]
+
+    def test_august_scans_is_walked_before_glasswing(self, tmp_path):
+        """Tree order is load-bearing: it decides which copy of a bundle wins."""
+        gw = self._bundle(
+            tmp_path, "scans/glasswing", "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 253
+        )
+        aug = self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 253
+        )
+        assert find_scan_dirs(str(tmp_path)) == [aug, gw]
+
+    def test_tree_of_names_the_tree(self, tmp_path):
+        aug = self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 1
+        )
+        gw = self._bundle(
+            tmp_path, "scans/glasswing", "shiro", "20260810T152236Z", "apache/shiro", "abc1234", 1
+        )
+        assert tree_of(aug, str(tmp_path)) == "august-scans"
+        assert tree_of(gw, str(tmp_path)) == "scans/glasswing"
+        assert tree_of(str(tmp_path / "scans" / "experiments" / "x"), str(tmp_path)) == ""
+
+    def test_redropped_bundle_yields_one_row_from_august_scans(self, tmp_path):
+        """~228 bundles sit in both trees; two rows would split their carried feedback."""
+        self._bundle(
+            tmp_path, "scans/glasswing", "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 999
+        )
+        self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 253
+        )
+        rows, anomalies = scan_results.collect_scan_rows(
+            str(tmp_path), {"nuttx": ("Apache NuttX", "")}, {}
+        )
+        assert anomalies == []
+        assert len(rows) == 1
+        assert rows[0][SCAN_RESULTS_HEADER.index("Findings (scan)")] == 253
+
+    def test_bundle_only_in_glasswing_is_still_emitted(self, tmp_path):
+        """The old tree kept the bundles that were never re-dropped."""
+        self._bundle(
+            tmp_path, "scans/glasswing", "shiro", "20260810T152236Z", "apache/shiro", "abc1234", 7
+        )
+        rows, anomalies = scan_results.collect_scan_rows(
+            str(tmp_path), {"shiro": ("Apache Shiro", "")}, {}
+        )
+        assert anomalies == []
+        assert len(rows) == 1
+
+    def test_same_id_twice_in_one_tree_is_an_anomaly(self, tmp_path):
+        """Within a tree a duplicate id is a data problem, not a supersession."""
+        self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 253
+        )
+        self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T235959Z", "apache/nuttx", "5dafb68", 253
+        )
+        rows, anomalies = scan_results.collect_scan_rows(
+            str(tmp_path), {"nuttx": ("Apache NuttX", "")}, {}
+        )
+        assert len(rows) == 1
+        assert len(anomalies) == 1
+        assert "same scan id" in anomalies[0]
 
 
 class TestComposeScanId:
