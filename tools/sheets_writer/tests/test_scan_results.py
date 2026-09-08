@@ -39,6 +39,7 @@ from sheets_writer.scan_results import (
     parse_flat_yaml,
     parse_scan_results,
     pmc_cell,
+    present_trees,
     scan_date_from_dirname,
     scan_results_carried,
     scan_type,
@@ -130,6 +131,14 @@ class TestBuildScanRow:
             "Apache Shiro",
             "2026-07-18",
             "shiro-2026-07-17-cde5990",
+            "scans/mythos/shiro/shiro-2026-07-17-cde5990",
+        )
+
+    def test_folder_locates_the_bundle(self):
+        """A scan id no longer says which tree the report is in."""
+        r = self._row()
+        assert r[SCAN_RESULTS_AUTO.index("Folder")] == (
+            "scans/mythos/shiro/shiro-2026-07-17-cde5990"
         )
 
     def test_identity_and_counts(self):
@@ -429,6 +438,38 @@ class TestAugustScansTree:
             tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5dafb68", 253
         )
         assert find_scan_dirs(str(tmp_path)) == [aug, gw]
+
+    def test_folder_column_records_the_tree_the_row_came_from(self, tmp_path):
+        """The whole point of the column: which of the live trees holds this scan."""
+        self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5da", 1
+        )
+        rows, _ = scan_results.collect_scan_rows(str(tmp_path), {"nuttx": ("Apache NuttX", "")}, {})
+        assert rows[0][SCAN_RESULTS_AUTO.index("Folder")] == ("august-scans/nuttx/20260811T231034Z")
+
+    def test_folder_shows_the_winning_copy_after_a_supersession(self, tmp_path):
+        """A superseded row must not point at the copy that lost."""
+        self._bundle(
+            tmp_path, "scans/glasswing", "nuttx", "20260811T231034Z", "apache/nuttx", "5da", 9
+        )
+        self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5da", 1
+        )
+        rows, _ = scan_results.collect_scan_rows(str(tmp_path), {"nuttx": ("Apache NuttX", "")}, {})
+        assert len(rows) == 1
+        assert rows[0][SCAN_RESULTS_AUTO.index("Folder")].startswith("august-scans/")
+
+    def test_present_trees_finds_the_top_level_tree(self, tmp_path):
+        """The guard on ``build-scan-results-tab`` reads this; a ``scans/`` prefix
+        here made the command refuse every real archive clone.
+        """
+        self._bundle(
+            tmp_path, "august-scans", "nuttx", "20260811T231034Z", "apache/nuttx", "5da", 1
+        )
+        assert present_trees(str(tmp_path)) == ["august-scans"]
+
+    def test_present_trees_is_empty_for_a_non_archive(self, tmp_path):
+        assert present_trees(str(tmp_path)) == []
 
     def test_tree_of_names_the_tree(self, tmp_path):
         aug = self._bundle(

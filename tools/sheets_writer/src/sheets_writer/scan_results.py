@@ -73,6 +73,7 @@ SCAN_RESULTS_AUTO = [
     "PMC",
     "Repo",
     "Scan ID",
+    "Folder",
     "Scan date",
     "Scan type",
     "Model",
@@ -107,6 +108,7 @@ PROSE_COLS = [
 #: very tall row, so width and wrap are set together.
 COL_WIDTHS = {
     SCAN_RESULTS_HEADER.index("Scan ID"): 260,
+    SCAN_RESULTS_HEADER.index("Folder"): 340,
     SCAN_RESULTS_HEADER.index("Sentiment"): 180,
     SCAN_RESULTS_HEADER.index("Feedback summary"): 460,
     SCAN_RESULTS_HEADER.index("Improvements suggested"): 460,
@@ -222,6 +224,16 @@ def find_scan_dirs(archive_root: str) -> list[str]:
     return found
 
 
+def present_trees(archive_root: str) -> list[str]:
+    """Impure (filesystem): the ``SCAN_TREES`` entries this archive actually has.
+
+    ``SCAN_TREES`` entries are paths **relative to the archive root**, not names
+    under ``scans/`` — ``august-scans/`` is top-level. Joining a ``scans/``
+    prefix here made the caller refuse every real clone.
+    """
+    return [t for t in SCAN_TREES if os.path.isdir(os.path.join(archive_root, *t.split("/")))]
+
+
 def tree_of(scan_dir: str, archive_root: str) -> str:
     """Pure-ish: the ``SCAN_TREES`` entry a bundle sits under, or '' if none."""
     rel = os.path.relpath(scan_dir, archive_root).replace(os.sep, "/")
@@ -305,8 +317,15 @@ def build_scan_row(
     pmc_name: str,
     forwarded: str,
     scan_id: str,
+    folder: str = "",
 ) -> list:
-    """Pure: the auto-column cells for one scan bundle."""
+    """Pure: the auto-column cells for one scan bundle.
+
+    ``folder`` is the bundle's path relative to the archive root, e.g.
+    ``august-scans/activemq/20260811T042551Z``. Two trees are live and a
+    scan id no longer says which one a report is in, so the row carries the
+    location outright rather than leaving the reader to guess it.
+    """
     models = scan_meta.get("audit_models", [])
     model = ", ".join(models) if isinstance(models, list) else str(models)
 
@@ -314,6 +333,7 @@ def build_scan_row(
         pmc_name,
         str(scan_meta.get("repo", "") or ""),
         scan_id,
+        folder,
         str(scan_meta.get("scan_date", "") or "")[:10],
         scan_type(scan_meta),
         model,
@@ -484,7 +504,8 @@ def collect_scan_rows(
                 f"{repo_key!r} is in no PMC's repo list nor the Repositories sheet"
             )
 
-        row = build_scan_row(scan_meta, pmc_name, forwarded, scan_id)
+        folder = os.path.relpath(scan_dir, archive_root).replace(os.sep, "/")
+        row = build_scan_row(scan_meta, pmc_name, forwarded, scan_id, folder)
         rows.append(row + scan_results_carried(carried.get(scan_id)))
 
     rows.sort(key=lambda r: (str(r[3]), str(r[0])), reverse=True)
@@ -580,10 +601,9 @@ def cmd_build_scan_results_tab(args: argparse.Namespace) -> int:
     from sheets_writer.status import _ensure_sheet, _Tab, _write_tab
 
     archive_root = os.path.expanduser(args.archive_root)
-    trees = [t for t in SCAN_TREES if os.path.isdir(os.path.join(archive_root, "scans", t))]
-    if not trees:
+    if not present_trees(archive_root):
         print(
-            f"No scans/{{{','.join(SCAN_TREES)}}}/ under {archive_root!r}. Pass "
+            f"No {{{','.join(SCAN_TREES)}}}/ under {archive_root!r}. Pass "
             "--archive-root pointing at an apache/tooling-agents-private clone.",
             file=sys.stderr,
         )
@@ -634,8 +654,8 @@ def cmd_build_scan_results_tab(args: argparse.Namespace) -> int:
     tab.row(
         [
             "Auto columns are rebuilt from the tooling-agents-private archive "
-            "(august-scans + scans/glasswing + scans/mythos). The four feedback "
-            "columns have no "
+            "(august-scans + scans/glasswing + scans/mythos); Folder is the "
+            "bundle's path within it. The four feedback columns have no "
             "automated source: they are written by 'scan-results-set' and carried over "
             "on every rebuild, keyed by Scan ID."
         ]
@@ -660,8 +680,14 @@ def cmd_build_scan_results_tab(args: argparse.Namespace) -> int:
 
     if args.dry_run:
         print(f"Dry run — {len(rows)} scan row(s) would be written to {SCAN_RESULTS_SHEET}.")
+        i_find = SCAN_RESULTS_AUTO.index("Findings (scan)")
+        i_fwd = SCAN_RESULTS_AUTO.index("Forwarded")
+        i_folder = SCAN_RESULTS_AUTO.index("Folder")
         for r in rows:
-            print(f"  {r[SCAN_ID_COL]}  {r[0]}  findings={r[6]} assessed={r[7]}")
+            print(
+                f"  {r[SCAN_ID_COL]}  {r[0]}  findings={r[i_find]} "
+                f"forwarded={r[i_fwd]}  {r[i_folder]}"
+            )
         for a in anomalies:
             print(f"  ANOMALY: {a}")
         return 0
