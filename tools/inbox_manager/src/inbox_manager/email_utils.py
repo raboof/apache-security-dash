@@ -184,6 +184,7 @@ def make_forward(original, intro_md, from_addr, to_addr):
     when the original report was plain text.
     """
     fwd = EmailMessage()
+    fwd["Date"] = email.utils.formatdate()
     fwd["Message-ID"] = email.utils.make_msgid(domain="security.apache.org")
     fwd["From"] = from_addr
     fwd["To"] = to_addr
@@ -453,6 +454,7 @@ def _reply_envelope(original):
     ``is_public_list``); the remaining Cc recipients are carried over.
     """
     msg = EmailMessage()
+    msg["Date"] = email.utils.formatdate()
     msg["Message-ID"] = email.utils.make_msgid(domain="security.apache.org")
     msg["From"] = "ASF Security <security@apache.org>"
     msg["To"] = reporter_from(original)
