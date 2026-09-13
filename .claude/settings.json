@@ -1,71 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "sandbox": {
-    "enabled": true,
-    "excludedCommands": [
-      "gh *"
-    ],
-    "filesystem": {
-      "denyRead": [
-        "~/"
-      ],
-      "allowRead": [
-        ".",
-        "~/.gitconfig",
-        "~/.config/git/",
-        "~/.config/gh/",
-        "~/.cache/",
-        "~/.local/share/uv/",
-        "~/.local/bin/",
-        "~/.config/apache-magpie/",
-        "~/.gnupg/",
-        "/run/user/*/gnupg/"
-      ],
-      "allowWrite": [
-        "~/.cache/",
-        "~/.local/share/uv/"
-      ]
-    },
-    "network": {
-      "allowedDomains": [
-        "github.com",
-        "api.github.com",
-        "api.bitbucket.org",
-        "raw.githubusercontent.com",
-        "objects.githubusercontent.com",
-        "codeload.github.com",
-        "uploads.github.com",
-        "pypi.org",
-        "files.pythonhosted.org",
-        "lists.apache.org",
-        "dist.apache.org",
-        "downloads.apache.org",
-        "archive.apache.org",
-        "cveprocess.apache.org",
-        "cve.org",
-        "www.cve.org",
-        "cveawg.mitre.org",
-        "oauth2.googleapis.com",
-        "gmail.googleapis.com",
-        "*.crates.io"
-      ],
-      "enableWeakerNetworkIsolation": true
-    },
-    "credentials": {
-      "envVars": [
-        { "name": "ANTHROPIC_API_KEY", "mode": "deny" },
-        { "name": "ANTHROPIC_AUTH_TOKEN", "mode": "deny" },
-        { "name": "CLAUDE_CODE_OAUTH_TOKEN", "mode": "deny" },
-        { "name": "GH_TOKEN", "mode": "deny" },
-        { "name": "GITHUB_TOKEN", "mode": "deny" },
-        { "name": "AWS_ACCESS_KEY_ID", "mode": "deny" },
-        { "name": "AWS_SECRET_ACCESS_KEY", "mode": "deny" },
-        { "name": "AWS_SESSION_TOKEN", "mode": "deny" },
-        { "name": "NPM_TOKEN", "mode": "deny" },
-        { "name": "TWINE_PASSWORD", "mode": "deny" }
-      ]
-    }
-  },
   "permissions": {
     "allow": [
       "mcp__apache-projects__get_committee",
@@ -145,5 +79,103 @@
       "Bash(git push --force-with-lease *)",
       "Bash(gh *)"
     ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "api.github.com",
+        "api.bitbucket.org",
+        "raw.githubusercontent.com",
+        "objects.githubusercontent.com",
+        "codeload.github.com",
+        "uploads.github.com",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "lists.apache.org",
+        "dist.apache.org",
+        "downloads.apache.org",
+        "archive.apache.org",
+        "cveprocess.apache.org",
+        "cve.org",
+        "www.cve.org",
+        "cveawg.mitre.org",
+        "oauth2.googleapis.com",
+        "gmail.googleapis.com",
+        "*.crates.io"
+      ]
+    },
+    "filesystem": {
+      "allowWrite": [
+        "~/.cache/",
+        "~/.local/share/uv/"
+      ],
+      "denyRead": [
+        "~/"
+      ],
+      "allowRead": [
+        ".",
+        "~/.gitconfig",
+        "~/.config/git/",
+        "~/.config/gh/",
+        "~/.cache/",
+        "~/.local/share/uv/",
+        "~/.local/bin/",
+        "~/.config/apache-magpie/",
+        "~/.gnupg/",
+        "/run/user/*/gnupg/"
+      ]
+    },
+    "credentials": {
+      "envVars": [
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "mode": "deny"
+        },
+        {
+          "name": "ANTHROPIC_AUTH_TOKEN",
+          "mode": "deny"
+        },
+        {
+          "name": "CLAUDE_CODE_OAUTH_TOKEN",
+          "mode": "deny"
+        },
+        {
+          "name": "GH_TOKEN",
+          "mode": "deny"
+        },
+        {
+          "name": "GITHUB_TOKEN",
+          "mode": "deny"
+        },
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "mode": "deny"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "mode": "deny"
+        },
+        {
+          "name": "AWS_SESSION_TOKEN",
+          "mode": "deny"
+        },
+        {
+          "name": "NPM_TOKEN",
+          "mode": "deny"
+        },
+        {
+          "name": "TWINE_PASSWORD",
+          "mode": "deny"
+        }
+      ]
+    },
+    "excludedCommands": [
+      "gh *"
+    ]
+  },
+  "enabledPlugins": {
+    "magpie-security@apache-magpie": true
   }
 }
