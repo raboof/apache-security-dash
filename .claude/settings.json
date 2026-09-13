@@ -104,7 +104,8 @@
         "oauth2.googleapis.com",
         "gmail.googleapis.com",
         "*.crates.io"
-      ]
+      ],
+      "enableWeakerNetworkIsolation": true
     },
     "filesystem": {
       "allowWrite": [
@@ -176,6 +177,16 @@
     ]
   },
   "enabledPlugins": {
-    "magpie-security@apache-magpie": true
+    "magpie-security@apache-magpie": true,
+    "magpie-setup@apache-magpie": true,
+    "magpie-agent-guard@apache-magpie": true
+  },
+  "extraKnownMarketplaces": {
+    "apache-magpie": {
+      "source": {
+        "source": "github",
+        "repo": "apache/magpie"
+      }
+    }
   }
 }
