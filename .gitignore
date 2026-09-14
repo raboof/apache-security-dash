@@ -25,3 +25,6 @@ __pycache__/
 
 # Scratch working directory for sweep runs (ad-hoc scripts + API dumps).
 /.sweep-tmp/
+
+# Per-developer Magpie configuration (personal, never committed).
+/.apache-magpie-local/
