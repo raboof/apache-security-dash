@@ -80,6 +80,20 @@
       "Bash(gh *)"
     ]
   },
+  "enabledPlugins": {
+    "magpie-security@apache-magpie": true,
+    "magpie-setup@apache-magpie": true,
+    "magpie-agent-guard@apache-magpie": true,
+    "magpie-utilities@apache-magpie": true
+  },
+  "extraKnownMarketplaces": {
+    "apache-magpie": {
+      "source": {
+        "source": "github",
+        "repo": "apache/magpie"
+      }
+    }
+  },
   "sandbox": {
     "enabled": true,
     "network": {
@@ -104,8 +118,7 @@
         "oauth2.googleapis.com",
         "gmail.googleapis.com",
         "*.crates.io"
-      ],
-      "enableWeakerNetworkIsolation": true
+      ]
     },
     "filesystem": {
       "allowWrite": [
@@ -175,18 +188,5 @@
     "excludedCommands": [
       "gh *"
     ]
-  },
-  "enabledPlugins": {
-    "magpie-security@apache-magpie": true,
-    "magpie-setup@apache-magpie": true,
-    "magpie-agent-guard@apache-magpie": true
-  },
-  "extraKnownMarketplaces": {
-    "apache-magpie": {
-      "source": {
-        "source": "github",
-        "repo": "apache/magpie"
-      }
-    }
   }
 }
