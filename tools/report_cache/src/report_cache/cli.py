@@ -73,8 +73,9 @@ Examples:
     report-cache classify tomcat-9912 --pmc tomcat --keywords "deser tribes" --track-only
     report-cache set spammy-7710 --disposition skip
     report-cache set accenture-77 --disposition decline \
-        --collection zzz-non-issue --pmc hadoop --keywords "aaa_dependencies"
+        --collection zzz-non-issue --pmc hadoop --keywords "yarn bypass acl"
     report-cache set 0af31c --add-label "spark/CVE-2026-1234 xxe rest api"
+    report-cache set hadoop-31 --add-label "zzz-non-issue/hadoop/aaa-dependencies"
 """
 
 from __future__ import annotations
@@ -154,18 +155,19 @@ def compose_label(
 ) -> str:
     """Build a Gmail label from its parts.
 
-    Active reports get ``<pmc>/<key> <keywords>`` (``key`` = a CVE or the date);
-    a ``collection`` (e.g. ``zzz-non-issue``) prefixes it and drops the key:
-    ``<collection>/<pmc>/<keywords>``.
+    Reports get ``<pmc>/<key> <keywords>`` (``key`` = a CVE or the date);
+    a ``collection`` (e.g. ``zzz-non-issue``) prefixes that:
+    ``<collection>/<pmc>/<key> <keywords>``.
+    The key is kept either way, so a declined report files next to its dated
+    peers in the archive instead of sorting apart from them.
+    Standing category labels (``aaa-*``) carry no key and no date - they name a
+    class, not a report, so pass those to ``--add-label`` verbatim rather than
+    composing them here.
     A ``waiting_for`` state is appended as `` wf <state>``.
     """
     words = " ".join(keywords)
-    if collection:
-        label = f"{collection}/{pmc}/{words}"
-    elif key:
-        label = f"{pmc}/{key} {words}"
-    else:
-        label = f"{pmc}/{words}"
+    stem = f"{key} {words}" if key else words
+    label = f"{collection}/{pmc}/{stem}" if collection else f"{pmc}/{stem}"
     if waiting_for:
         label += f" wf {waiting_for}"
     return label
@@ -292,7 +294,7 @@ def _set_entry(
                 keywords,
                 collection=collection,
                 waiting_for=waiting_for,
-                key=None if collection else key,
+                key=key,
             )
         )
 

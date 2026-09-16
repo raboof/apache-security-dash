@@ -117,13 +117,40 @@ def test_set_composes_label(tmp_path):
     assert "spark/2026-05-24 xxe rest api" in entry_for(tmp_path, mid).labels
 
 
-def test_set_composes_collection_label_without_date_key(tmp_path):
+def test_set_composes_collection_label_with_date_key(tmp_path):
+    """A declined report keeps its date, so it files next to its dated archive peers."""
     mid, _ = make_bundle(tmp_path)
     cli.cmd_set(
         tmp_path,
-        _ns(id="msgid-abc", collection="zzz-non-issue", pmc="hadoop", keywords="aaa_dependencies"),
+        _ns(id="msgid-abc", collection="zzz-non-issue", pmc="hadoop", keywords="yarn bypass acl"),
     )
-    assert "zzz-non-issue/hadoop/aaa_dependencies" in entry_for(tmp_path, mid).labels
+    assert "zzz-non-issue/hadoop/2026-05-24 yarn bypass acl" in entry_for(tmp_path, mid).labels
+
+
+def test_set_composes_collection_label_with_cve_key(tmp_path):
+    """--cve wins over the date inside a collection, as it does outside one."""
+    mid, _ = make_bundle(tmp_path)
+    cli.cmd_set(
+        tmp_path,
+        _ns(
+            id="msgid-abc",
+            collection="zzz-non-issue",
+            pmc="hadoop",
+            keywords="yarn bypass acl",
+            cve="CVE-2026-1234",
+        ),
+    )
+    assert "zzz-non-issue/hadoop/CVE-2026-1234 yarn bypass acl" in entry_for(tmp_path, mid).labels
+
+
+def test_standing_category_label_passes_through_undated(tmp_path):
+    """`aaa-*` labels name a class, not a report: --add-label keeps them verbatim."""
+    mid, _ = make_bundle(tmp_path)
+    cli.cmd_set(
+        tmp_path,
+        _ns(id="msgid-abc", add_label=["zzz-non-issue/hadoop/aaa-dependencies"]),
+    )
+    assert "zzz-non-issue/hadoop/aaa-dependencies" in entry_for(tmp_path, mid).labels
 
 
 def test_set_composes_label_with_cve_and_waiting_for(tmp_path):
