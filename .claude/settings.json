@@ -84,13 +84,20 @@
     "magpie-security@apache-magpie": true,
     "magpie-setup@apache-magpie": true,
     "magpie-agent-guard@apache-magpie": true,
-    "magpie-utilities@apache-magpie": true
+    "magpie-utilities@apache-magpie": true,
+    "threat-model@threat-model": true
   },
   "extraKnownMarketplaces": {
     "apache-magpie": {
       "source": {
         "source": "github",
         "repo": "apache/magpie"
+      }
+    },
+    "threat-model": {
+      "source": {
+        "source": "github",
+        "repo": "alpha-omega-security/threat-model"
       }
     }
   },
