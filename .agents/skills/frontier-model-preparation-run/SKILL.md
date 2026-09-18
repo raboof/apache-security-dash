@@ -411,7 +411,14 @@ Enumerate every scan-id directory under `august-scans/*/` **and** `scans/glasswi
      - `Forwarded scan to PMC` **blank** → bucket **`scan-needs-forward`** → route to `frontier-model-preparation-forward`.
      - `Forwarded scan to PMC` **set** → already delivered; no action (confirm the scan-id is recorded in the row's `Notes` / ponymail cell).
 
-**A zero-bundle result means the path is wrong, not that the archive is empty — stop and re-derive it.** The delivery tree has now been renamed twice (`scans/mythos/` → `scans/glasswing/` → top-level `august-scans/`, the last on 2026-09-08), and enumerating a directory that does not exist returns an empty list rather than an error, so the sweep reports "no new scans" with total confidence and no warning. This cost the 2026-08-30 sweep a full pass. Sanity-check any zero against `ls august-scans | wc -l` (245 bundles as of 2026-09-08) and `ls scans/glasswing | wc -l` before believing it. Before concluding the tree moved again, run `git ls-tree origin/main --name-only` at the **archive root** and look for a new top-level scan tree — that is how `august-scans/` was found; it is not under `scans/`. **Also check which branch the clone is on** (`git status`): it is a working checkout, not a read-only mirror, and it sat on the feature branch `report-quality-analysis` on 2026-08-30 — `git pull --ff-only` on a feature branch silently leaves you reading something other than `main`.
+**A zero-bundle result means the path is wrong, not that the archive is empty — stop and re-derive it.** The delivery tree has now been renamed twice (`scans/mythos/` → `scans/glasswing/` → top-level `august-scans/`, the last on 2026-09-08), and enumerating a directory that does not exist returns an empty list rather than an error, so the sweep reports "no new scans" with total confidence and no warning. This cost the 2026-08-30 sweep a full pass. Sanity-check any zero with a **bundle** count, not a project-directory count:
+
+```bash
+find august-scans    -mindepth 2 -maxdepth 2 -type d | wc -l   # 245 bundles as of 2026-09-18
+find scans/glasswing -mindepth 2 -maxdepth 2 -type d | wc -l   # 245 bundles as of 2026-09-18
+```
+
+`ls august-scans | wc -l` counts the **project** directories one level up (229, and 231 for `scans/glasswing`), not bundles — so checking a zero against `ls` produces a number that disagrees with the 245 quoted here and makes a healthy archive look like a moved tree. Both trees hold 245 bundles across differing project counts; that asymmetry is expected, not a symptom. Before concluding the tree moved again, run `git ls-tree origin/main --name-only` at the **archive root** and look for a new top-level scan tree — that is how `august-scans/` was found; it is not under `scans/`. **Also check which branch the clone is on** (`git status`): it is a working checkout, not a read-only mirror, and it sat on the feature branch `report-quality-analysis` on 2026-08-30 — `git pull --ff-only` on a feature branch silently leaves you reading something other than `main`.
 
 Write the enumeration to a file and post-process with `jq`/`awk` **from a file** (never inline — shell-safety note above). A scan-id whose `project` is not a `Scan Requested = Yes` PMC is surfaced as an anomaly, never silently dropped. This is the trigger path end-to-end: new scan → `scan-needs-assessment`; assessed PASS → `scan-needs-forward` on the next sweep.
 
@@ -469,10 +476,24 @@ For every **open** PR, classify into one or more attention flags (skip merged/cl
 | `pr-approved-awaiting-merge` | `reviewDecision == APPROVED`, still open | Low-priority: ready, just needs the PMC to click merge — a nudge candidate. |
 
 The `pr-needs-reply` test mirrors hard rule 7 for email:
-**who acted last?** Compare the latest non-author comment/review timestamp against the author's (our) latest commit/comment;
+**who acted last?** Compare the latest non-author comment/review timestamp against **our latest _substantive reply_** — a comment or review of ours that actually answers someone;
 if theirs is newer, it's awaiting us.
 Don't infer from `updatedAt` alone —
 a CI re-run bumps it without a human acting.
+
+**Our own commits do NOT count as a reply, and neither do our throwaway comments.**
+This is the same class of error as the `updatedAt` trap above and it is easy to get wrong, because the obvious implementation — "latest of our comments, reviews *and commits*" — looks right and silently hides work.
+A **rebase or force-push** sets our newest commit to *now* while answering nothing;
+so does a `/show-preview`-style command comment, a screenshot, or a one-word note.
+Any of them pushes our clock past the reviewer's and the PR reads as answered.
+The 2026-09-18 sweep hit exactly this: a force-push at 14:16Z plus two of our own test comments at 14:30Z/14:33Z buried two reviewers' substantive feedback from the day before, and the pass reported the PR clean.
+Re-running the same cohort against our last *substantive* reply took the awaiting-us count from **10 to 16** — five other PRs were hidden the same way, one of them waiting **107 days**.
+
+Concretely, when computing "our latest reply":
+
+- **Exclude** `commits` entirely.
+- **Exclude** our own comments/reviews that are bot-command invocations (`/show-preview`), bare image/screenshot posts, or under ~40 characters of real text.
+- A `COMMENTED` review of ours with an empty top-level body is **not** a reply on its own — it may be inline line-comments (fetch them, see below) or an artefact of testing something.
 
 **This verdict MUST come from actually fetching each open PR's `comments` + `reviews` arrays — never from the email threads, never from `reviewDecision` alone, and never skipped because the fetch is slow.**
 `reviewDecision` staying `REVIEW_REQUIRED` / empty does **not** mean "no maintainer input": a `COMMENTED` review or a plain issue-comment carries questions and scope pushback *without* changing `reviewDecision` or setting `CHANGES_REQUESTED`.
@@ -483,7 +504,7 @@ The 2026-07-05 sweep is the cautionary tale: Maven `#12421` (elharo's scope revi
   `REPO=apache/<repo> gh pr view <n> --repo apache/<repo> --json number,author,commits,comments,reviews --jq '{repo:env.REPO,num:.number,last_commit:(.commits|max_by(.committedDate)|.committedDate),comments:[.comments[]|{a:.author.login,at:.createdAt,body:(.body|.[0:240])}],reviews:[.reviews[]|{a:.author.login,st:.state,at:.submittedAt,body:(.body|.[0:240])}]}'`
 - **Sandbox bypass is required.** `comments` / `reviews` / `statusCheckRollup` / `reviewDecision` all traverse GitHub's **GraphQL** path, which needs authenticated `gh`; under the sandbox the keyring is unreadable and every call **401s**. Run this pass with `dangerouslyDisableSandbox: true` (loud banner per user rule). Keep `statusCheckRollup` (the slow field on big repos) in a **separate lean call** from the comments/reviews call so one heavy field can't stall the loop.
 - **Loop from a `bash` array in a script file** (`PRS=( ... ); for p in "${PRS[@]}"; do …; done`) run with `bash script.sh` — **never** an inline `for p in $LIST` in the Bash tool, whose shell is `zsh`, which does **not** word-split an unquoted variable and silently mangles every iteration (symptom: 0 lines written). For a large cohort use `run_in_background: true` so it can't block the sweep.
-- **Compare in a Python analyzer** (write it to a file per the shell-safety note): flag any PR whose latest non-us, non-bot `comment`/`review` timestamp is newer than our latest `comment`/`review`/`commit`. Treat `potiuk` as us; treat `*[bot]` / `asfgit` / `github-actions` / `apache-*` / CI apps as bots.
+- **Compare in a Python analyzer** (write it to a file per the shell-safety note): flag any PR whose latest non-us, non-bot `comment`/`review` timestamp is newer than our latest **substantive** `comment`/`review`. Treat `potiuk` as us; treat `*[bot]` / `asfgit` / `github-actions` / `apache-*` / CI apps as bots. **Do not put `last_commit` on our side of the comparison** — see the force-push trap above; it is the single most likely way this pass reports a PR clean while a reviewer waits. Still pull `commits` in the fetch (it is useful context), just never let it satisfy the test. Report, per flagged PR, *how many* of their messages postdate our last real reply — a count above 1 usually means the thread has been drifting for a while.
 - **A `COMMENTED` review with an empty top-level body means inline line-comments** (elharo's shape). Pull them with `gh api "repos/apache/<repo>/pulls/<n>/comments"` to see the actual questions.
 
 A PR can carry several flags (e.g. `pr-needs-reply` + `pr-ci-failing`).
@@ -862,6 +883,10 @@ Do not chain into a SKILL unbidden.
   A `COMMENTED` review or an issue-comment carries a maintainer's question with **no** `CHANGES_REQUESTED` and no `reviewDecision` change, so the shortcut reports the PR clean while a real question sits unanswered.
   The 2026-07-05 Maven `#12421` (elharo scope review) and CloudStack `#13293` (review-process question) misses are the reference failure — both were caught only by a dedicated comment-fetch re-run.
   Fetch the comment/review threads on **every** sweep (mechanical recipe in Step 3); never derive the flag second-hand.
+- A sweep that counts **our own commits as a reply** in the `pr-needs-reply` test (Step 3).
+  A rebase, a force-push, or one of our own throwaway comments moves our clock past the reviewer's while answering nothing, and the PR reports clean.
+  On 2026-09-18 this hid two reviewers' feedback behind a force-push and five further PRs behind the same shape — **10 flagged when 16 were waiting**, the oldest at 107 days.
+  Compare against our last *substantive* reply only; never against `last_commit`.
 - A sweep that only looks at **open** PRs and therefore never notices a repo that became scannable when its discoverability PR merged (the `enrollable-not-enrolled` pass in Step 3).
   This failure is silent by construction: the PR leaves the open-PR query at the exact moment the repo becomes enrollable, so no thread moves and no flag fires.
   On 2026-07-30 it had left `apache/solr-operator` idle 13 days and `apache/opendal` idle 28 — the latter being the only scored repo in its PMC's scope, i.e. that PMC's entire scan value was parked.
