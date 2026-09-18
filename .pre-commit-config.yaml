@@ -26,12 +26,17 @@ default_language_version:
   python: python3
 minimum_prek_version: '0.3.5'
 
-# `.claude/settings.json` is committed (team-wide Claude Code settings) but is a
-# sandbox-protected path: agentic tooling runs with it denied for read/write, so
-# the file-fixing hooks (end-of-file-fixer, trailing-whitespace, …) error with
-# "Operation not permitted" when `prek run --all-files` reaches it. It's a
-# managed JSON settings file that doesn't need linting — exclude it everywhere.
-exclude: '^\.claude/settings(\.local)?\.json$'
+# `.claude/settings.json` is committed (team-wide Claude Code settings) and is a
+# sandbox-protected path: agentic tooling runs with it denied for WRITE, so the
+# file-*fixing* hooks (end-of-file-fixer, trailing-whitespace, mixed-line-ending)
+# error with "Operation not permitted" when they try to rewrite it. Those hooks
+# therefore exclude it individually, below.
+#
+# Read-only hooks are fine on it — reads are permitted — so it is deliberately
+# NOT excluded globally any more. That blanket exclude also suppressed `check-json`,
+# which meant a malformed settings file passed every check and only failed later,
+# at Claude Code startup, where the error is far less obvious. See `check-json`
+# below.
 
 repos:
   - repo: meta
@@ -48,12 +53,23 @@ repos:
         name: Check that merge conflicts are not being committed
       - id: detect-private-key
         name: Detect if a private key is added to the repository
+      # Validate every committed JSON file, `.claude/settings.json` included.
+      # That file is the one most likely to be hand-edited (agentic tooling is
+      # blocked from writing it), and a malformed one is invisible until Claude
+      # Code fails to start. check-json only READS, so the sandbox write-denial
+      # that forces the fixer hooks to skip it does not apply here.
+      - id: check-json
+        name: Check that JSON files parse
+        files: \.json$
       - id: end-of-file-fixer
         name: Make sure that there is an empty line at the end
+        exclude: '^\.claude/settings(\.local)?\.json$'
       - id: mixed-line-ending
         name: Detect mixed line endings (\r vs. \r\n)
+        exclude: '^\.claude/settings(\.local)?\.json$'
       - id: trailing-whitespace
         name: Remove trailing whitespace at end of line
+        exclude: '^\.claude/settings(\.local)?\.json$'
 
   # markdownlint — catches structurally-bad markdown. Config in
   # `.markdownlint.json` enables only the rules that catch real bugs
@@ -75,6 +91,7 @@ repos:
       - id: typos
         name: typos
         args: [--force-exclude]
+        exclude: '^\.claude/settings(\.local)?\.json$'
 
   # ruff lint + format for Python under:
   #   - `.github/skills/` (sheets_writer.py, form_submitter.py — PEP
