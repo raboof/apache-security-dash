@@ -2,7 +2,7 @@
 
 method:       marketplace
 url:          apache/magpie
-min_version:  0.2.0.dev202609131802
+min_version:  0.2.0.dev202609222337
 
 plugins:
   - magpie-setup
