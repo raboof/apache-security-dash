@@ -60,6 +60,7 @@
       "Read(//**/.env.*.local)",
       "Edit(.claude/settings.json)",
       "Edit(.claude/settings.local.json)",
+      "Edit(.apache-magpie-overrides/tools/vetted-ops/**)",
       "Bash(curl *)",
       "Bash(wget *)",
       "Bash(aws *)",
@@ -217,7 +218,9 @@
         "cveawg.mitre.org",
         "oauth2.googleapis.com",
         "gmail.googleapis.com",
-        "*.crates.io"
+        "*.crates.io",
+        "static.rust-lang.org",
+        "api.osv.dev"
       ]
     },
     "filesystem": {
