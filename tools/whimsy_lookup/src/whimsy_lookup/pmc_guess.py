@@ -113,6 +113,7 @@ _NAME_ALIASES = {
     "axiom": "ws",
     "batik": "xmlgraphics",
     "neethi": "ws",
+    "nimble": "mynewt",
     "woden": "ws",
     "wss4j": "ws",
     "xmlschema": "ws",
