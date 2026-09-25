@@ -467,6 +467,35 @@ def handle_cve_reservation(inbox, original, uid, cve_id, pmc):
     print(f"moved to {new_label}\n")
 
 
+CVE_PUSHED_RE = re.compile(r"(CVE-\d{4}-\d+)\s+was pushed to cve.org")
+CVE_LABEL_RE = re.compile(r"[a-zA-Z0-9-]+/(CVE-\d+-\d+) [^C].*")
+
+
+def handle_cve_publication(inbox, original, uid):
+    name, addr = parseaddr(original["From"] or "")
+    if addr.lower() != "security@apache.org" or "cveprocess" not in name.lower():
+        return False
+    m = CVE_PUSHED_RE.match(str(original["Subject"] or ""))
+    if not m:
+        return False
+    cve = m.groups()[0]
+    labels = gmail_labels(inbox, uid)
+    print(f"CVE {cve} pushed, labels {labels}")
+    for label in labels:
+        if label.endswith("aaa-glasswing"):
+            # nothing to do, audit results are not tracked individually
+            return True
+        else:
+            label_cve = CVE_LABEL_RE.match(label)
+            if label_cve and label_cve.groups()[0] == cve:
+                print(f"Found open label for published CVE: {label}. ")
+                inbox.rename_folder(label, f"zzz-resolved/{label}")
+                # TODO also remove from inbox
+                return True
+
+    return False
+
+
 # Header fields sufficient to decide the body-free skips below (and to detect
 # CVE reservations), so replies/noise are dropped without downloading bodies.
 HEADER_FETCH = "BODY.PEEK[HEADER.FIELDS (MESSAGE-ID REFERENCES FROM SUBJECT)]"
@@ -541,6 +570,8 @@ def handle_message(inbox, uid, committees, coordinates, index):
         cve_id, pmc_id = cve
         pmc = pmc_for(pmc_id, committees, coordinates)
         handle_cve_reservation(inbox, original, uid, cve_id, pmc)
+        return
+    if handle_cve_publication(inbox, original, uid):
         return
 
     # What the triage skills already decided about this report, if anything.
