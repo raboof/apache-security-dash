@@ -12,7 +12,6 @@
       "mcp__ponymail__get_email",
       "mcp__ponymail__get_thread",
       "mcp__ponymail__search_list",
-      "Bash(lychee *)",
       "WebFetch(domain:*.apache.org)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
@@ -20,7 +19,6 @@
       "Bash(uv run --project tools/populate_cache populate-cache *)",
       "Bash(uv run --project tools/whimsy_lookup whimsy-lookup *)",
       "Bash(.agents/skills/triage-assess/archive_lookup.py *)",
-      "Bash(.agents/skills/triage-assess/draft.py *)",
       "Read(workspace/*)",
       "Bash(gh api graphql *)",
       "Bash(gh pr view *)",
@@ -42,7 +40,26 @@
       "Bash(gh cache list *)",
       "Bash(gh search *)",
       "Bash(gh browse *)",
-      "Bash(gh auth status*)"
+      "Bash(gh auth status*)",
+      "mcp__gmail-plaintext__create_draft",
+      "mcp__ponymail__list_restrictions",
+      "mcp__apache-projects__project_stats",
+      "mcp__apache-projects__get_group_members",
+      "Bash(zizmor *)",
+      "Bash(uv run --project ~/.claude/magpie/vetted-ops vetted-op-read *)",
+      "Bash(uvx --from ~/.claude/magpie/vetted-ops vetted-op-read *)",
+      "mcp__ponymail__get_source",
+      "mcp__ponymail__list_lists",
+      "mcp__claude_ai_Gmail__get_message",
+      "mcp__claude_ai_Gmail__get_draft",
+      "mcp__gmail-plaintext__check_auth",
+      "mcp__apache-projects__get_releases",
+      "mcp__apache-projects__get_repositories",
+      "mcp__apache-projects__list_committees",
+      "mcp__apache-projects__search_projects",
+      "WebFetch(domain:cveawg.mitre.org)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:lists.apache.org)"
     ],
     "deny": [
       "Read(./.env)",
@@ -72,7 +89,11 @@
       "Bash(pip install --upgrade *)",
       "Bash(uv self update *)",
       "Bash(gh auth token*)",
-      "Bash(gh auth refresh*)"
+      "Bash(gh auth refresh*)",
+      "Edit(~/.claude/plugins/cache/apache-magpie/magpie-vetted-ops/**)",
+      "Edit(~/.claude/magpie/**)",
+      "Edit(~/.claude/plugins/cache/apache-magpie/magpie-adversarial-review/**)",
+      "Edit(~/.claude/scripts/**)"
     ],
     "ask": [
       "Bash(git push *)",
@@ -221,7 +242,8 @@
         "*.crates.io",
         "static.rust-lang.org",
         "api.osv.dev"
-      ]
+      ],
+      "enableWeakerNetworkIsolation": true
     },
     "filesystem": {
       "allowWrite": [
@@ -241,7 +263,9 @@
         "~/.local/bin/",
         "~/.config/apache-magpie/",
         "~/.gnupg/",
-        "/run/user/*/gnupg/"
+        "/run/user/*/gnupg/",
+        "~/.docker/bin/",
+        "~/.docker/cli-plugins/"
       ]
     },
     "credentials": {
@@ -289,7 +313,10 @@
       ]
     },
     "excludedCommands": [
-      "gh *"
+      "gh *",
+      "uv run --project ~/.claude/magpie/vetted-ops vetted-op-read *",
+      "uvx --from ~/.claude/magpie/vetted-ops vetted-op-read *",
+      "~/.claude/scripts/magpie-run-evals.sh *"
     ]
   }
 }
