@@ -218,6 +218,7 @@ def test_guess_maps_product_name_to_pmc():
     assert _slugs(guess_pmcs(subj, KNOWN, COORDINATES)) == ["httpcomponents"]
     assert _slugs(guess_pmcs("Apache Batik SSRF", KNOWN, COORDINATES)) == ["xmlgraphics"]
     assert _slugs(guess_pmcs("Apache XML Graphics SSRF", KNOWN, COORDINATES)) == ["xmlgraphics"]
+    assert _slugs(guess_pmcs("There is a problem in Axis2", KNOWN, COORDINATES)) == ["axis"]
 
 
 def test_guess_tokenization():

@@ -111,6 +111,7 @@ class Pmc:
 # PMC even though none of them tokenises to it.
 _NAME_ALIASES = {
     "axiom": "ws",
+    "axis2": "axis",
     "batik": "xmlgraphics",
     "neethi": "ws",
     "nimble": "mynewt",
